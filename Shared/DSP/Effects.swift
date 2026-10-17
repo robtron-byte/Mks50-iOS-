@@ -149,6 +149,9 @@ final class Reverb {
     /// Not real-time: called from prepare.
     func prepare(sampleRate: Float) {
         self.sampleRate = sampleRate
+        // Initialise static tables here, never lazily on the audio thread.
+        _ = Reverb.baseLengths.count
+        _ = DelayDivision.quarters.count
         let scale = sampleRate / 44100
         for i in 0..<4 {
             diffuserSizes[i] = min(Reverb.diffuserCapacity - 1, Int(Reverb.diffuserLengths[i] * scale))
