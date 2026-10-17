@@ -175,7 +175,7 @@ final class MKS50AudioUnit: AUAudioUnit {
         let engine = self.engine
         let buffers = self.renderBuffers
 
-        return { _, timestamp, frameCount, _, outputData, realtimeEventListHead, _ in
+        return { actionFlags, timestamp, frameCount, _, outputData, realtimeEventListHead, _ in
             let abl = UnsafeMutableAudioBufferListPointer(outputData)
             guard abl.count > 0 else { return kAudioUnitErr_FormatNotSupported }
             guard Int(frameCount) <= buffers.capacity else { return kAudioUnitErr_TooManyFramesToProcess }
@@ -193,6 +193,7 @@ final class MKS50AudioUnit: AUAudioUnit {
             let start = AUEventSampleTime(timestamp.pointee.mSampleTime)
             var event = realtimeEventListHead
             var done: AUAudioFrameCount = 0
+            var silent = true
             while done < frameCount {
                 while let e = event, e.pointee.head.eventSampleTime - start <= AUEventSampleTime(done) {
                     MKS50AudioUnit.handle(e, engine)
@@ -202,12 +203,17 @@ final class MKS50AudioUnit: AUAudioUnit {
                 if let e = event {
                     end = AUAudioFrameCount(clamping: min(AUEventSampleTime(frameCount), e.pointee.head.eventSampleTime - start))
                 }
-                engine.render(frames: Int(end - done), left: left + Int(done), right: right + Int(done))
+                let segmentSilent = engine.render(frames: Int(end - done), left: left + Int(done), right: right + Int(done))
+                silent = silent && segmentSilent
                 done = end
             }
             while let e = event {
                 MKS50AudioUnit.handle(e, engine)
                 event = UnsafePointer(e.pointee.head.next)
+            }
+            if silent {
+                // Lets hosts skip downstream processing while the synth is idle.
+                actionFlags.pointee.insert(.unitRenderAction_OutputIsSilence)
             }
             return noErr
         }

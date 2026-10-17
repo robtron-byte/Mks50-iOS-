@@ -36,6 +36,27 @@ Die Parameteradressen 0–35 entsprechen exakt den Tone-Parameternummern des MKS
 - **Echtzeit-Regeln aus JUCE/iPlug**: Im Render-Thread wird nichts allokiert und nie blockiert. MIDI vom UI-/CoreMIDI-Thread kommt über eine Queue, die der Audio-Thread nur mit `os_unfair_lock_trylock` liest. Parameter-Events des Hosts werden sample-genau verarbeitet.
 - **iOS-spezifisch**: Multitouch-Keyboard statt Maus, Bluetooth-MIDI-Pairing mit Apples Standard-Dialog, Audio-Session mit 5-ms-Puffer und Hintergrund-Audio, Wiederanlauf nach Unterbrechungen und Routenwechseln, Dateien über die Dateien-App, Querformat-Layout für iPhone und iPad.
 
+## Effizienz (ohne Klangeinbußen)
+
+Jede Optimierung wurde gegen die vorherige Referenz geprüft (Python-Port, Sample-Vergleich):
+
+- **Leerlauf kostet nahezu nichts:** Sind alle Stimmen verklungen und die Chorus/DC-Ausklänge vorbei (250 ms), rechnet die Engine nichts mehr und meldet dem Host `OutputIsSilence`.
+- **Nur aktive Stimmen** werden berechnet. Modulation und Filterkoeffizienten laufen mit Kontrollrate (alle 16 Samples), alle Parameterkurven (`powf`/`expf`) werden **einmal pro Block für alle Stimmen** berechnet.
+- **Oszillator:** Kantensuche ohne Rundung, mit Wiederverwendung der lokalen Phasen. Die volle Kantenhöhen-Messung läuft nur innerhalb eines Samples um eine Kante. Das Ergebnis ist identisch zur Referenz (Abweichung < 10⁻⁶).
+- **Hüllkurve:** rekursive Exponentialkurve statt `expf` pro Sample (max. Abweichung 2·10⁻⁴ ≈ −74 dB, unhörbar).
+- **HPF** wird in Stellung „flat“ übersprungen (bitgleich, da Bypass).
+- **Echtzeit-sicher:** keine Allokation und kein Blockieren im Audio-Thread; MIDI vom UI läuft über eine Queue mit `trylock`.
+- **UI:** Das Panel fragt die Engine nur ab, solange es sichtbar ist. Im Hintergrund pausiert die App die Audio-Engine, wenn kein MIDI-Gerät verbunden ist.
+- Release- und Debug-Build sind mit `-O` optimiert, Release zusätzlich mit Whole-Module-Optimization.
+
+## Authentizität – was nachgebildet ist
+
+- **DCO:** digitale Chop-Logik des Alpha Juno (siehe oben), phasenstarre Teilerkette, bandbegrenzt.
+- **LFO:** nur Dreieck, wie beim Original. Delay blendet pro Tastenanschlag ein.
+- **Chorus:** MN3009/MN3101-BBD-Modell: Mono-Einspeisung, gegenphasiges Dreieck-LFO links/rechts, zweipolige Anti-Alias- und Rekonstruktionsfilter (~8 kHz), sanfte Eimerketten-Sättigung, leises BBD-Rauschen (~−84 dBFS).
+- **VCF:** 4-Pol-OTA-Kaskade (IR3109-Stil) mit Resonanz bis zur Selbstoszillation und Bass-Ausgleich.
+- **Stimmstabilität:** Das Original hat DCOs und ist stimmstabil. *Voice Drift* steht deshalb standardmäßig niedrig (8) und kann für „Vintage“ erhöht werden.
+
 ## Projektstruktur
 
 ```

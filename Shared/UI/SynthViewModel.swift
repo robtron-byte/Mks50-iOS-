@@ -24,8 +24,17 @@ final class SynthViewModel: ObservableObject {
         audioUnit.parameterTree?.allParameters.forEach { parameters[Int($0.address)] = $0 }
         poll()
         refreshUserPresets()
+        setPolling(true)
+    }
 
+    /// The panel only polls the engine while it is on screen.
+    func setPolling(_ enabled: Bool) {
+        timer?.invalidate()
+        timer = nil
+        guard enabled else { return }
+        poll()
         let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in self?.poll() }
+        timer.tolerance = 0.01
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }

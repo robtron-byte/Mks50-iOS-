@@ -18,8 +18,6 @@ struct Voice {
     var targetPitch: Float = 60
     var lfoFade: Float = 1
     var gateAmp: Float = 0
-    var dt: Float = 0
-    var pulseRatio: Float = 1
 
     /// Unison position -1...1 (0 = centre / not in unison).
     var unisonSpread: Float = 0
@@ -514,6 +512,36 @@ final class SynthEngine {
 
     // MARK: Rendering
 
+    /// Parameter curves evaluated once per control block and shared by all
+    /// voices (keeps powf / expf out of the per-voice path).
+    private struct BlockParams {
+        var dcoEnvMode = 0
+        var vcfEnvMode = 0
+        var vcaGateMode = false
+        var vcaDynamics = false
+        var vibratoSemis: Float = 0
+        var dcoEnvSemis: Float = 0
+        var pitchOffset: Float = 0        // range + bend
+        var portaOn = false
+        var portaCoef: Float = 1
+        var lfoFadeIncrement: Float = 1
+        var drift: Float = 0
+        var unisonSemis: Float = 0
+        var pulseDetuneSemis: Float = 0
+        var pulseEnvSemis: Float = 0
+        var pulseSync = false
+        var cutoffOct: Float = 10
+        var keyFollow: Float = 0
+        var vcfEnvOct: Float = 0
+        var vcfLfoOct: Float = 0
+        var vcfAfterOct: Float = 0
+        var resonance: Float = 0
+        var amp: Float = 1
+        var gateCoef: Float = 0.01
+    }
+
+    private var block = BlockParams()
+
     private func updateGlobalControl(frames n: Int) {
         let sr = sampleRate
         let fn = Float(n)
@@ -525,7 +553,7 @@ final class SynthEngine {
             lastKeyMode = keyMode
         }
 
-        // LFO (triangle)
+        // LFO: triangle only, like the Alpha Juno / MKS-50.
         let lfoHz = 0.1 * powf(300, p(.lfoRate) / 127)
         lfoPhase += lfoHz * fn / sr
         if lfoPhase >= 1 { lfoPhase -= floorf(lfoPhase) }
@@ -573,96 +601,120 @@ final class SynthEngine {
             default: hpfCoefficients = .bypass
             }
         }
+
+        // Shared per-voice modulation amounts
+        var b = block
+        b.dcoEnvMode = pi(.dcoEnvMode)
+        b.vcfEnvMode = pi(.vcfEnvMode)
+        let vcaMode = pi(.vcaEnvMode)
+        b.vcaGateMode = vcaMode == 1 || vcaMode == 3
+        b.vcaDynamics = vcaMode >= 2
+
+        let lfoVibrato: Float = powf(p(.dcoLfoDepth) / 127, 2) * 12
+        let wheelVibrato: Float = modWheel * powf(p(.modSensitivity) / 127, 2) * 3
+        let afterVibrato: Float = aftertouch * powf(p(.dcoAfterDepth) / 127, 2) * 3
+        b.vibratoSemis = lfoVibrato + wheelVibrato + afterVibrato
+        b.dcoEnvSemis = powf(p(.dcoEnvDepth) / 127, 2) * 24
+        b.pitchOffset = Float((pi(.dcoRange) - 1) * 12) + bend * p(.benderRange)
+
+        b.portaOn = portamentoOn
+        let portaSeconds = powf(p(.portaTime) / 127, 2) * 3
+        b.portaCoef = portaSeconds < 0.001 ? 1 : 1 - expf(-fn / (portaSeconds * sr))
+
+        let delay = powf(p(.lfoDelay) / 127, 2) * 5
+        b.lfoFadeIncrement = delay < 0.001 ? 1 : fn / (delay * sr)
+
+        b.drift = p(.voiceDrift) / 127
+        b.unisonSemis = powf(p(.unisonDetune) / 127, 1.5) * 0.5
+        b.pulseDetuneSemis = (p(.pulseDetune) - 64) / 64 * 12
+        b.pulseEnvSemis = p(.pulseEnvMod) / 127 * 36
+        b.pulseSync = pi(.pulseSync) == 1
+
+        b.cutoffOct = cutoffSmoothed / 127 * 10
+        b.keyFollow = p(.vcfKeyFollow) / 127 * 1.1 / 12
+        b.vcfEnvOct = p(.vcfEnvDepth) / 127 * 9
+        b.vcfLfoOct = powf(p(.vcfLfoDepth) / 127, 2) * 4
+        b.vcfAfterOct = aftertouch * p(.vcfAfterDepth) / 127 * 4
+        b.resonance = p(.vcfResonance) / 127
+
+        b.amp = p(.vcaLevel) / 127 * (1 + aftertouch * p(.vcaAfterDepth) / 127)
+        b.gateCoef = 1 - expf(-1 / (0.002 * sr))
+        block = b
     }
 
     private func renderVoice(_ i: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>, frames n: Int) {
+        let b = block
         let sr = sampleRate
-        let fn = Float(n)
 
         // Portamento
-        if portamentoOn {
-            let t = powf(p(.portaTime) / 127, 2) * 3
-            let coef = t < 0.001 ? 1 : 1 - expf(-fn / (t * sr))
-            voices[i].pitch += (voices[i].targetPitch - voices[i].pitch) * coef
+        if b.portaOn {
+            voices[i].pitch += (voices[i].targetPitch - voices[i].pitch) * b.portaCoef
         } else {
             voices[i].pitch = voices[i].targetPitch
         }
         let pitch = voices[i].pitch
 
         // Voice calibration: static offsets plus slow random wander.
-        let drift = p(.voiceDrift) / 127
-        voices[i].wander += voices[i].rng.next() * 0.02 * fn / 16 - voices[i].wander * 0.0005 * fn
-        voices[i].wander = clampf(voices[i].wander, -1, 1)
-        let driftSemis = drift * (voices[i].driftPitch * 0.08 + voices[i].wander * 0.04)
+        var driftSemis: Float = 0
+        var driftOct: Float = 0
+        if b.drift > 0 {
+            let fn = Float(n)
+            voices[i].wander += voices[i].rng.next() * 0.02 * fn / 16 - voices[i].wander * 0.0005 * fn
+            voices[i].wander = clampf(voices[i].wander, -1, 1)
+            driftSemis = b.drift * (voices[i].driftPitch * 0.08 + voices[i].wander * 0.04)
+            driftOct = b.drift * voices[i].driftCutoff * 0.15
+        }
 
         // LFO delay: fade-in after key on
-        let delay = powf(p(.lfoDelay) / 127, 2) * 5
         if voices[i].lfoFade < 1 {
-            voices[i].lfoFade = delay < 0.001 ? 1 : min(1, voices[i].lfoFade + fn / (delay * sr))
+            voices[i].lfoFade = min(1, voices[i].lfoFade + b.lfoFadeIncrement)
         }
         let lfo = lfoValue * voices[i].lfoFade
 
         let velocity = voices[i].velocity
         let env = voices[i].env.value
-        let dcoEnv = envAmount(env, mode: pi(.dcoEnvMode), velocity: velocity)
-        let vcfEnv = envAmount(env, mode: pi(.vcfEnvMode), velocity: velocity)
-
-        // Unison detune (up to ±50 cents at the outer voices)
-        let unisonSemis = voices[i].unisonSpread * powf(p(.unisonDetune) / 127, 1.5) * 0.5
+        let dcoEnv = envAmount(env, mode: b.dcoEnvMode, velocity: velocity)
+        let vcfEnv = envAmount(env, mode: b.vcfEnvMode, velocity: velocity)
 
         // DCO pitch
-        // (Split into partial sums to keep the type checker fast.)
-        let lfoVibrato: Float = powf(p(.dcoLfoDepth) / 127, 2) * 12
-        let wheelVibrato: Float = modWheel * powf(p(.modSensitivity) / 127, 2) * 3
-        let afterVibrato: Float = aftertouch * powf(p(.dcoAfterDepth) / 127, 2) * 3
-        let vibratoSemis: Float = lfoVibrato + wheelVibrato + afterVibrato
-        let rangeSemis = Float((pi(.dcoRange) - 1) * 12)
-        let envSemis: Float = dcoEnv * powf(p(.dcoEnvDepth) / 127, 2) * 24
-        var semis: Float = pitch + rangeSemis + bend * p(.benderRange)
-        semis += lfo * vibratoSemis + envSemis + driftSemis + unisonSemis
-        voices[i].dt = noteToHz(semis) / sr
+        var semis: Float = pitch + b.pitchOffset + lfo * b.vibratoSemis
+        semis += dcoEnv * b.dcoEnvSemis + driftSemis + voices[i].unisonSpread * b.unisonSemis
+        let dt = noteToHz(semis) / sr
 
         // Pulse detune / envelope sweep (for hard-sync leads)
-        let pulseSemis = (p(.pulseDetune) - 64) / 64 * 12 + dcoEnv * p(.pulseEnvMod) / 127 * 36
-        voices[i].pulseRatio = exp2f(pulseSemis / 12)
-        let sync = pi(.pulseSync) == 1
+        let pulseSemis = b.pulseDetuneSemis + dcoEnv * b.pulseEnvSemis
+        let ratio: Float = pulseSemis == 0 ? 1 : exp2f(pulseSemis / 12)
 
         // VCF cutoff in octaves above 20 Hz
-        let baseOct: Float = cutoffSmoothed / 127 * 10
-        let keyOct: Float = p(.vcfKeyFollow) / 127 * 1.1 * (pitch - 60) / 12
-        let envOct: Float = vcfEnv * p(.vcfEnvDepth) / 127 * 9
-        let lfoOct: Float = lfo * powf(p(.vcfLfoDepth) / 127, 2) * 4
-        let afterOct: Float = aftertouch * p(.vcfAfterDepth) / 127 * 4
-        let driftOct: Float = drift * voices[i].driftCutoff * 0.15
-        let octaves: Float = baseOct + keyOct + envOct + lfoOct + afterOct + driftOct
+        var octaves: Float = b.cutoffOct + b.keyFollow * (pitch - 60) + vcfEnv * b.vcfEnvOct
+        octaves += lfo * b.vcfLfoOct + b.vcfAfterOct + driftOct
         let cutoff = 20 * exp2f(clampf(octaves, -2, 11))
-        voices[i].filter.setCoefficients(cutoff: cutoff, resonance: p(.vcfResonance) / 127, sampleRate: sr)
+        voices[i].filter.setCoefficients(cutoff: cutoff, resonance: b.resonance, sampleRate: sr)
 
         // VCA
-        let vcaMode = pi(.vcaEnvMode)
-        let gateMode = vcaMode == 1 || vcaMode == 3
-        let dynamics = vcaMode >= 2 ? (0.2 + 0.8 * velocity) : 1
+        let dynamics: Float = b.vcaDynamics ? (0.2 + 0.8 * velocity) : 1
         let unisonGain: Float = voices[i].isUnison ? 0.45 : 1
-        let amp = p(.vcaLevel) / 127 * (1 + aftertouch * p(.vcaAfterDepth) / 127) * dynamics * unisonGain
+        let amp = b.amp * dynamics * unisonGain
+        let gateMode = b.vcaGateMode
         let gateTarget: Float = voices[i].gate ? 1 : 0
-        let gateCoef = 1 - expf(-1 / (0.002 * sr))
+        let gateCoef = b.gateCoef
 
-        // Equal-power-ish panning for unison voices
+        // Panning for unison voices
         let pan = voices[i].isUnison ? voices[i].unisonSpread * 0.85 : 0
         let gainL = amp * min(1, 1 - pan)
         let gainR = amp * min(1, 1 + pan)
 
         let es = envelopeSettings(forPitch: pitch, voice: i)
-        let dt = voices[i].dt
-        let ratio = voices[i].pulseRatio
+        let sync = b.pulseSync
         let settings = dcoSettings
         let hpfC = hpfCoefficients
+        let hpfActive = hpfMode != 1
 
         for k in 0..<n {
             let e = voices[i].env.next(es)
             voices[i].gateAmp += (gateTarget - voices[i].gateAmp) * gateCoef
             var s = voices[i].dco.tick(dt: dt, pulseRatio: ratio, sync: sync, settings) * 0.5
-            s = voices[i].hpf.process(s, hpfC)
+            if hpfActive { s = voices[i].hpf.process(s, hpfC) }
             s = voices[i].filter.process(s)
             s *= gateMode ? voices[i].gateAmp : e
             left[k] += s * gainL
@@ -684,14 +736,47 @@ final class SynthEngine {
         return x < 0 ? -y : y
     }
 
+    /// Frames rendered since the last voice went idle.
+    private var idleFrames = 0
+
     /// Renders `frames` stereo samples, overwriting the destination buffers.
-    func render(frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>) {
+    ///
+    /// - Returns: `true` if the output is pure silence. When no voice is
+    ///   sounding and the chorus / DC-blocker tails have died away, nothing
+    ///   is computed at all, so an idle instance costs almost no CPU.
+    @discardableResult
+    func render(frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>) -> Bool {
+        var anyActive = false
+        for i in 0..<SynthEngine.maxVoices where voices[i].active { anyActive = true }
+
+        // 250 ms covers the chorus delay line and the DC blocker decay.
+        let tailFrames = Int(sampleRate * 0.25)
+        if !anyActive && idleFrames >= tailFrames {
+            left.update(repeating: 0, count: frames)
+            right.update(repeating: 0, count: frames)
+            return true
+        }
+
         var offset = 0
         while offset < frames {
             let n = min(frames - offset, bufferCapacity)
             renderChunk(frames: n, left: left + offset, right: right + offset)
             offset += n
         }
+
+        anyActive = false
+        for i in 0..<SynthEngine.maxVoices where voices[i].active { anyActive = true }
+        if anyActive {
+            idleFrames = 0
+        } else {
+            idleFrames += frames
+            if idleFrames >= tailFrames {
+                // Settle filter state exactly so the next note starts clean.
+                dcXL = 0; dcYL = 0; dcXR = 0; dcYR = 0
+                chorus.reset()
+            }
+        }
+        return false
     }
 
     private func renderChunk(frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>) {

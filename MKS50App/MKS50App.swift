@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 @main
 struct MKS50App: App {
     @StateObject private var host = AudioHost()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -11,6 +12,13 @@ struct MKS50App: App {
                 .preferredColorScheme(.dark)
                 .statusBarHidden()
                 .persistentSystemOverlays(.hidden)
+        }
+        .onChange(of: scenePhase) { phase in
+            switch phase {
+            case .active: host.sceneDidChange(active: true)
+            case .background: host.sceneDidChange(active: false)
+            default: break
+            }
         }
     }
 }

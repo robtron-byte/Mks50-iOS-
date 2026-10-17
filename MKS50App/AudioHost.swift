@@ -100,6 +100,18 @@ final class AudioHost: ObservableObject {
         }
     }
 
+    /// Saves battery: in the background the engine only keeps running when
+    /// a MIDI source is connected (or another app can reach the virtual port
+    /// while we are visible). Coming back to the foreground restarts it.
+    func sceneDidChange(active: Bool) {
+        if active {
+            restart()
+        } else if midi.sources.isEmpty && engine.isRunning {
+            model?.panic()
+            engine.pause()
+        }
+    }
+
     private func restart() {
         try? AVAudioSession.sharedInstance().setActive(true)
         start()

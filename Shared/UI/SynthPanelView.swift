@@ -228,6 +228,8 @@ struct SynthMainView<Toolbar: View>: View {
             .overlay(alignment: .top) { statusBanner }
         }
         .background(Theme.background.ignoresSafeArea())
+        .onAppear { model.setPolling(true) }
+        .onDisappear { model.setPolling(false) }
     }
 
     private var performanceBar: some View {

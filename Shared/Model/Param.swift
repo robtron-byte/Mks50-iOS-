@@ -142,7 +142,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .volume: return 100
         case .keyShift: return 12
         case .pulseDetune: return 64
-        case .voiceDrift: return 24
+        case .voiceDrift: return 8
         case .unisonDetune: return 40
         default: return 0
         }

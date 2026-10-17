@@ -32,30 +32,45 @@ struct ChopShape {
     }
 
     /// Bipolar band-limited output.
+    ///
+    /// Fast path: local phases are computed once and reused both for the
+    /// naive value and for edge detection; no rounding, and the full naive
+    /// evaluation for step heights only runs within one sample of an edge.
     @inline(__always) func render(_ p: Float, _ dt: Float) -> Float {
-        var out = 2 * naive(p) - 1
+        let l0: Float = m0 > 0 ? wrap01(p * m0) : 0
+        let l1: Float = m1 > 0 ? wrap01(p * m1) : 0
+        let l2: Float = m2 > 0 ? wrap01(p * m2) : 0
+        let lr: Float = ramp > 0 ? wrap01(p * ramp) : 0
+
+        let isOpen = (m0 <= 0 || l0 < w0) && (m1 <= 0 || l1 < w1) && (m2 <= 0 || l2 < w2)
+        var out: Float = isOpen ? 2 * (ramp > 0 ? lr : 1) - 1 : -1
+
         var seen = SIMD8<Float>(repeating: 9)
         var seenCount = 0
 
+        // 7 edge families: ramp reset, and rise / fall of each gate.
         for c in 0..<7 {
             let m: Float
+            let local: Float
             let offset: Float
             switch c {
-            case 0: m = ramp; offset = 0
-            case 1: m = m0; offset = 0
-            case 2: m = m0; offset = w0
-            case 3: m = m1; offset = 0
-            case 4: m = m1; offset = w1
-            case 5: m = m2; offset = 0
-            default: m = m2; offset = w2
+            case 0: m = ramp; local = lr; offset = 0
+            case 1: m = m0; local = l0; offset = 0
+            case 2: m = m0; local = l0; offset = w0
+            case 3: m = m1; local = l1; offset = 0
+            case 4: m = m1; local = l1; offset = w1
+            case 5: m = m2; local = l2; offset = 0
+            default: m = m2; local = l2; offset = w2
             }
             if m <= 0 { continue }
 
-            // Nearest edge of the form (k + offset) / m.
-            let edge = ((p * m - offset).rounded() + offset) / m
-            let d = p - edge
-            if abs(d) >= dt { continue }
+            // Signed distance (in units of p) to the nearest edge of this family.
+            var x = local - offset            // -1 < x < 1
+            if x < -0.5 { x += 1 } else if x >= 0.5 { x -= 1 }
+            let d = x / m
+            if d >= dt || d <= -dt { continue }
 
+            let edge = p - d
             var duplicate = false
             for j in 0..<seenCount where abs(seen[j] - edge) < 1e-5 { duplicate = true }
             if duplicate { continue }

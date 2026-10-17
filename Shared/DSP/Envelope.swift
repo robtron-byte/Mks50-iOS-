@@ -18,6 +18,9 @@ struct Envelope {
     private var target: Float = 0
     private var progress: Float = 0
     private var increment: Float = 0
+    /// e^(-4.5 p), advanced recursively (one multiply per sample instead of expf).
+    private var curveState: Float = 1
+    private var curveDecay: Float = 1
     var sampleRate: Float = 44100
 
     var isIdle: Bool { stage == .idle }
@@ -43,12 +46,8 @@ struct Envelope {
         target = level
         progress = 0
         increment = 1 / max(time * sampleRate, 1)
-    }
-
-    /// Exponential-looking segment shape with an exact, finite duration.
-    @inline(__always) private static func curve(_ p: Float) -> Float {
-        // (1 - e^(-4.5 p)) / (1 - e^(-4.5))
-        (1 - expf(-4.5 * p)) * 1.011_235
+        curveState = 1
+        curveDecay = expf(-4.5 * increment)
     }
 
     @inline(__always) mutating func next(_ s: EnvelopeSettings) -> Float {
@@ -66,8 +65,15 @@ struct Envelope {
                 advance(s)
             } else {
                 // Attack is linear (charging towards a high target on analog
-                // gear looks nearly linear), all others exponential.
-                let shape = stage == .segment1 ? progress : Envelope.curve(progress)
+                // gear looks nearly linear), all others exponential:
+                // (1 - e^(-4.5 p)) / (1 - e^(-4.5)), with an exact finite duration.
+                let shape: Float
+                if stage == .segment1 {
+                    shape = progress
+                } else {
+                    curveState *= curveDecay
+                    shape = (1 - curveState) * 1.011_235
+                }
                 value = start + (target - start) * shape
             }
             return value
