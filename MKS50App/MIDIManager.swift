@@ -95,9 +95,13 @@ final class MIDIManager: ObservableObject {
 
     private func receive(_ list: UnsafePointer<MIDIEventList>) {
         for packet in list.unsafeSequence() {
-            let count = Int(packet.pointee.wordCount)
-            withUnsafeBytes(of: packet.pointee.words) { raw in
-                let words = raw.bindMemory(to: UInt32.self)
+            let count = min(Int(packet.pointee.wordCount), 64)
+            // Read only the valid words in place (the last packet of a list is
+            // shorter than the full 64-word tuple).
+            guard let wordsOffset = MemoryLayout<MIDIEventPacket>.offset(of: \.words) else { continue }
+            let base = UnsafeRawPointer(packet).advanced(by: wordsOffset)
+            let words = base.assumingMemoryBound(to: UInt32.self)
+            do {
                 var i = 0
                 while i < count {
                     let word = words[i]

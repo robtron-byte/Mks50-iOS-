@@ -195,7 +195,8 @@ final class SynthEngine {
 
     @inline(__always) func setParameter(_ address: AUParameterAddress, _ value: AUValue) {
         guard address < AUParameterAddress(Param.storageSize) else { return }
-        params[Int(address)] = value
+        let maxValue = Param(rawValue: Int(address))?.maxValue ?? 127
+        params[Int(address)] = min(max(value, 0), AUValue(maxValue))
     }
 
     @inline(__always) func parameter(_ address: AUParameterAddress) -> AUValue {
@@ -610,16 +611,15 @@ final class SynthEngine {
         let unisonSemis = voices[i].unisonSpread * powf(p(.unisonDetune) / 127, 1.5) * 0.5
 
         // DCO pitch
-        let vibratoSemis = powf(p(.dcoLfoDepth) / 127, 2) * 12
-            + modWheel * powf(p(.modSensitivity) / 127, 2) * 3
-            + aftertouch * powf(p(.dcoAfterDepth) / 127, 2) * 3
-        let semis = pitch
-            + Float((pi(.dcoRange) - 1) * 12)
-            + bend * p(.benderRange)
-            + lfo * vibratoSemis
-            + dcoEnv * powf(p(.dcoEnvDepth) / 127, 2) * 24
-            + driftSemis
-            + unisonSemis
+        // (Split into partial sums to keep the type checker fast.)
+        let lfoVibrato: Float = powf(p(.dcoLfoDepth) / 127, 2) * 12
+        let wheelVibrato: Float = modWheel * powf(p(.modSensitivity) / 127, 2) * 3
+        let afterVibrato: Float = aftertouch * powf(p(.dcoAfterDepth) / 127, 2) * 3
+        let vibratoSemis: Float = lfoVibrato + wheelVibrato + afterVibrato
+        let rangeSemis = Float((pi(.dcoRange) - 1) * 12)
+        let envSemis: Float = dcoEnv * powf(p(.dcoEnvDepth) / 127, 2) * 24
+        var semis: Float = pitch + rangeSemis + bend * p(.benderRange)
+        semis += lfo * vibratoSemis + envSemis + driftSemis + unisonSemis
         voices[i].dt = noteToHz(semis) / sr
 
         // Pulse detune / envelope sweep (for hard-sync leads)
@@ -628,12 +628,13 @@ final class SynthEngine {
         let sync = pi(.pulseSync) == 1
 
         // VCF cutoff in octaves above 20 Hz
-        let octaves = cutoffSmoothed / 127 * 10
-            + p(.vcfKeyFollow) / 127 * 1.1 * (pitch - 60) / 12
-            + vcfEnv * p(.vcfEnvDepth) / 127 * 9
-            + lfo * powf(p(.vcfLfoDepth) / 127, 2) * 4
-            + aftertouch * p(.vcfAfterDepth) / 127 * 4
-            + drift * voices[i].driftCutoff * 0.15
+        let baseOct: Float = cutoffSmoothed / 127 * 10
+        let keyOct: Float = p(.vcfKeyFollow) / 127 * 1.1 * (pitch - 60) / 12
+        let envOct: Float = vcfEnv * p(.vcfEnvDepth) / 127 * 9
+        let lfoOct: Float = lfo * powf(p(.vcfLfoDepth) / 127, 2) * 4
+        let afterOct: Float = aftertouch * p(.vcfAfterDepth) / 127 * 4
+        let driftOct: Float = drift * voices[i].driftCutoff * 0.15
+        let octaves: Float = baseOct + keyOct + envOct + lfoOct + afterOct + driftOct
         let cutoff = 20 * exp2f(clampf(octaves, -2, 11))
         voices[i].filter.setCoefficients(cutoff: cutoff, resonance: p(.vcfResonance) / 127, sampleRate: sr)
 

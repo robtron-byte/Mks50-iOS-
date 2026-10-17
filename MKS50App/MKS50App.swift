@@ -113,6 +113,18 @@ struct AppMainView: View {
 
             Spacer()
 
+            trailingButtons
+        }
+        .font(.system(size: 16, weight: .semibold))
+        .foregroundColor(Theme.label)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(Theme.panel)
+    }
+
+    /// Separate builder: a single ViewBuilder block may hold at most 10 views on iOS 16.
+    private var trailingButtons: some View {
+        HStack(spacing: 12) {
             Button {
                 saveName = model.toneName.capitalized
                 showSave = true
@@ -140,11 +152,6 @@ struct AppMainView: View {
             Button { showSettings = true } label: { Image(systemName: "gearshape") }
                 .accessibilityLabel("Settings")
         }
-        .font(.system(size: 16, weight: .semibold))
-        .foregroundColor(Theme.label)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-        .background(Theme.panel)
     }
 
     private var presetMenu: some View {
