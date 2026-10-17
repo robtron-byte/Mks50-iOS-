@@ -214,3 +214,15 @@ struct StepButton: View {
         .accessibilityLabel(label)
     }
 }
+
+extension View {
+    /// `onChange` without deprecation warnings on iOS 17+ that still runs on iOS 16.
+    @ViewBuilder
+    func onChangeCompat<V: Equatable>(of value: V, perform action: @escaping (V) -> Void) -> some View {
+        if #available(iOS 17.0, *) {
+            onChange(of: value) { _, newValue in action(newValue) }
+        } else {
+            onChange(of: value, perform: action)
+        }
+    }
+}

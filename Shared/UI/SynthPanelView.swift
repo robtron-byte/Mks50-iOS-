@@ -330,7 +330,7 @@ struct PlayBar: View {
             DragGesture(minimumDistance: 0)
                 .updating($pressing) { _, state, _ in state = true }
         )
-        .onChange(of: pressing) { isDown in
+        .onChangeCompat(of: pressing) { isDown in
             if isDown { model.padTouchDown() } else { model.padTouchUp() }
         }
         .onDisappear { model.padTouchUp() }

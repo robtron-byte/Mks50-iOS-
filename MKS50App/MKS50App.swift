@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 @main
 struct MKS50App: App {
     @StateObject private var host = AudioHost()
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -13,20 +12,25 @@ struct MKS50App: App {
                 .statusBarHidden()
                 .persistentSystemOverlays(.hidden)
         }
-        .onChange(of: scenePhase) { phase in
-            switch phase {
-            case .active: host.sceneDidChange(active: true)
-            case .background: host.sceneDidChange(active: false)
-            default: break
-            }
-        }
     }
 }
 
 struct RootView: View {
     @ObservedObject var host: AudioHost
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
+        content
+            .onChangeCompat(of: scenePhase) { phase in
+                switch phase {
+                case .active: host.sceneDidChange(active: true)
+                case .background: host.sceneDidChange(active: false)
+                default: break
+                }
+            }
+    }
+
+    @ViewBuilder private var content: some View {
         if let model = host.model {
             AppMainView(model: model, midi: host.midi)
         } else {
@@ -207,7 +211,7 @@ struct MIDIActivityLED: View {
             .fill(lit ? Theme.led : Theme.knobBody)
             .frame(width: 8, height: 8)
             .overlay(Circle().stroke(Theme.panelEdge, lineWidth: 1))
-            .onChange(of: lastActivity) { _ in
+            .onChangeCompat(of: lastActivity) { _ in
                 lit = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { lit = false }
             }
