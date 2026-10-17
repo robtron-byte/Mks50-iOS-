@@ -294,6 +294,7 @@ final class MKS50AudioUnit: AUAudioUnit {
         ("chorus", "Chorus", [.chorus, .chorusRate]),
         ("control", "Control", [.benderRange, .keyMode, .chordIndex, .portaSwitch, .portaTime,
                                 .modSensitivity, .volume, .keyShift, .midiChannel]),
+        ("extra", "Extra", [.pulseDetune, .pulseSync, .pulseEnvMod, .voiceDrift, .unisonDetune]),
     ]
 
     static func makeParameterTree() -> AUParameterTree {

@@ -48,8 +48,11 @@ final class Chorus {
     /// - Parameters:
     ///   - enabled: chorus switch
     ///   - rate: LFO rate in Hz
-    func process(input: UnsafePointer<Float>, left: UnsafeMutablePointer<Float>,
-                 right: UnsafeMutablePointer<Float>, frames: Int, enabled: Bool, rate: Float) {
+    /// The BBD is fed with the mono sum (like the hardware); the dry signal
+    /// keeps its stereo image (unison panning).
+    func process(inputLeft: UnsafePointer<Float>, inputRight: UnsafePointer<Float>,
+                 left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>,
+                 frames: Int, enabled: Bool, rate: Float) {
         let target: Float = enabled ? 1 : 0
         let inc = rate / sampleRate
         let center = 0.0035 * sampleRate
@@ -57,12 +60,13 @@ final class Chorus {
         let depth = (0.0019 - min(rate, 8) * 0.0001) * sampleRate
 
         for n in 0..<frames {
-            let x = input[n]
-            buffer[writeIndex & mask] = x
+            let xl = inputLeft[n]
+            let xr = inputRight[n]
+            buffer[writeIndex & mask] = 0.5 * (xl + xr)
 
             mix += (target - mix) * 0.001
-            var outL = x
-            var outR = x
+            var outL = xl
+            var outR = xr
             if mix > 0.0001 {
                 lfoPhase += inc
                 if lfoPhase >= 1 { lfoPhase -= 1 }
@@ -73,8 +77,8 @@ final class Chorus {
                 wetLowpassR += (wetR - wetLowpassR) * lowpassCoef
                 // Dry level drops a little when chorus is on, like the original.
                 let dry = 1 - 0.3 * mix
-                outL = x * dry + wetLowpassL * 0.75 * mix
-                outR = x * dry + wetLowpassR * 0.75 * mix
+                outL = xl * dry + wetLowpassL * 0.75 * mix
+                outR = xr * dry + wetLowpassR * 0.75 * mix
             }
             left[n] = outL
             right[n] = outR

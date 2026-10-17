@@ -8,7 +8,7 @@ Ein nativer iOS-Software-Synthesizer, der die Architektur des **Roland MKS-50** 
 
 | Bereich | Umsetzung |
 |---|---|
-| **DCO** | 4 Pulse-, 6 Sägezahn- und 6 Sub-Wellenformen (Alpha-Juno-Varianten wie gated/chopped Saw, PWM-Saw), Range 16'/8'/4'/2', Sub-Level, Noise. Alle Wellen phasenstarr über einen Teiler (wie die Hardware) und mit PolyBLEP bandbegrenzt |
+| **DCO** | 4 Pulse-, 6 Sägezahn- und 6 Sub-Wellenformen, nachgebaut wie im Alpha-Juno-DCO: Rampe bzw. Rechteck, „zerhackt“ (AND) durch Rechtecke +1 und +3 Oktaven höher bzw. auf Sub-Oktaven. Range 16'/8'/4'/2', Sub-Level, Noise. Alle Wellen phasenstarr über einen Teiler (wie die Hardware) und an jeder Kante mit PolyBLEP bandbegrenzt |
 | **PWM** | PW/PWM-Tiefe und eigene PWM-Rate (Rate 0 = manuelle Pulsbreite) |
 | **HPF** | 4 Stufen: Bass-Boost, flach, 240 Hz, 720 Hz |
 | **VCF** | Resonanter 24-dB-Tiefpass (IR3109-Stil, Zero-Delay-Feedback), selbstoszillierend, Env/LFO/Key-Follow/Aftertouch-Modulation |
@@ -18,6 +18,7 @@ Ein nativer iOS-Software-Synthesizer, der die Architektur des **Roland MKS-50** 
 | **Chorus** | Juno-artiger Stereo-BBD-Chorus mit Rate-Regler |
 | **Patch** | Key-Modi **Poly / Chord / Mono**, 16 Chord-Memory-Speicher (per „LEARN“ von gehaltenen Tasten), Portamento, Bender-Range, Mod-Sensitivity, Key Shift, Volume |
 | **Stimmen** | 6 Stimmen (wie das Original), Voice Stealing, Sustain-Pedal |
+| **TAL-Pha-Extras** | Pulse-Detune (±12 HT), Pulse-Hard-Sync und Env→Pulse-Pitch (Sync-Sweeps), **Voice Drift** („Voice Calibration“: feste Toleranzen pro Stimme bei Tonhöhe, Cutoff und Hüllkurvenzeiten plus langsames Wandern), **Stereo-Unison** mit allen 6 Stimmen, Detune-Spread und Panorama |
 | **MIDI** | CoreMIDI (USB, Netzwerk, **Bluetooth LE MIDI**), virtueller Port „MKS50 Synth“ für andere Apps, Empfangskanal Omni/1–16, Pitch Bend, Mod Wheel (CC1), Aftertouch, Sustain (CC64), Portamento (CC5/CC65), Program Change |
 | **SysEx** | Empfang von MKS-50/Alpha-Juno-**Tone-Dumps (APR)** und **Einzelparameter (IPR)**, z. B. vom PG-300 oder einem Editor; Import/Export von `.syx`-Dateien; Senden des aktuellen Sounds an ein echtes MKS-50 |
 | **Presets** | 16 eigene Factory-Sounds (u. a. Hoover, Juno Brass, Strings, House Stab), User-Presets (AUv3-Preset-System, funktioniert auch im Host) |
@@ -26,6 +27,9 @@ Ein nativer iOS-Software-Synthesizer, der die Architektur des **Roland MKS-50** 
 Die Parameteradressen 0–35 entsprechen exakt den Tone-Parameternummern des MKS-50. Damit sind die SysEx-Nachrichten direkt kompatibel, und Host-Automation verwendet dieselben Wertebereiche wie die Hardware (0–127 bzw. diskrete Schalter).
 
 ## Vorbilder aus der Plugin-Welt – und wie sie für iOS angepasst wurden
+
+- **TAL-Pha (TAL Software)** ist die Hauptvorlage für den Klang: eine Alpha-Juno-2-Emulation, für die das MKS-50 als Referenz diente. Übernommen wurden die Architektur (ein PWM-fähiger DCO mit Sub → HPF → 24-dB-Tiefpass mit verstärkter Resonanz für Selbstoszillation), die Erweiterungen des Pulse-Teils (Detune, Modulation, Sync), die Voice-Calibration-Idee (leichte Abweichungen pro Stimme, damit es nach Analog-Hardware klingt) und der Stereo-Unison. TAL-Pha ist Closed Source. Hier wurde **kein Code übernommen**, nur das öffentlich beschriebene Konzept, umgesetzt mit eigener DSP. Arpeggiator, MPE, Mikrotuning und die FX-Sektion (Delay/Reverb/EQ) von TAL-Pha sind noch nicht enthalten.
+- **Wellenformen**: Die Saw-/Sub-Varianten folgen dem Reverse-Engineering der Alpha-Juno-Community (KVR-Thread „Alpha Juno-2 pwm sawtooth“): Saw 2 = gehackt durch Rechteck +1 Okt., Saw 3 = wie 2, aber mit PWM, Saw 4 = +3 Okt., Saw 5 = beides. Sub 0–3 liegen eine Oktave tiefer, Sub 4–5 zwei Oktaven tiefer. Wie bei der Hardware schaltet *Sub Level 0* den Sub aus (nicht die Wellenform).
 
 - **Apple-AUv3-Instrument-Vorlage**: Eine Audio-Unit-Klasse (`MKS50AudioUnit`) wird sowohl in der App (in-process über `AUAudioUnit.registerSubclass`) als auch in der Extension genutzt. Die App ist damit nur ein „Host“ ihres eigenen Plugins – genau wie Desktop-Plugins Standalone und VST/AU aus einem Kern bauen.
 - **Juno-/Alpha-Juno-Emulationen (z. B. TAL-U-NO-LX, Dexed-artige Editoren mit SysEx-Unterstützung)**: Parameter in Hardware-Einheiten, SysEx-kompatible Tone-Daten, Preset-Import per `.syx`.
@@ -68,7 +72,7 @@ Hinweis: Auch der Debug-Build ist mit `-O` optimiert, weil Swift-DSP ohne Optimi
 
 ## Grenzen / Ideen für später
 
-- Die Wellenformvarianten (Saw 2–5, Pulse 3, Sub 2–5) sind klanglich angenähert, nicht sample-genau.
+- Saw 2–5 und Sub 0–5 folgen der dokumentierten Chop-Logik. Pulse 3 und die genaue Zuordnung von Sub 1–3 sind in den Quellen widersprüchlich und deshalb angenähert. Zum Feinabgleich: `DCOSettings.configure` in `Shared/DSP/DCO.swift`.
 - Bulk-Dumps (BLD, 64 Töne gepackt) werden noch nicht gelesen, nur APR-Einzel-Tones (auch mehrere in einer Datei).
 - In der AUv3-Extension wird SysEx vom Host nicht ausgewertet (Parameter-Automation funktioniert vollständig).
 - Mögliche Erweiterungen: MPE, Unison, Oversampling des Filters, Patch-Ebene (Patch-APR), Ableton-Link-gesynchter LFO.

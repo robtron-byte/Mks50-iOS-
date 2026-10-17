@@ -15,6 +15,7 @@ struct SynthPanelView: View {
                 lfoSection
                 hpfChorusSection
                 controlSection
+                extraSection
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -24,7 +25,7 @@ struct SynthPanelView: View {
     // MARK: Helpers
 
     private func knob(_ p: Param, _ label: String? = nil, size: CGFloat = 40) -> some View {
-        let display: ((Float) -> String)? = p.isDiscrete ? { value in p.string(for: value) } : nil
+        let display: ((Float) -> String)? = (p.isDiscrete || p == .pulseDetune) ? { value in p.string(for: value) } : nil
         return Knob(label: label ?? p.shortName,
                     value: model.binding(p),
                     maxValue: Float(p.maxValue),
@@ -150,7 +151,7 @@ struct SynthPanelView: View {
         PanelSection(title: "PATCH") {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 6) {
-                    selector(.keyMode, width: 36)
+                    selector(.keyMode, width: 34)
                     HStack(alignment: .bottom, spacing: 6) {
                         knob(.chordIndex, "CHORD", size: 34)
                         VStack(alignment: .leading, spacing: 4) {
@@ -182,6 +183,28 @@ struct SynthPanelView: View {
                     }
                     knob(.volume, size: 34)
                 }
+            }
+        }
+    }
+}
+
+extension SynthPanelView {
+    /// Additions in the style of TAL-Pha that the hardware does not have.
+    fileprivate var extraSection: some View {
+        PanelSection(title: "EXTRA") {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    knob(.pulseDetune, size: 34)
+                    knob(.pulseEnvMod, size: 34)
+                    selector(.pulseSync, "PLS SYNC", width: 28)
+                }
+                HStack(spacing: 6) {
+                    knob(.voiceDrift, size: 34)
+                    knob(.unisonDetune, size: 34)
+                }
+                Text("UNISON: KEY MODE → UNISON")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundColor(Theme.dimLabel)
             }
         }
     }

@@ -55,6 +55,13 @@ enum Param: Int, CaseIterable, Identifiable {
     case midiChannel
     case keyShift
 
+    // MARK: Extensions in the style of TAL-Pha (not on the hardware)
+    case pulseDetune
+    case pulseSync
+    case pulseEnvMod
+    case voiceDrift
+    case unisonDetune
+
     static let toneParameterCount = 36
     static let storageSize = 128
 
@@ -72,12 +79,12 @@ enum Param: Int, CaseIterable, Identifiable {
             return 3
         case .dcoSaw, .dcoSub:
             return 5
-        case .chorus, .portaSwitch:
+        case .chorus, .portaSwitch, .pulseSync:
             return 1
         case .benderRange:
             return 12
         case .keyMode:
-            return 2
+            return 3
         case .chordIndex:
             return 15
         case .midiChannel:
@@ -103,10 +110,10 @@ enum Param: Int, CaseIterable, Identifiable {
             return ["0", "1", "2", "3"]
         case .dcoSaw, .dcoSub:
             return ["0", "1", "2", "3", "4", "5"]
-        case .chorus, .portaSwitch:
+        case .chorus, .portaSwitch, .pulseSync:
             return ["OFF", "ON"]
         case .keyMode:
-            return ["POLY", "CHORD", "MONO"]
+            return ["POLY", "CHORD", "MONO", "UNISON"]
         case .chordIndex:
             return ChordMemory.defaultNames
         case .midiChannel:
@@ -134,6 +141,9 @@ enum Param: Int, CaseIterable, Identifiable {
         case .modSensitivity: return 64
         case .volume: return 100
         case .keyShift: return 12
+        case .pulseDetune: return 64
+        case .voiceDrift: return 24
+        case .unisonDetune: return 40
         default: return 0
         }
     }
@@ -187,6 +197,11 @@ enum Param: Int, CaseIterable, Identifiable {
         case .chordIndex: return "Chord Memory"
         case .midiChannel: return "MIDI Channel"
         case .keyShift: return "Key Shift"
+        case .pulseDetune: return "Pulse Detune"
+        case .pulseSync: return "Pulse Sync"
+        case .pulseEnvMod: return "Pulse Env Mod"
+        case .voiceDrift: return "Voice Drift"
+        case .unisonDetune: return "Unison Detune"
         }
     }
 
@@ -230,10 +245,19 @@ enum Param: Int, CaseIterable, Identifiable {
         case .chordIndex: return "CHORD"
         case .midiChannel: return "MIDI CH"
         case .keyShift: return "KEY SHIFT"
+        case .pulseDetune: return "PLS TUNE"
+        case .pulseSync: return "SYNC"
+        case .pulseEnvMod: return "PLS ENV"
+        case .voiceDrift: return "DRIFT"
+        case .unisonDetune: return "UNI DETUNE"
         }
     }
 
     func string(for value: Float) -> String {
+        if self == .pulseDetune {
+            let semis = (value - 64) / 64 * 12
+            return abs(semis) < 0.05 ? "0" : String(format: "%+.1f", semis)
+        }
         let i = Int(value.rounded())
         if let strings = valueStrings, strings.indices.contains(i) { return strings[i] }
         return "\(i)"

@@ -90,6 +90,20 @@ enum FactoryPresets {
               0, 127, 0, 127, 0, 127, 20, 0,  60, 2],
              keyMode: 2),
 
+        make("SYNC SWEEP",
+             [0, 0, 0,  1, 0, 0,  1, 0, 0,  1, 1,
+              20, 0, 20, 0, 0,  100, 20, 0, 20, 40, 0,  112, 0,  76, 70,
+              0, 127, 70, 60, 70, 40, 30, 0,  66, 2],
+             keyMode: 2, porta: 1, portaTime: 26,
+             extra: [.pulseSync: 1, .pulseDetune: 76, .pulseEnvMod: 70]),
+
+        make("UNISON SAW",
+             [0, 0, 0,  0, 3, 0,  1, 1, 0,  2, 1,
+              0, 0, 0, 40, 60,  80, 16, 0, 30, 50, 0,  118, 0,  64, 0,
+              10, 127, 60, 100, 60, 100, 40, 0,  48, 2],
+             keyMode: 3, porta: 1, portaTime: 20,
+             extra: [.unisonDetune: 70, .voiceDrift: 40]),
+
         make("DARK DRONE",
              [0, 1, 0,  2, 5, 5,  0, 2, 1,  0, 1,
               4, 0, 0, 100, 18,  36, 62, 12, 24, 20, 0,  110, 0,  18, 90,
@@ -98,13 +112,15 @@ enum FactoryPresets {
 
     private static func make(_ name: String, _ tone: [Int],
                              keyMode: Int = 0, porta: Int = 0, portaTime: Int = 30,
-                             chord: Int = 0, volume: Int = 100) -> ToneData {
+                             chord: Int = 0, volume: Int = 100,
+                             extra: [Param: Int] = [:]) -> ToneData {
         var patch = Dictionary(uniqueKeysWithValues: Param.patchParams.map { ($0.rawValue, $0.defaultValue) })
         patch[Param.keyMode.rawValue] = keyMode
         patch[Param.portaSwitch.rawValue] = porta
         patch[Param.portaTime.rawValue] = portaTime
         patch[Param.chordIndex.rawValue] = chord
         patch[Param.volume.rawValue] = volume
+        for (p, v) in extra { patch[p.rawValue] = v }
         // MIDI channel is a device setting, not part of a sound.
         patch.removeValue(forKey: Param.midiChannel.rawValue)
         return ToneData(name: name, tone: tone, patch: patch)
