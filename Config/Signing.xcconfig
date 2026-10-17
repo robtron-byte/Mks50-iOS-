@@ -1,0 +1,13 @@
+// Signing settings for both targets (app + AUv3 extension).
+//
+// Don't edit this file for your own machine: run ./setup.sh, which writes
+// your values to Signing.local.xcconfig (ignored by git) and overrides these.
+
+// Your Apple developer team ID (10 characters). Empty = choose in Xcode.
+DEVELOPMENT_TEAM =
+
+// Bundle ID prefix. Must be unique for your Apple ID (free accounts too).
+// The app becomes <prefix>.mks50, the plug-in <prefix>.mks50.AUv3.
+BUNDLE_ID_PREFIX = de.robtron
+
+#include? "Signing.local.xcconfig"

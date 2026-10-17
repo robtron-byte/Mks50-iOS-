@@ -12,3 +12,5 @@ xcuserdata/
 .swiftpm/
 # macOS
 .DS_Store
+Config/Signing.local.xcconfig
+build.log

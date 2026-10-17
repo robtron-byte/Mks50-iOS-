@@ -75,12 +75,24 @@ Signalfluss pro Stimme: `DCO → HPF → VCF (24 dB) → VCA`, danach Summe → 
 
 ## Bauen & Installieren
 
-Voraussetzungen: macOS mit **Xcode 16** oder neuer, iOS/iPadOS 16+.
+Voraussetzungen: macOS mit **Xcode 16** oder neuer, iPhone/iPad mit iOS 16+, eine (kostenlose) Apple-ID.
 
-1. `MKS50.xcodeproj` öffnen.
-2. Für beide Targets (**MKS50** und **MKS50AU**) unter *Signing & Capabilities* das eigene Team auswählen. Falls nötig die Bundle-IDs `de.robtron.mks50` / `de.robtron.mks50.AUv3` anpassen. Die ID der Extension muss mit der ID der App beginnen.
-3. Schema **MKS50** wählen, auf einem Gerät oder im Simulator starten.
-4. Die AUv3-Version erscheint nach der ersten Installation automatisch in Hosts unter *Robtron → MKS50 Synth*.
+```bash
+git clone https://github.com/robtron-byte/Mks50-iOS-.git
+cd Mks50-iOS-
+./setup.sh
+```
+
+`setup.sh` erledigt Folgendes:
+1. Prüft Xcode und schließt bei Bedarf die Erstinstallation ab.
+2. Erkennt deine Team-ID am Entwickler-Zertifikat im Schlüsselbund oder fragt danach.
+3. Legt ein eigenes Bundle-ID-Präfix fest und speichert beides in `Config/Signing.local.xcconfig` (nicht im Git).
+4. Macht einen Testbuild ohne Signing. Bei Fehlern zeigt es die Meldungen an, das komplette Log steht in `build.log`.
+5. Öffnet das Projekt in Xcode und zeigt die letzten Schritte an: iPhone wählen, **Cmd+R**.
+
+Auf dem iPhone beim ersten Start den Entwicklermodus einschalten (*Einstellungen → Datenschutz & Sicherheit*) und dem Entwickler vertrauen (*Allgemein → VPN & Geräteverwaltung*). Mit kostenloser Apple-ID läuft die App 7 Tage und lässt sich dann per Cmd+R neu installieren.
+
+Die AUv3-Version erscheint nach der Installation in Hosts unter *Robtron → MKS50 Synth*.
 
 Hinweis: Auch der Debug-Build ist mit `-O` optimiert, weil Swift-DSP ohne Optimierung auf dem Gerät Aussetzer verursachen kann.
 
