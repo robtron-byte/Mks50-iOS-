@@ -1,0 +1,216 @@
+import CoreMIDI
+import Foundation
+
+/// CoreMIDI input/output for the standalone app.
+///
+/// - Connects to every MIDI source (USB, network, Bluetooth LE once paired)
+/// - Publishes a virtual destination so other apps can play the synth
+/// - Reassembles SysEx (UMP SysEx7) for MKS-50 tone dumps / parameter changes
+/// - Sends tone dumps to a real MKS-50 via all MIDI destinations
+final class MIDIManager: ObservableObject {
+    struct Endpoint: Identifiable, Hashable {
+        let id: MIDIUniqueID
+        let name: String
+    }
+
+    @Published private(set) var sources: [Endpoint] = []
+    @Published private(set) var destinations: [Endpoint] = []
+    @Published private(set) var lastActivity = Date.distantPast
+
+    /// Called on the CoreMIDI thread for channel voice messages.
+    var onChannelMessage: ((UInt8, UInt8, UInt8) -> Void)?
+    /// Called on the main thread with complete F0...F7 messages.
+    var onSysEx: (([UInt8]) -> Void)?
+
+    private var client = MIDIClientRef()
+    private var inputPort = MIDIPortRef()
+    private var outputPort = MIDIPortRef()
+    private var virtualDestination = MIDIEndpointRef()
+    private var connected: [MIDIEndpointRef] = []
+    private var sysexBuffer: [UInt8] = []
+    private let sysexLimit = 65536
+    private var activityPending = false
+
+    init() {
+        let status = MIDIClientCreateWithBlock("MKS50 Synth" as CFString, &client) { [weak self] notification in
+            guard notification.pointee.messageID == .msgSetupChanged else { return }
+            DispatchQueue.main.async { self?.refreshConnections() }
+        }
+        guard status == noErr else { return }
+
+        MIDIInputPortCreateWithProtocol(client, "Input" as CFString, ._1_0, &inputPort) { [weak self] list, _ in
+            self?.receive(list)
+        }
+        MIDIOutputPortCreate(client, "Output" as CFString, &outputPort)
+        MIDIDestinationCreateWithProtocol(client, "MKS50 Synth" as CFString, ._1_0, &virtualDestination) { [weak self] list, _ in
+            self?.receive(list)
+        }
+        refreshConnections()
+    }
+
+    deinit {
+        MIDIClientDispose(client)
+    }
+
+    // MARK: Connections
+
+    func refreshConnections() {
+        for source in connected { MIDIPortDisconnectSource(inputPort, source) }
+        connected.removeAll()
+
+        var foundSources: [Endpoint] = []
+        for i in 0..<MIDIGetNumberOfSources() {
+            let source = MIDIGetSource(i)
+            guard source != 0 else { continue }
+            if MIDIPortConnectSource(inputPort, source, nil) == noErr {
+                connected.append(source)
+                foundSources.append(Endpoint(id: uniqueID(source), name: displayName(source)))
+            }
+        }
+        var foundDestinations: [Endpoint] = []
+        for i in 0..<MIDIGetNumberOfDestinations() {
+            let dest = MIDIGetDestination(i)
+            guard dest != 0, dest != virtualDestination else { continue }
+            foundDestinations.append(Endpoint(id: uniqueID(dest), name: displayName(dest)))
+        }
+        sources = foundSources
+        destinations = foundDestinations
+    }
+
+    private func displayName(_ endpoint: MIDIEndpointRef) -> String {
+        var name: Unmanaged<CFString>?
+        if MIDIObjectGetStringProperty(endpoint, kMIDIPropertyDisplayName, &name) == noErr, let name {
+            return name.takeRetainedValue() as String
+        }
+        return "MIDI Device"
+    }
+
+    private func uniqueID(_ endpoint: MIDIEndpointRef) -> MIDIUniqueID {
+        var id: MIDIUniqueID = 0
+        MIDIObjectGetIntegerProperty(endpoint, kMIDIPropertyUniqueID, &id)
+        return id
+    }
+
+    // MARK: Input (CoreMIDI thread)
+
+    private func receive(_ list: UnsafePointer<MIDIEventList>) {
+        for packet in list.unsafeSequence() {
+            let count = Int(packet.pointee.wordCount)
+            withUnsafeBytes(of: packet.pointee.words) { raw in
+                let words = raw.bindMemory(to: UInt32.self)
+                var i = 0
+                while i < count {
+                    let word = words[i]
+                    let type = word >> 28
+                    switch type {
+                    case 0x2:
+                        // MIDI 1.0 channel voice message
+                        let status = UInt8((word >> 16) & 0xFF)
+                        onChannelMessage?(status, UInt8((word >> 8) & 0x7F), UInt8(word & 0x7F))
+                        noteActivity()
+                    case 0x3 where i + 1 < count:
+                        handleSysEx7(word, words[i + 1])
+                    default:
+                        break
+                    }
+                    i += MIDIManager.wordCount(forMessageType: type)
+                }
+            }
+        }
+    }
+
+    private static func wordCount(forMessageType type: UInt32) -> Int {
+        switch type {
+        case 0x0, 0x1, 0x2, 0x6, 0x7: return 1
+        case 0x3, 0x4, 0x8, 0x9, 0xA: return 2
+        case 0xB, 0xC: return 3
+        default: return 4
+        }
+    }
+
+    private func handleSysEx7(_ w0: UInt32, _ w1: UInt32) {
+        let status = (w0 >> 20) & 0xF
+        let length = Int((w0 >> 16) & 0xF)
+        let all: [UInt8] = [UInt8((w0 >> 8) & 0xFF), UInt8(w0 & 0xFF),
+                            UInt8((w1 >> 24) & 0xFF), UInt8((w1 >> 16) & 0xFF),
+                            UInt8((w1 >> 8) & 0xFF), UInt8(w1 & 0xFF)]
+        let bytes = all.prefix(min(length, 6))
+
+        switch status {
+        case 0x0: // complete in one packet
+            var message: [UInt8] = [0xF0]
+            message.append(contentsOf: bytes)
+            message.append(0xF7)
+            emitSysEx(message)
+        case 0x1: // start
+            sysexBuffer = [0xF0]
+            sysexBuffer.append(contentsOf: bytes)
+        case 0x2: // continue
+            if !sysexBuffer.isEmpty, sysexBuffer.count < sysexLimit { sysexBuffer.append(contentsOf: bytes) }
+        case 0x3: // end
+            if !sysexBuffer.isEmpty {
+                sysexBuffer.append(contentsOf: bytes)
+                sysexBuffer.append(0xF7)
+                emitSysEx(sysexBuffer)
+            }
+            sysexBuffer.removeAll(keepingCapacity: true)
+        default:
+            break
+        }
+    }
+
+    private func emitSysEx(_ message: [UInt8]) {
+        DispatchQueue.main.async { [weak self] in self?.onSysEx?(message) }
+        noteActivity()
+    }
+
+    private func noteActivity() {
+        guard !activityPending else { return }
+        activityPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.activityPending = false
+            self?.lastActivity = Date()
+        }
+    }
+
+    // MARK: Output
+
+    /// Sends a complete F0 ... F7 message to all destinations.
+    func sendSysEx(_ message: [UInt8]) {
+        guard message.count >= 2, message.first == 0xF0, message.last == 0xF7 else { return }
+        let payload = Array(message.dropFirst().dropLast())
+
+        var words: [UInt32] = []
+        var offset = 0
+        repeat {
+            let chunk = Array(payload[offset..<min(offset + 6, payload.count)])
+            let isFirst = offset == 0
+            let isLast = offset + 6 >= payload.count
+            let status: UInt32 = isFirst && isLast ? 0x0 : isFirst ? 0x1 : isLast ? 0x3 : 0x2
+            var b = chunk.map { UInt32($0) }
+            while b.count < 6 { b.append(0) }
+            words.append(0x3000_0000 | status << 20 | UInt32(chunk.count) << 16 | b[0] << 8 | b[1])
+            words.append(b[2] << 24 | b[3] << 16 | b[4] << 8 | b[5])
+            offset += 6
+        } while offset < payload.count
+
+        let byteCount = MemoryLayout<MIDIEventList>.size + words.count * 4 + 256
+        let raw = UnsafeMutableRawPointer.allocate(byteCount: byteCount, alignment: 8)
+        defer { raw.deallocate() }
+        let list = raw.bindMemory(to: MIDIEventList.self, capacity: 1)
+        var packet: UnsafeMutablePointer<MIDIEventPacket>? = MIDIEventListInit(list, ._1_0)
+        for i in stride(from: 0, to: words.count, by: 2) {
+            guard let current = packet else { return }
+            let pair = [words[i], words[i + 1]]
+            packet = pair.withUnsafeBufferPointer {
+                MIDIEventListAdd(list, byteCount, current, 0, 2, $0.baseAddress!)
+            }
+        }
+
+        for i in 0..<MIDIGetNumberOfDestinations() {
+            let dest = MIDIGetDestination(i)
+            guard dest != 0, dest != virtualDestination else { continue }
+            MIDISendEventList(outputPort, dest, list)
+        }
+    }
+}

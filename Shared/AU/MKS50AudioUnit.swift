@@ -1,0 +1,320 @@
+import AudioToolbox
+import AVFoundation
+import Foundation
+
+extension FourCharCode {
+    init(fourCC string: String) {
+        var result: FourCharCode = 0
+        for scalar in string.unicodeScalars.prefix(4) {
+            result = (result << 8) | FourCharCode(scalar.value & 0xFF)
+        }
+        self = result
+    }
+}
+
+/// Output buffers used when the host passes `nil` buffer pointers.
+private final class RenderBuffers {
+    private(set) var left: UnsafeMutablePointer<Float>
+    private(set) var right: UnsafeMutablePointer<Float>
+    private(set) var capacity: Int
+
+    init(capacity: Int) {
+        self.capacity = capacity
+        left = .allocate(capacity: capacity)
+        right = .allocate(capacity: capacity)
+        left.initialize(repeating: 0, count: capacity)
+        right.initialize(repeating: 0, count: capacity)
+    }
+
+    /// Not real-time safe; only call while render resources are deallocated.
+    func ensure(capacity newCapacity: Int) {
+        guard newCapacity > capacity else { return }
+        left.deallocate()
+        right.deallocate()
+        capacity = newCapacity
+        left = .allocate(capacity: capacity)
+        right = .allocate(capacity: capacity)
+        left.initialize(repeating: 0, count: capacity)
+        right.initialize(repeating: 0, count: capacity)
+    }
+
+    deinit {
+        left.deallocate()
+        right.deallocate()
+    }
+}
+
+/// The MKS-50 synthesizer as an Audio Unit v3 instrument.
+///
+/// Used both in-process by the standalone app and out-of-process by the
+/// AUv3 extension (GarageBand, AUM, Cubasis, Logic for iPad, ...).
+final class MKS50AudioUnit: AUAudioUnit {
+    static let componentDescription = AudioComponentDescription(
+        componentType: kAudioUnitType_MusicDevice,
+        componentSubType: FourCharCode(fourCC: "mk50"),
+        componentManufacturer: FourCharCode(fourCC: "Rbtn"),
+        componentFlags: 0,
+        componentFlagsMask: 0)
+
+    static let componentName = "Robtron: MKS50 Synth"
+    private static let stateKey = "mks50Tone"
+
+    let engine = SynthEngine()
+    private let renderBuffers = RenderBuffers(capacity: 4096)
+    private var outputBus: AUAudioUnitBus!
+    private var outputBusArray: AUAudioUnitBusArray!
+    private var tree: AUParameterTree!
+    private var presetStorage: AUAudioUnitPreset?
+    private var programChangeTimer: DispatchSourceTimer?
+
+    /// Name of the current tone (MKS-50 tone names are 10 characters).
+    @objc dynamic var toneName: String = "INIT TONE"
+
+    private lazy var factoryPresetList: [AUAudioUnitPreset] = FactoryPresets.all.enumerated().map { index, tone in
+        let preset = AUAudioUnitPreset()
+        preset.number = index
+        preset.name = tone.name
+        return preset
+    }
+
+    override init(componentDescription: AudioComponentDescription,
+                  options: AudioComponentInstantiationOptions = []) throws {
+        try super.init(componentDescription: componentDescription, options: options)
+
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2) else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(kAudioUnitErr_FormatNotSupported))
+        }
+        outputBus = try AUAudioUnitBus(format: format)
+        outputBus.maximumChannelCount = 2
+        outputBusArray = AUAudioUnitBusArray(audioUnit: self, busType: .output, busses: [outputBus])
+
+        tree = MKS50AudioUnit.makeParameterTree()
+        let engine = self.engine
+        tree.implementorValueObserver = { param, value in
+            engine.setParameter(param.address, value)
+        }
+        tree.implementorValueProvider = { param in
+            engine.parameter(param.address)
+        }
+        tree.implementorStringFromValueCallback = { param, valuePointer in
+            let value = valuePointer?.pointee ?? param.value
+            return Param(rawValue: Int(param.address))?.string(for: value) ?? "\(Int(value))"
+        }
+
+        maximumFramesToRender = 4096
+        currentPreset = factoryPresetList.first
+        startProgramChangeWatcher()
+    }
+
+    deinit {
+        programChangeTimer?.cancel()
+    }
+
+    // MARK: AUAudioUnit overrides
+
+    override var outputBusses: AUAudioUnitBusArray { outputBusArray }
+
+    override var parameterTree: AUParameterTree? {
+        get { tree }
+        set { /* fixed parameter tree */ }
+    }
+
+    override var channelCapabilities: [NSNumber]? { [0, 2] }
+
+    override var audioUnitShortName: String? { "MKS50" }
+
+    override var factoryPresets: [AUAudioUnitPreset]? { factoryPresetList }
+
+    override var supportsUserPresets: Bool { true }
+
+    override var currentPreset: AUAudioUnitPreset? {
+        get { presetStorage }
+        set {
+            guard let preset = newValue else {
+                presetStorage = nil
+                return
+            }
+            if preset.number >= 0 {
+                guard preset.number < FactoryPresets.all.count else { return }
+                apply(FactoryPresets.all[preset.number])
+                presetStorage = preset
+            } else if let state = try? presetState(for: preset) {
+                fullState = state
+                presetStorage = preset
+            }
+        }
+    }
+
+    override var fullState: [String: Any]? {
+        get {
+            var state = super.fullState ?? [:]
+            if let data = try? JSONEncoder().encode(currentToneData) {
+                state[MKS50AudioUnit.stateKey] = data
+            }
+            return state
+        }
+        set {
+            super.fullState = newValue
+            if let data = newValue?[MKS50AudioUnit.stateKey] as? Data,
+               let tone = try? JSONDecoder().decode(ToneData.self, from: data) {
+                apply(tone)
+            }
+        }
+    }
+
+    override func allocateRenderResources() throws {
+        try super.allocateRenderResources()
+        guard outputBus.format.channelCount <= 2 else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(kAudioUnitErr_FormatNotSupported))
+        }
+        renderBuffers.ensure(capacity: Int(maximumFramesToRender))
+        engine.prepare(sampleRate: outputBus.format.sampleRate, maximumFrames: Int(maximumFramesToRender))
+    }
+
+    override var internalRenderBlock: AUInternalRenderBlock {
+        let engine = self.engine
+        let buffers = self.renderBuffers
+
+        return { _, timestamp, frameCount, _, outputData, realtimeEventListHead, _ in
+            let abl = UnsafeMutableAudioBufferListPointer(outputData)
+            guard abl.count > 0 else { return kAudioUnitErr_FormatNotSupported }
+            guard Int(frameCount) <= buffers.capacity else { return kAudioUnitErr_TooManyFramesToProcess }
+
+            for i in 0..<abl.count where abl[i].mData == nil {
+                abl[i].mData = UnsafeMutableRawPointer(i % 2 == 0 ? buffers.left : buffers.right)
+                abl[i].mDataByteSize = frameCount * UInt32(MemoryLayout<Float>.size)
+            }
+            let left = abl[0].mData!.assumingMemoryBound(to: Float.self)
+            let right = abl.count > 1 ? abl[1].mData!.assumingMemoryBound(to: Float.self) : buffers.right
+
+            engine.drainMIDIQueue()
+
+            // Sample-accurate event handling: render up to each event, apply it.
+            let start = AUEventSampleTime(timestamp.pointee.mSampleTime)
+            var event = realtimeEventListHead
+            var done: AUAudioFrameCount = 0
+            while done < frameCount {
+                while let e = event, e.pointee.head.eventSampleTime - start <= AUEventSampleTime(done) {
+                    MKS50AudioUnit.handle(e, engine)
+                    event = UnsafePointer(e.pointee.head.next)
+                }
+                var end = frameCount
+                if let e = event {
+                    end = AUAudioFrameCount(clamping: min(AUEventSampleTime(frameCount), e.pointee.head.eventSampleTime - start))
+                }
+                engine.render(frames: Int(end - done), left: left + Int(done), right: right + Int(done))
+                done = end
+            }
+            while let e = event {
+                MKS50AudioUnit.handle(e, engine)
+                event = UnsafePointer(e.pointee.head.next)
+            }
+            return noErr
+        }
+    }
+
+    private static func handle(_ event: UnsafePointer<AURenderEvent>, _ engine: SynthEngine) {
+        switch event.pointee.head.eventType {
+        case .parameter, .parameterRamp:
+            let p = event.pointee.parameter
+            engine.setParameter(p.parameterAddress, p.value)
+        case .MIDI:
+            let m = event.pointee.MIDI
+            engine.handleMIDI(m.data.0, m.length > 1 ? m.data.1 : 0, m.length > 2 ? m.data.2 : 0)
+        default:
+            break
+        }
+    }
+
+    // MARK: Sound handling
+
+    /// Thread-safe MIDI input for the on-screen keyboard and CoreMIDI.
+    func sendMIDI(_ status: UInt8, _ data1: UInt8, _ data2: UInt8) {
+        engine.enqueueMIDI(status, data1, data2)
+    }
+
+    func value(_ p: Param) -> Int {
+        Int(engine.parameter(p.address).rounded())
+    }
+
+    func setValue(_ p: Param, _ value: Int) {
+        tree.parameter(withAddress: p.address)?.value = AUValue(max(0, min(p.maxValue, value)))
+    }
+
+    var currentToneData: ToneData {
+        let tone = Param.toneParams.map { value($0) }
+        var patch: [Int: Int] = [:]
+        for p in Param.patchParams where p != .midiChannel { patch[p.rawValue] = value(p) }
+        let chords = (0..<ChordMemory.slots).map { engine.chord($0) }
+        return ToneData(name: toneName, tone: tone, patch: patch, chords: chords)
+    }
+
+    /// Loads a sound. `includePatch == false` keeps the performance settings
+    /// (used for incoming tone SysEx, which carries no patch data).
+    func apply(_ tone: ToneData, includePatch: Bool = true) {
+        guard tone.tone.count == Param.toneParameterCount else { return }
+        for p in Param.toneParams { setValue(p, tone.tone[p.rawValue]) }
+        if includePatch {
+            for (key, value) in tone.patch {
+                if let p = Param(rawValue: key), p != .midiChannel { setValue(p, value) }
+            }
+        }
+        if let chords = tone.chords {
+            for (i, chord) in chords.enumerated() { engine.setChord(i, chord) }
+        }
+        toneName = tone.name
+    }
+
+    private func startProgramChangeWatcher() {
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 0.1, repeating: 0.1)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            let program = Int(self.engine.pendingProgramChange)
+            guard program >= 0 else { return }
+            self.engine.pendingProgramChange = -1
+            let presets = self.factoryPresetList
+            self.currentPreset = presets[program % presets.count]
+        }
+        timer.resume()
+        programChangeTimer = timer
+    }
+
+    // MARK: Parameter tree
+
+    static let sections: [(id: String, name: String, params: [Param])] = [
+        ("dco", "DCO", [.dcoRange, .dcoPulse, .dcoSaw, .dcoSub, .dcoSubLevel, .dcoNoiseLevel,
+                        .dcoEnvMode, .dcoLfoDepth, .dcoEnvDepth, .dcoAfterDepth, .dcoPwDepth, .dcoPwmRate]),
+        ("hpf", "HPF", [.hpfCutoff]),
+        ("vcf", "VCF", [.vcfEnvMode, .vcfCutoff, .vcfResonance, .vcfLfoDepth, .vcfEnvDepth,
+                        .vcfKeyFollow, .vcfAfterDepth]),
+        ("vca", "VCA", [.vcaEnvMode, .vcaLevel, .vcaAfterDepth]),
+        ("lfo", "LFO", [.lfoRate, .lfoDelay]),
+        ("env", "ENV", [.envT1, .envL1, .envT2, .envL2, .envT3, .envL3, .envT4, .envKeyFollow]),
+        ("chorus", "Chorus", [.chorus, .chorusRate]),
+        ("control", "Control", [.benderRange, .keyMode, .chordIndex, .portaSwitch, .portaTime,
+                                .modSensitivity, .volume, .keyShift, .midiChannel]),
+    ]
+
+    static func makeParameterTree() -> AUParameterTree {
+        let groups = sections.map { section -> AUParameterGroup in
+            let children = section.params.map { p -> AUParameter in
+                let parameter = AUParameterTree.createParameter(
+                    withIdentifier: p.identifier,
+                    name: p.displayName,
+                    address: p.address,
+                    min: 0,
+                    max: AUValue(p.maxValue),
+                    unit: p.isDiscrete ? .indexed : .generic,
+                    unitName: nil,
+                    flags: [.flag_IsReadable, .flag_IsWritable],
+                    valueStrings: p.valueStrings,
+                    dependentParameters: nil)
+                parameter.value = AUValue(p.defaultValue)
+                return parameter
+            }
+            return AUParameterTree.createGroup(withIdentifier: section.id, name: section.name, children: children)
+        }
+        return AUParameterTree.createTree(withChildren: groups)
+    }
+}
