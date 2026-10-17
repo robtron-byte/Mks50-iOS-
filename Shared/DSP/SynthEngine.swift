@@ -64,6 +64,11 @@ final class SynthEngine {
     private var mixLeft: UnsafeMutablePointer<Float>
     private var mixRight: UnsafeMutablePointer<Float>
     private let chorus = Chorus()
+    private let delay = StereoDelay()
+    private let reverb = Reverb()
+
+    /// Tempo reported by the AU host (BPM), 0 = none (use the TEMPO parameter).
+    var hostTempo: Double = 0
 
     // Performance controllers
     private var bend: Float = 0
@@ -197,6 +202,8 @@ final class SynthEngine {
         }
         hpfMode = -1
         chorus.prepare(sampleRate: self.sampleRate)
+        delay.prepare(sampleRate: self.sampleRate)
+        reverb.prepare(sampleRate: self.sampleRate)
         reset()
     }
 
@@ -213,6 +220,8 @@ final class SynthEngine {
         keyStackCount = 0
         heldKeyFlags.update(repeating: 0, count: 128)
         chorus.reset()
+        delay.reset()
+        reverb.reset()
         dcXL = 0; dcYL = 0; dcXR = 0; dcYR = 0
     }
 
@@ -817,8 +826,9 @@ final class SynthEngine {
         var anyActive = false
         for i in 0..<SynthEngine.maxVoices where voices[i].active { anyActive = true }
 
-        // 250 ms covers the chorus delay line and the DC blocker decay.
-        let tailFrames = Int(sampleRate * 0.25)
+        // Idle once no voice sounds and the output (incl. delay / reverb
+        // tails) has stayed below -100 dBFS for 100 ms.
+        let tailFrames = Int(sampleRate * 0.1)
         if !anyActive && idleFrames >= tailFrames {
             left.update(repeating: 0, count: frames)
             right.update(repeating: 0, count: frames)
@@ -834,14 +844,18 @@ final class SynthEngine {
 
         anyActive = false
         for i in 0..<SynthEngine.maxVoices where voices[i].active { anyActive = true }
-        if anyActive {
+        var peak: Float = 0
+        for n in 0..<frames { peak = max(peak, abs(left[n]), abs(right[n])) }
+        if anyActive || peak > 0.00001 {
             idleFrames = 0
         } else {
             idleFrames += frames
             if idleFrames >= tailFrames {
-                // Settle filter state exactly so the next note starts clean.
+                // Settle all state exactly so the next note starts clean.
                 dcXL = 0; dcYL = 0; dcXR = 0; dcYR = 0
                 chorus.reset()
+                delay.reset()
+                reverb.reset()
             }
         }
         return false
@@ -881,6 +895,18 @@ final class SynthEngine {
         chorus.process(inputLeft: mixL, inputRight: mixR, left: left, right: right, frames: frames,
                        enabled: pi(.chorus) == 1, rate: chorusHz)
 
+        // FX section: delay, then reverb (as in TAL-Pha).
+        delay.process(left: left, right: right, frames: frames,
+                      mix: powf(p(.delayMix) / 127, 1.5),
+                      seconds: currentDelaySeconds(),
+                      feedback: p(.delayFeedback) / 127 * 0.95,
+                      tone: p(.delayTone) / 127,
+                      pingPong: pi(.delayPingPong) == 1)
+        reverb.process(left: left, right: right, frames: frames,
+                       mix: powf(p(.reverbMix) / 127, 1.5),
+                       size: p(.reverbSize) / 127,
+                       damp: p(.reverbDamp) / 127)
+
         for n in 0..<frames {
             left[n] = SynthEngine.limit(left[n])
             right[n] = SynthEngine.limit(right[n])
@@ -888,4 +914,20 @@ final class SynthEngine {
     }
 
     var maximumFrames: Int { bufferCapacity }
+
+    /// Free delay time: 0...127 → 10 ms ... 1.5 s.
+    static func delaySeconds(_ raw: Float) -> Float {
+        0.01 * powf(150, raw / 127)
+    }
+
+    /// Effective tempo: host tempo inside a DAW, else the TEMPO parameter.
+    var tempoBPM: Double {
+        hostTempo > 0 ? hostTempo : Double(params[Param.tempo.rawValue]) + 40
+    }
+
+    private func currentDelaySeconds() -> Float {
+        guard pi(.delaySync) == 1 else { return SynthEngine.delaySeconds(p(.delayTime)) }
+        let index = min(max(pi(.delayDivision), 0), DelayDivision.quarters.count - 1)
+        return DelayDivision.quarters[index] * Float(60 / max(tempoBPM, 20))
+    }
 }

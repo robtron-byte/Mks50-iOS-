@@ -2,12 +2,34 @@ import AudioToolbox
 import Combine
 import SwiftUI
 
+/// One observable value per parameter. A control observes only its own
+/// parameter, so turning a knob or tapping a button re-renders that control
+/// alone instead of the whole panel.
+final class ParamModel: ObservableObject {
+    let param: Param
+    @Published fileprivate(set) var value: Float
+
+    init(_ param: Param, value: Float) {
+        self.param = param
+        self.value = value
+    }
+}
+
+/// MIDI CC learn state, separate so only the learn overlays observe it.
+final class CCLearnState: ObservableObject {
+    @Published fileprivate(set) var active = false
+    @Published fileprivate(set) var target: Param?
+    @Published fileprivate(set) var map: [Int: Int] = [:]
+}
+
 /// UI state for the synth panel. Values are polled from the engine so changes
 /// from any source (host automation, MIDI, SysEx, presets) show up.
 final class SynthViewModel: ObservableObject {
     let audioUnit: MKS50AudioUnit
 
-    @Published private(set) var values: [Float]
+    /// Per-parameter observables, indexed by `Param.rawValue`.
+    private let paramModels: [ParamModel?]
+    let learn = CCLearnState()
     @Published private(set) var toneName: String = ""
     @Published private(set) var userPresets: [AUAudioUnitPreset] = []
     @Published var statusMessage: String?
@@ -23,9 +45,8 @@ final class SynthViewModel: ObservableObject {
     private var learnStartStamp: UInt32 = 0
 
     // MIDI CC learn: tap a control, then move a knob on the controller.
-    @Published private(set) var ccLearnActive = false
-    @Published private(set) var ccLearnTarget: Param?
-    @Published private(set) var ccMap: [Int: Int] = [:]
+    var ccLearnActive: Bool { learn.active }
+    var ccLearnTarget: Param? { learn.target }
     private var ccLearnStamp: UInt32 = 0
     private static let padNoteKey = "padNote"
 
@@ -35,11 +56,15 @@ final class SynthViewModel: ObservableObject {
 
     init(audioUnit: MKS50AudioUnit) {
         self.audioUnit = audioUnit
-        values = Array(repeating: 0, count: Param.storageSize)
+        var models = [ParamModel?](repeating: nil, count: Param.storageSize)
+        for p in Param.allCases {
+            models[p.rawValue] = ParamModel(p, value: audioUnit.engine.parameter(p.address))
+        }
+        paramModels = models
         let stored = UserDefaults.standard.object(forKey: SynthViewModel.padNoteKey) as? Int
         padNote = min(max(stored ?? 60, 0), 127)
         audioUnit.parameterTree?.allParameters.forEach { parameters[Int($0.address)] = $0 }
-        ccMap = audioUnit.ccMap
+        learn.map = audioUnit.ccMap
         poll()
         refreshUserPresets()
         setPolling(true)
@@ -51,12 +76,12 @@ final class SynthViewModel: ObservableObject {
         timer = nil
         guard enabled else {
             // CCs that arrive while hidden must not be learned on return.
-            ccLearnTarget = nil
+            learn.target = nil
             return
         }
         ccLearnStamp = audioUnit.engine.lastControlChange
         learnStartStamp = audioUnit.engine.lastNoteOn
-        ccMap = audioUnit.ccMap
+        learn.map = audioUnit.ccMap
         poll()
         let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in self?.poll() }
         timer.tolerance = 0.01
@@ -67,27 +92,22 @@ final class SynthViewModel: ObservableObject {
     deinit { timer?.invalidate() }
 
     private func poll() {
-        var changed = false
-        var next = values
-        for p in Param.allCases {
-            let v = audioUnit.engine.parameter(p.address)
-            if next[p.rawValue] != v {
-                next[p.rawValue] = v
-                changed = true
-            }
+        // Only parameters whose value actually changed publish (and redraw).
+        for case let model? in paramModels {
+            let v = audioUnit.engine.parameter(model.param.address)
+            if model.value != v { model.value = v }
         }
-        if changed { values = next }
         if toneName != audioUnit.toneName { toneName = audioUnit.toneName }
 
         // CC learn: the next incoming control change is assigned to the armed control.
         let ccStamp = audioUnit.engine.lastControlChange
-        if ccLearnActive, let target = ccLearnTarget, ccStamp != ccLearnStamp {
+        if learn.active, let target = learn.target, ccStamp != ccLearnStamp {
             ccLearnStamp = ccStamp
             let cc = Int((ccStamp >> 8) & 0x7F)
             if cc < 120 {
                 audioUnit.assignCC(cc, to: target)
-                ccMap = audioUnit.ccMap
-                ccLearnTarget = nil
+                learn.map = audioUnit.ccMap
+                learn.target = nil
                 flash("CC \(cc) → \(target.displayName)")
             }
         }
@@ -106,18 +126,24 @@ final class SynthViewModel: ObservableObject {
 
     // MARK: Parameters
 
-    func value(_ p: Param) -> Float { values[p.rawValue] }
-    func intValue(_ p: Param) -> Int { Int(values[p.rawValue].rounded()) }
+    func model(_ p: Param) -> ParamModel {
+        paramModels[p.rawValue]!   // created for every Param case in init
+    }
+
+    func value(_ p: Param) -> Float { model(p).value }
+    func intValue(_ p: Param) -> Int { Int(model(p).value.rounded()) }
 
     func set(_ p: Param, _ value: Float) {
         let v = min(max(value, 0), Float(p.maxValue))
-        values[p.rawValue] = v
+        let m = model(p)
+        if m.value != v { m.value = v }
         parameters[p.rawValue]?.value = v
     }
 
     func binding(_ p: Param) -> Binding<Float> {
-        Binding(get: { [unowned self] in self.values[p.rawValue] },
-                set: { [unowned self] in self.set(p, $0) })
+        let m = model(p)
+        return Binding(get: { m.value },
+                       set: { [unowned self] in self.set(p, $0) })
     }
 
     var envelope: EnvelopeSettings {
@@ -193,28 +219,32 @@ final class SynthViewModel: ObservableObject {
     // MARK: MIDI CC learn
 
     func toggleCCLearn() {
-        ccLearnActive.toggle()
-        ccLearnTarget = nil
-        if ccLearnActive { flash("Tap a control, then move a knob on your MIDI controller") }
+        learn.active.toggle()
+        learn.target = nil
+        objectWillChange.send()   // toolbar icon + learn bar
+        if learn.active { flash("Tap a control, then move a knob on your MIDI controller") }
     }
 
     func armCCLearn(_ p: Param) {
         guard p != .midiChannel else { return }
-        ccLearnTarget = (ccLearnTarget == p) ? nil : p
+        learn.target = (learn.target == p) ? nil : p
+        objectWillChange.send()   // learn bar text
         ccLearnStamp = audioUnit.engine.lastControlChange
     }
 
-    func ccNumber(for p: Param) -> Int? { ccMap[p.rawValue] }
+    func ccNumber(for p: Param) -> Int? { learn.map[p.rawValue] }
 
     func removeCC(for p: Param) {
         audioUnit.removeCC(for: p)
-        ccMap = audioUnit.ccMap
+        learn.map = audioUnit.ccMap
+        objectWillChange.send()   // settings list
         flash("\(p.displayName): CC removed")
     }
 
     func removeAllCCs() {
         audioUnit.removeAllCCs()
-        ccMap = audioUnit.ccMap
+        learn.map = audioUnit.ccMap
+        objectWillChange.send()   // settings list
         flash("All CC assignments removed")
     }
 

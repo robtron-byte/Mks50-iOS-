@@ -68,7 +68,7 @@ enum FactoryPresets {
               0, 127, 40, 90, 60, 90, 30, 0,  66, 2],
              keyMode: 2, porta: 1, portaTime: 34),
 
-        make("NOISE SWEEP",
+        make("NOISE SWP",
              [0, 0, 0,  0, 0, 0,  1, 0, 3,  1, 1,
               0, 0, 0, 0, 0,  14, 96, 74, 50, 0, 0,  108, 0,  22, 0,
               104, 127, 80, 110, 80, 110, 96, 0,  30, 2]),
@@ -108,6 +108,98 @@ enum FactoryPresets {
              [0, 1, 0,  2, 5, 5,  0, 2, 1,  0, 1,
               4, 0, 0, 100, 18,  36, 62, 12, 24, 20, 0,  110, 0,  18, 90,
               100, 127, 90, 100, 90, 100, 110, 0,  24, 2]),
+
+        // MARK: Electro funk (in the spirit of Kraftwerk / Anthony Rother)
+
+        make("ROBO BASS",
+             [0, 0, 2,  1, 1, 0,  0, 2, 0,  1, 0,
+              0, 0, 0, 30, 0,  30, 64, 0, 78, 50, 0,  122, 0,  64, 0,
+              0, 127, 38, 20, 40, 10, 12, 0,  60, 2],
+             keyMode: 2, porta: 1, portaTime: 8),
+
+        make("NUMBERS",
+             [0, 0, 0,  1, 0, 0,  2, 0, 0,  2, 0,
+              0, 0, 0, 0, 0,  40, 105, 0, 90, 127, 0,  112, 0,  64, 0,
+              0, 127, 26, 0, 30, 0, 22, 30,  60, 2],
+             extra: [.delayMix: 50, .delayFeedback: 45, .delayDivision: 5, .delayPingPong: 1, .reverbMix: 30]),
+
+        make("CALCULATR",
+             [0, 0, 2,  2, 0, 0,  3, 0, 0,  2, 0,
+              0, 0, 0, 100, 0,  100, 20, 0, 20, 60, 0,  104, 0,  64, 0,
+              0, 127, 20, 0, 20, 0, 14, 0,  60, 2],
+             extra: [.delayMix: 40, .delayFeedback: 30, .delayDivision: 2, .reverbMix: 25]),
+
+        make("TRANS EURO",
+             [0, 0, 0,  2, 1, 0,  1, 0, 0,  2, 1,
+              6, 0, 10, 64, 34,  70, 10, 0, 14, 40, 0,  106, 0,  70, 70,
+              70, 127, 70, 118, 70, 118, 76, 0,  44, 2],
+             extra: [.reverbMix: 60, .reverbSize: 95, .reverbDamp: 60, .delayMix: 25, .delayDivision: 8]),
+
+        make("ROBOT VOX",
+             [0, 0, 0,  3, 4, 0,  1, 0, 0,  2, 1,
+              10, 0, 0, 50, 20,  58, 90, 30, 10, 40, 0,  112, 0,  40, 60,
+              10, 127, 40, 110, 40, 110, 40, 0,  50, 2],
+             keyMode: 2, porta: 1, portaTime: 30,
+             extra: [.reverbMix: 40, .delayMix: 20, .delayDivision: 6]),
+
+        make("AUTO BASS",
+             [0, 0, 0,  0, 2, 0,  0, 2, 0,  1, 0,
+              0, 0, 0, 0, 0,  36, 40, 0, 64, 50, 0,  122, 0,  64, 0,
+              0, 127, 50, 40, 50, 35, 20, 0,  60, 2],
+             keyMode: 2, porta: 1, portaTime: 14,
+             extra: [.delayMix: 20, .delayDivision: 6, .delayFeedback: 30]),
+
+        make("ELEC STAB",
+             [0, 0, 2,  2, 1, 0,  1, 0, 0,  2, 1,
+              0, 0, 0, 40, 0,  50, 40, 0, 70, 50, 0,  112, 0,  64, 0,
+              0, 127, 34, 30, 40, 0, 26, 0,  56, 2],
+             keyMode: 1, chord: 2,
+             extra: [.delayMix: 45, .delayDivision: 6, .delayFeedback: 45, .delayPingPong: 1, .reverbMix: 40]),
+
+        make("ACID ELEC",
+             [0, 0, 2,  0, 1, 0,  1, 0, 0,  1, 0,
+              0, 0, 0, 0, 0,  26, 112, 0, 84, 60, 0,  120, 0,  64, 0,
+              0, 127, 34, 10, 40, 0, 14, 0,  60, 2],
+             keyMode: 2, porta: 1, portaTime: 18,
+             extra: [.delayMix: 30, .delayDivision: 2, .delayFeedback: 40]),
+
+        make("MACHINE PD",
+             [0, 1, 0,  2, 5, 4,  1, 2, 0,  0, 1,
+              0, 0, 0, 90, 22,  40, 50, 20, 30, 30, 0,  108, 0,  22, 0,
+              100, 127, 90, 100, 90, 100, 100, 0,  30, 2],
+             extra: [.reverbMix: 70, .reverbSize: 110, .reverbDamp: 70, .delayMix: 30, .delayDivision: 9]),
+
+        make("ZAP",
+             [0, 0, 0,  1, 0, 0,  3, 0, 0,  2, 0,
+              0, 110, 0, 0, 0,  90, 30, 0, 30, 60, 0,  116, 0,  64, 0,
+              0, 127, 22, 0, 22, 0, 20, 0,  60, 2],
+             extra: [.delayMix: 45, .delayDivision: 5, .delayFeedback: 55, .delayPingPong: 1, .reverbMix: 30]),
+
+        make("ELEC HAT",
+             [0, 0, 0,  0, 0, 0,  1, 0, 3,  3, 0,
+              0, 0, 0, 0, 0,  110, 20, 0, 0, 0, 0,  110, 0,  64, 0,
+              0, 127, 14, 0, 14, 0, 10, 0,  60, 2],
+             extra: [.reverbMix: 25, .reverbSize: 40]),
+
+        make("BOOM 808",
+             [0, 0, 0,  0, 0, 0,  1, 3, 0,  0, 0,
+              0, 50, 0, 0, 0,  22, 0, 0, 0, 40, 0,  127, 0,  64, 0,
+              0, 127, 80, 0, 80, 0, 70, 0,  60, 2],
+             keyMode: 2),
+
+        make("SPACE LEAD",
+             [0, 0, 0,  2, 3, 0,  1, 0, 0,  1, 1,
+              30, 0, 30, 50, 40,  80, 40, 0, 30, 60, 0,  116, 0,  76, 70,
+              6, 127, 50, 100, 50, 100, 40, 0,  60, 2],
+             keyMode: 2, porta: 1, portaTime: 30,
+             extra: [.delayMix: 55, .delayDivision: 9, .delayFeedback: 60, .delayPingPong: 1,
+                     .reverbMix: 50, .reverbSize: 85]),
+
+        make("ROBO CHOIR",
+             [0, 0, 0,  2, 2, 0,  1, 0, 0,  2, 1,
+              8, 0, 0, 70, 50,  62, 30, 8, 20, 40, 0,  104, 0,  70, 40,
+              60, 127, 70, 110, 70, 110, 70, 0,  80, 2],
+             extra: [.reverbMix: 55, .reverbSize: 90]),
     ]
 
     private static func make(_ name: String, _ tone: [Int],
@@ -122,7 +214,7 @@ enum FactoryPresets {
         patch[Param.volume.rawValue] = volume
         for (p, v) in extra { patch[p.rawValue] = v }
         // MIDI channel is a device setting, not part of a sound.
-        patch.removeValue(forKey: Param.midiChannel.rawValue)
+        for p in Param.patchParams where p.isDeviceSetting { patch.removeValue(forKey: p.rawValue) }
         return ToneData(name: name, tone: tone, patch: patch)
     }
 }

@@ -1,31 +1,50 @@
 import SwiftUI
 
-/// Colours inspired by the black MKS-50 rack front with its orange / white print.
+/// Colours inspired by the Alpha Juno-2 / MKS-50: charcoal panel, white
+/// silk-screen print, Roland-red accents and a yellow-green backlit LCD.
 enum Theme {
-    static let background = Color(red: 0.08, green: 0.08, blue: 0.09)
-    static let panel = Color(red: 0.14, green: 0.14, blue: 0.15)
+    static let background = Color(red: 0.07, green: 0.07, blue: 0.08)
+    static let panel = Color(red: 0.13, green: 0.13, blue: 0.14)
     static let panelEdge = Color(red: 0.24, green: 0.24, blue: 0.26)
-    static let accent = Color(red: 1.0, green: 0.48, blue: 0.10)
-    static let label = Color(white: 0.82)
+    static let accent = Color(red: 0.91, green: 0.27, blue: 0.18)        // Roland red
+    static let accentSoft = Color(red: 0.91, green: 0.27, blue: 0.18).opacity(0.22)
+    static let label = Color(white: 0.88)
     static let dimLabel = Color(white: 0.55)
-    static let knobBody = Color(red: 0.2, green: 0.2, blue: 0.21)
-    static let led = Color(red: 1.0, green: 0.18, blue: 0.12)
-    static let display = Color(red: 0.05, green: 0.09, blue: 0.06)
-    static let displayText = Color(red: 0.55, green: 1.0, blue: 0.55)
+    static let knobBody = Color(red: 0.21, green: 0.21, blue: 0.22)
+    static let cell = Color(red: 0.18, green: 0.18, blue: 0.19)
+    static let led = Color(red: 1.0, green: 0.2, blue: 0.12)
+    static let display = Color(red: 0.62, green: 0.70, blue: 0.36)       // backlit LCD
+    static let displayText = Color(red: 0.10, green: 0.13, blue: 0.06)
 }
 
-/// A labelled panel section ("DCO", "VCF", ...).
+/// Instant visual feedback on touch-down (the default `.plain` style gives
+/// none, which makes buttons feel sluggish).
+struct PressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .brightness(configuration.isPressed ? 0.12 : 0)
+            .animation(.easeOut(duration: 0.06), value: configuration.isPressed)
+    }
+}
+
+/// A labelled panel section with an icon ("DCO", "VCF", ...).
 struct PanelSection<Content: View>: View {
     let title: String
+    var icon: String? = nil
     @ViewBuilder var content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
-                .foregroundColor(Theme.accent)
-                .padding(.bottom, 1)
-                .overlay(Rectangle().fill(Theme.accent).frame(height: 1).offset(y: 2), alignment: .bottom)
+            HStack(spacing: 5) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .bold))
+                }
+                Text(title)
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+            }
+            .foregroundColor(Theme.accent)
             content
         }
         .padding(10)
@@ -34,7 +53,8 @@ struct PanelSection<Content: View>: View {
     }
 }
 
-/// Rotary control. Drag vertically (or horizontally) to change, double-tap to reset.
+/// Rotary control. Drag up/down (or left/right) to change, double-tap to reset.
+/// While dragging, a large value bubble shows the exact value.
 struct Knob: View {
     let label: String
     @Binding var value: Float
@@ -46,6 +66,7 @@ struct Knob: View {
     @State private var dragStart: Float?
 
     private var fraction: Double { Double(value / maxValue) }
+    private var valueText: String { display?(value) ?? "\(Int(value.rounded()))" }
 
     var body: some View {
         VStack(spacing: 2) {
@@ -64,13 +85,13 @@ struct Knob: View {
                     .stroke(Theme.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(135))
                 Circle()
-                    .fill(LinearGradient(colors: [Color(white: 0.32), Theme.knobBody],
+                    .fill(LinearGradient(colors: [Color(white: 0.34), Theme.knobBody],
                                          startPoint: .top, endPoint: .bottom))
                     .padding(6)
                     .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
                 Capsule()
                     .fill(Color.white)
-                    .frame(width: 2, height: size * 0.22)
+                    .frame(width: 2.5, height: size * 0.22)
                     .offset(y: -size * 0.22)
                     .rotationEffect(.degrees(-135 + 270 * fraction))
             }
@@ -88,9 +109,22 @@ struct Knob: View {
                     .onEnded { _ in dragStart = nil }
             )
             .onTapGesture(count: 2) { value = defaultValue }
+            .overlay(alignment: .top) {
+                if dragStart != nil {
+                    Text(valueText)
+                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Theme.accent))
+                        .fixedSize()
+                        .offset(y: -30)
+                        .allowsHitTesting(false)
+                }
+            }
             .accessibilityElement()
             .accessibilityLabel(label)
-            .accessibilityValue(display?(value) ?? "\(Int(value))")
+            .accessibilityValue(valueText)
             .accessibilityAdjustableAction { dir in
                 switch dir {
                 case .increment: value = min(maxValue, value + 1)
@@ -99,7 +133,7 @@ struct Knob: View {
                 }
             }
 
-            Text(display?(value) ?? "\(Int(value.rounded()))")
+            Text(valueText)
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundColor(Theme.dimLabel)
                 .lineLimit(1)
@@ -109,12 +143,15 @@ struct Knob: View {
     }
 }
 
-/// Row of illuminated buttons for discrete values (waveforms, modes, ...).
-struct StepSelector: View {
+/// Row of illuminated buttons for discrete values. Cells can show text or
+/// icons (waveforms, envelope modes, ...).
+struct StepSelector<Cell: View>: View {
     let label: String
-    let options: [String]
+    let count: Int
     @Binding var value: Float
     var cellWidth: CGFloat = 34
+    var accessibilityNames: [String] = []
+    @ViewBuilder let cell: (_ index: Int, _ selected: Bool) -> Cell
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -122,29 +159,41 @@ struct StepSelector: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(Theme.label)
             HStack(spacing: 3) {
-                ForEach(options.indices, id: \.self) { i in
+                ForEach(0..<count, id: \.self) { i in
                     let selected = Int(value.rounded()) == i
                     Button {
-                        value = Float(i)
+                        if !selected { value = Float(i) }
                     } label: {
-                        Text(options[i])
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundColor(selected ? .black : Theme.label)
+                        cell(i, selected)
+                            .foregroundColor(selected ? .white : Theme.label)
                             .frame(minWidth: cellWidth, minHeight: 32)
                             .padding(.horizontal, 3)
                             .background(RoundedRectangle(cornerRadius: 5)
-                                .fill(selected ? Theme.accent : Theme.knobBody))
+                                .fill(selected ? Theme.accent : Theme.cell))
+                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityLabel(accessibilityNames.indices.contains(i) ? accessibilityNames[i] : "\(i)")
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
     }
 }
 
-/// Graph of the 4-segment envelope.
+extension StepSelector where Cell == Text {
+    /// Plain text cells.
+    init(label: String, options: [String], value: Binding<Float>, cellWidth: CGFloat = 34) {
+        self.init(label: label, count: options.count, value: value, cellWidth: cellWidth,
+                  accessibilityNames: options) { i, _ in
+            Text(options[i]).font(.system(size: 12, weight: .bold, design: .rounded))
+        }
+    }
+}
+
+/// Graph of the 4-segment envelope (LCD style).
 struct EnvelopeGraph: View {
     let envelope: EnvelopeSettings
 
@@ -155,8 +204,8 @@ struct EnvelopeGraph: View {
             let segments = [w(envelope.t1), w(envelope.t2), w(envelope.t3), 0.35, w(envelope.t4)]
             let total = segments.reduce(0, +)
             let scale = size.width / max(total, 0.001)
-            let h = size.height - 4
-            func y(_ level: Float) -> CGFloat { 2 + h * (1 - CGFloat(level)) }
+            let h = size.height - 8
+            func y(_ level: Float) -> CGFloat { 4 + h * (1 - CGFloat(level)) }
 
             var x: CGFloat = 0
             var path = Path()
@@ -169,30 +218,33 @@ struct EnvelopeGraph: View {
 
             var fill = path
             fill.addLine(to: CGPoint(x: 0, y: y(0)))
-            ctx.fill(fill, with: .color(Theme.accent.opacity(0.15)))
-            ctx.stroke(path, with: .color(Theme.accent), lineWidth: 1.5)
+            ctx.fill(fill, with: .color(Theme.displayText.opacity(0.15)))
+            ctx.stroke(path, with: .color(Theme.displayText), lineWidth: 2)
         }
-        .background(RoundedRectangle(cornerRadius: 4).fill(Theme.display))
+        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.display))
     }
 }
 
-/// Large text button, optionally lit (toggle state).
+/// Large text button with optional icon, optionally lit (toggle state).
 struct BigButton: View {
     let title: String
+    var icon: String? = nil
     var active = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundColor(active ? .black : Theme.label)
-                .lineLimit(1)
-                .padding(.horizontal, 12)
-                .frame(minWidth: 72, minHeight: 44)
-                .background(RoundedRectangle(cornerRadius: 8).fill(active ? Theme.accent : Theme.knobBody))
+            HStack(spacing: 5) {
+                if let icon { Image(systemName: icon).font(.system(size: 13, weight: .bold)) }
+                Text(title).font(.system(size: 12, weight: .bold, design: .rounded)).lineLimit(1)
+            }
+            .foregroundColor(active ? .white : Theme.label)
+            .padding(.horizontal, 12)
+            .frame(minWidth: 72, minHeight: 44)
+            .background(RoundedRectangle(cornerRadius: 8).fill(active ? Theme.accent : Theme.cell))
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
     }
 }
 
@@ -208,9 +260,10 @@ struct StepButton: View {
                 .font(.system(size: 16, weight: .bold))
                 .foregroundColor(Theme.label)
                 .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.knobBody))
+                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.cell))
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
         .accessibilityLabel(label)
     }
 }

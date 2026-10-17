@@ -62,6 +62,19 @@ enum Param: Int, CaseIterable, Identifiable {
     case voiceDrift
     case unisonDetune
 
+    // MARK: Effects (delay / reverb, as in TAL-Pha's FX section)
+    case delayMix
+    case delayTime
+    case delayFeedback
+    case delaySync
+    case delayDivision
+    case delayTone
+    case delayPingPong
+    case reverbMix
+    case reverbSize
+    case reverbDamp
+    case tempo
+
     static let toneParameterCount = 36
     static let storageSize = 128
 
@@ -72,6 +85,9 @@ enum Param: Int, CaseIterable, Identifiable {
     var address: AUParameterAddress { AUParameterAddress(rawValue) }
     var isTone: Bool { rawValue < Param.toneParameterCount }
 
+    /// Device settings are not stored in sounds / presets.
+    var isDeviceSetting: Bool { self == .midiChannel || self == .tempo }
+
     var maxValue: Int {
         switch self {
         case .dcoEnvMode, .vcfEnvMode, .vcaEnvMode, .dcoPulse, .dcoRange,
@@ -79,8 +95,12 @@ enum Param: Int, CaseIterable, Identifiable {
             return 3
         case .dcoSaw, .dcoSub:
             return 5
-        case .chorus, .portaSwitch, .pulseSync:
+        case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong:
             return 1
+        case .delayDivision:
+            return DelayDivision.names.count - 1
+        case .tempo:
+            return 200
         case .benderRange:
             return 12
         case .keyMode:
@@ -110,8 +130,10 @@ enum Param: Int, CaseIterable, Identifiable {
             return ["0", "1", "2", "3"]
         case .dcoSaw, .dcoSub:
             return ["0", "1", "2", "3", "4", "5"]
-        case .chorus, .portaSwitch, .pulseSync:
+        case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong:
             return ["OFF", "ON"]
+        case .delayDivision:
+            return DelayDivision.names
         case .keyMode:
             return ["POLY", "CHORD", "MONO", "UNISON"]
         case .chordIndex:
@@ -144,6 +166,15 @@ enum Param: Int, CaseIterable, Identifiable {
         case .pulseDetune: return 64
         case .voiceDrift: return 8
         case .unisonDetune: return 40
+        case .delayTime: return 64
+        case .delayFeedback: return 50
+        case .delaySync: return 1
+        case .delayDivision: return 6
+        case .delayTone: return 80
+        case .delayPingPong: return 1
+        case .reverbSize: return 60
+        case .reverbDamp: return 50
+        case .tempo: return 80
         default: return 0
         }
     }
@@ -202,6 +233,17 @@ enum Param: Int, CaseIterable, Identifiable {
         case .pulseEnvMod: return "Pulse Env Mod"
         case .voiceDrift: return "Voice Drift"
         case .unisonDetune: return "Unison Detune"
+        case .delayMix: return "Delay Mix"
+        case .delayTime: return "Delay Time"
+        case .delayFeedback: return "Delay Feedback"
+        case .delaySync: return "Delay Sync"
+        case .delayDivision: return "Delay Division"
+        case .delayTone: return "Delay Tone"
+        case .delayPingPong: return "Delay Ping-Pong"
+        case .reverbMix: return "Reverb Mix"
+        case .reverbSize: return "Reverb Size"
+        case .reverbDamp: return "Reverb Damping"
+        case .tempo: return "Tempo"
         }
     }
 
@@ -250,10 +292,25 @@ enum Param: Int, CaseIterable, Identifiable {
         case .pulseEnvMod: return "PLS ENV"
         case .voiceDrift: return "DRIFT"
         case .unisonDetune: return "UNI DETUNE"
+        case .delayMix, .reverbMix: return "MIX"
+        case .delayTime: return "TIME"
+        case .delayFeedback: return "FEEDBACK"
+        case .delaySync: return "SYNC"
+        case .delayDivision: return "NOTE"
+        case .delayTone: return "TONE"
+        case .delayPingPong: return "PING-PONG"
+        case .reverbSize: return "SIZE"
+        case .reverbDamp: return "DAMP"
+        case .tempo: return "BPM"
         }
     }
 
     func string(for value: Float) -> String {
+        if self == .tempo { return "\(Int(value.rounded()) + 40)" }
+        if self == .delayTime {
+            let ms = SynthEngine.delaySeconds(value) * 1000
+            return ms < 1000 ? "\(Int(ms)) ms" : String(format: "%.2f s", ms / 1000)
+        }
         if self == .pulseDetune {
             let semis = (value - 64) / 64 * 12
             return abs(semis) < 0.05 ? "0" : String(format: "%+.1f", semis)

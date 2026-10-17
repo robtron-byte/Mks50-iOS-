@@ -70,7 +70,7 @@ struct SysExDocument: FileDocument {
 }
 
 struct AppMainView: View {
-    @ObservedObject var model: SynthViewModel
+    let model: SynthViewModel
     @ObservedObject var midi: MIDIManager
 
     @State private var showSettings = false
@@ -112,63 +112,72 @@ struct AppMainView: View {
     }
 
     private var toolbar: some View {
-        HStack(spacing: 12) {
-            Text("MKS-50")
-                .font(.system(size: 16, weight: .black, design: .rounded))
-                .foregroundColor(Theme.accent)
+        AppToolbar(model: model, midi: midi,
+                   onSave: {
+                       saveName = model.toneName.capitalized
+                       showSave = true
+                   },
+                   onImport: { showImporter = true },
+                   onExport: {
+                       exportDocument = SysExDocument(data: model.exportSysEx(channel: sysexChannel))
+                       showExporter = true
+                   },
+                   onSend: {
+                       midi.sendSysEx([UInt8](model.exportSysEx(channel: sysexChannel)))
+                       model.flash("Tone sent to MIDI out")
+                   },
+                   onSettings: { showSettings = true })
+    }
+}
 
-            Button { model.stepFactoryPreset(-1) } label: { Image(systemName: "chevron.left") }
+/// Top bar of the standalone app. Observes the model on its own so preset /
+/// pad changes only redraw this bar, not the whole screen.
+struct AppToolbar: View {
+    @ObservedObject var model: SynthViewModel
+    @ObservedObject var midi: MIDIManager
+    let onSave: () -> Void
+    let onImport: () -> Void
+    let onExport: () -> Void
+    let onSend: () -> Void
+    let onSettings: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            BrandMark()
+            StepButton(symbol: "chevron.left", label: "Previous preset") { model.stepFactoryPreset(-1) }
             presetMenu
-            Button { model.stepFactoryPreset(1) } label: { Image(systemName: "chevron.right") }
-
+            StepButton(symbol: "chevron.right", label: "Next preset") { model.stepFactoryPreset(1) }
             MIDIActivityLED(lastActivity: midi.lastActivity)
-
             Spacer()
-
             trailingButtons
         }
         .font(.system(size: 16, weight: .semibold))
         .foregroundColor(Theme.label)
         .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
         .background(Theme.panel)
+    }
+
+    private func iconButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .frame(minWidth: 36, minHeight: 36)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(label)
     }
 
     /// Separate builder: a single ViewBuilder block may hold at most 10 views on iOS 16.
     private var trailingButtons: some View {
-        HStack(spacing: 12) {
-            Button {
-                saveName = model.toneName.capitalized
-                showSave = true
-            } label: { Image(systemName: "square.and.arrow.down") }
-                .accessibilityLabel("Save preset")
-
-            Button { showImporter = true } label: { Image(systemName: "folder") }
-                .accessibilityLabel("Import SysEx")
-
-            Button {
-                exportDocument = SysExDocument(data: model.exportSysEx(channel: sysexChannel))
-                showExporter = true
-            } label: { Image(systemName: "square.and.arrow.up") }
-                .accessibilityLabel("Export SysEx")
-
-            Button {
-                midi.sendSysEx([UInt8](model.exportSysEx(channel: sysexChannel)))
-                model.flash("Tone sent to MIDI out")
-            } label: { Image(systemName: "paperplane") }
-                .accessibilityLabel("Send tone to hardware")
-
-            Button { model.toggleCCLearn() } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .foregroundColor(model.ccLearnActive ? Theme.accent : Theme.label)
-            }
-            .accessibilityLabel("MIDI CC learn")
-
-            Button { model.panic() } label: { Image(systemName: "exclamationmark.octagon") }
-                .accessibilityLabel("All notes off")
-
-            Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                .accessibilityLabel("Settings")
+        HStack(spacing: 6) {
+            iconButton("square.and.arrow.down", "Save preset", action: onSave)
+            iconButton("folder", "Import SysEx", action: onImport)
+            iconButton("square.and.arrow.up", "Export SysEx", action: onExport)
+            iconButton("paperplane", "Send tone to hardware", action: onSend)
+            CCLearnToggle(learn: model.learn, model: model)
+            iconButton("exclamationmark.octagon", "All notes off") { model.panic() }
+            iconButton("gearshape", "Settings", action: onSettings)
         }
     }
 

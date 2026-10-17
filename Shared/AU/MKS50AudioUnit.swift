@@ -44,6 +44,11 @@ private final class RenderBuffers {
     }
 }
 
+/// Host musical context, captured for the render block (tempo for delay sync).
+private final class HostContext {
+    var musicalContext: AUHostMusicalContextBlock?
+}
+
 /// The MKS-50 synthesizer as an Audio Unit v3 instrument.
 ///
 /// Used both in-process by the standalone app and out-of-process by the
@@ -61,6 +66,7 @@ final class MKS50AudioUnit: AUAudioUnit {
 
     let engine = SynthEngine()
     private let renderBuffers = RenderBuffers(capacity: 4096)
+    private let hostContext = HostContext()
     private var outputBus: AUAudioUnitBus!
     private var outputBusArray: AUAudioUnitBusArray!
     private var tree: AUParameterTree!
@@ -170,12 +176,14 @@ final class MKS50AudioUnit: AUAudioUnit {
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(kAudioUnitErr_FormatNotSupported))
         }
         renderBuffers.ensure(capacity: Int(maximumFramesToRender))
+        hostContext.musicalContext = musicalContextBlock
         engine.prepare(sampleRate: outputBus.format.sampleRate, maximumFrames: Int(maximumFramesToRender))
     }
 
     override var internalRenderBlock: AUInternalRenderBlock {
         let engine = self.engine
         let buffers = self.renderBuffers
+        let context = self.hostContext
 
         return { actionFlags, timestamp, frameCount, _, outputData, realtimeEventListHead, _ in
             let abl = UnsafeMutableAudioBufferListPointer(outputData)
@@ -190,6 +198,15 @@ final class MKS50AudioUnit: AUAudioUnit {
             let right = abl.count > 1 ? abl[1].mData!.assumingMemoryBound(to: Float.self) : buffers.right
 
             engine.drainMIDIQueue()
+
+            // Host tempo for the synced delay (0 = no host transport).
+            var tempo: Double = 0
+            if let musicalContext = context.musicalContext,
+               musicalContext(&tempo, nil, nil, nil, nil, nil), tempo > 0 {
+                engine.hostTempo = tempo
+            } else {
+                engine.hostTempo = 0
+            }
 
             // Sample-accurate event handling: render up to each event, apply it.
             let start = AUEventSampleTime(timestamp.pointee.mSampleTime)
@@ -252,7 +269,7 @@ final class MKS50AudioUnit: AUAudioUnit {
     var currentToneData: ToneData {
         let tone = Param.toneParams.map { value($0) }
         var patch: [Int: Int] = [:]
-        for p in Param.patchParams where p != .midiChannel { patch[p.rawValue] = value(p) }
+        for p in Param.patchParams where !p.isDeviceSetting { patch[p.rawValue] = value(p) }
         let chords = (0..<ChordMemory.slots).map { engine.chord($0) }
         return ToneData(name: toneName, tone: tone, patch: patch, chords: chords)
     }
@@ -264,7 +281,7 @@ final class MKS50AudioUnit: AUAudioUnit {
         for p in Param.toneParams { setValue(p, tone.tone[p.rawValue]) }
         if includePatch {
             for (key, value) in tone.patch {
-                if let p = Param(rawValue: key), p != .midiChannel { setValue(p, value) }
+                if let p = Param(rawValue: key), !p.isDeviceSetting { setValue(p, value) }
             }
         }
         if let chords = tone.chords {
@@ -382,6 +399,8 @@ final class MKS50AudioUnit: AUAudioUnit {
         ("control", "Control", [.benderRange, .keyMode, .chordIndex, .portaSwitch, .portaTime,
                                 .modSensitivity, .volume, .keyShift, .midiChannel]),
         ("extra", "Extra", [.pulseDetune, .pulseSync, .pulseEnvMod, .voiceDrift, .unisonDetune]),
+        ("fx", "Effects", [.delayMix, .delayTime, .delayFeedback, .delaySync, .delayDivision, .delayTone,
+                           .delayPingPong, .reverbMix, .reverbSize, .reverbDamp, .tempo]),
     ]
 
     static func makeParameterTree() -> AUParameterTree {
