@@ -49,7 +49,14 @@ final class SynthViewModel: ObservableObject {
     func setPolling(_ enabled: Bool) {
         timer?.invalidate()
         timer = nil
-        guard enabled else { return }
+        guard enabled else {
+            // CCs that arrive while hidden must not be learned on return.
+            ccLearnTarget = nil
+            return
+        }
+        ccLearnStamp = audioUnit.engine.lastControlChange
+        learnStartStamp = audioUnit.engine.lastNoteOn
+        ccMap = audioUnit.ccMap
         poll()
         let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in self?.poll() }
         timer.tolerance = 0.01
@@ -192,6 +199,7 @@ final class SynthViewModel: ObservableObject {
     }
 
     func armCCLearn(_ p: Param) {
+        guard p != .midiChannel else { return }
         ccLearnTarget = (ccLearnTarget == p) ? nil : p
         ccLearnStamp = audioUnit.engine.lastControlChange
     }

@@ -354,13 +354,15 @@ struct CCLearnOverlay: ViewModifier {
             if model.ccLearnActive {
                 let armed = model.ccLearnTarget == param
                 let cc = model.ccNumber(for: param)
+                let badge: String = cc.map { "CC \($0)" } ?? "–"
+                let spoken: String = param.displayName + ", " + (cc.map { "MIDI CC \($0)" } ?? "no MIDI CC")
                 ZStack(alignment: .topTrailing) {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(armed ? Theme.accent.opacity(0.3) : Color.black.opacity(0.35))
                         .overlay(RoundedRectangle(cornerRadius: 8)
                             .stroke(armed ? Theme.accent : (cc != nil ? Theme.displayText : Theme.panelEdge),
                                     lineWidth: armed ? 2.5 : 1))
-                    Text(cc.map { "CC \($0)" } ?? "–")
+                    Text(verbatim: badge)
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundColor(.black)
                         .padding(.horizontal, 5)
@@ -368,11 +370,11 @@ struct CCLearnOverlay: ViewModifier {
                         .background(Capsule().fill(cc != nil ? Theme.displayText : Theme.dimLabel))
                         .offset(x: 4, y: -7)
                 }
-                .padding(-4)
+                .padding(-2)
                 .contentShape(Rectangle())
                 .onTapGesture { model.armCCLearn(param) }
                 .accessibilityElement()
-                .accessibilityLabel("\(param.displayName), \(cc.map { "MIDI CC \($0)" } ?? "no MIDI CC")")
+                .accessibilityLabel(Text(verbatim: spoken))
                 .accessibilityAddTraits(.isButton)
                 .accessibilityHint("Arms this control for MIDI learn")
             }

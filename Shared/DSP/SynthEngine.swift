@@ -121,6 +121,9 @@ final class SynthEngine {
     /// so the UI can read a consistent snapshot for CC learn.
     private(set) var lastControlChange: UInt32 = 0
     private var ccCounter: UInt32 = 0
+    /// Set when a learned CC changed a parameter; the AU mirrors those
+    /// values into its parameter tree on main so hosts see them.
+    var ccParametersDirty = false
 
     init() {
         let capacity = 4096
@@ -319,6 +322,7 @@ final class SynthEngine {
                 var v = Float(value) / 127 * maxValue
                 if p.maxValue < 127 { v = v.rounded() }
                 params[target] = v
+                ccParametersDirty = true
                 return
             }
         }

@@ -109,6 +109,7 @@ final class MKS50AudioUnit: AUAudioUnit {
 
     deinit {
         programChangeTimer?.cancel()
+        if let defaultsObserver { NotificationCenter.default.removeObserver(defaultsObserver) }
     }
 
     // MARK: AUAudioUnit overrides
@@ -281,15 +282,18 @@ final class MKS50AudioUnit: AUAudioUnit {
 
     func cc(for p: Param) -> Int? { ccMap[p.rawValue] }
 
-    /// One CC controls one parameter and vice versa.
+    /// One CC controls one parameter and vice versa. The receive channel is
+    /// not learnable (a CC on it would cut off its own controller).
     func assignCC(_ cc: Int, to p: Param) {
-        guard (0..<120).contains(cc) else { return }
+        guard (0..<120).contains(cc), p != .midiChannel else { return }
+        reloadCCMap()
         ccMap = ccMap.filter { $0.value != cc && $0.key != p.rawValue }
         ccMap[p.rawValue] = cc
         applyCCMap()
     }
 
     func removeCC(for p: Param) {
+        reloadCCMap()
         ccMap.removeValue(forKey: p.rawValue)
         applyCCMap()
     }
@@ -299,12 +303,43 @@ final class MKS50AudioUnit: AUAudioUnit {
         applyCCMap()
     }
 
+    private var defaultsObserver: NSObjectProtocol?
+
     private func loadCCMap() {
-        let stored = UserDefaults.standard.dictionary(forKey: MKS50AudioUnit.ccMapKey) as? [String: Int] ?? [:]
-        for (key, cc) in stored {
-            if let raw = Int(key), Param(rawValue: raw) != nil, (0..<120).contains(cc) { ccMap[raw] = cc }
-        }
+        reloadCCMap()
         applyCCMap(save: false)
+        // Other instances in the same process (app + plug-in, two plug-ins)
+        // share these settings; pick up their changes.
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            let before = self.ccMap
+            self.reloadCCMap()
+            if self.ccMap != before { self.applyCCMap(save: false) }
+        }
+    }
+
+    private func reloadCCMap() {
+        let stored = UserDefaults.standard.dictionary(forKey: MKS50AudioUnit.ccMapKey) as? [String: Int] ?? [:]
+        var map: [Int: Int] = [:]
+        for (key, cc) in stored {
+            if let raw = Int(key), let p = Param(rawValue: raw), p != .midiChannel, (0..<120).contains(cc) {
+                map[raw] = cc
+            }
+        }
+        ccMap = map
+    }
+
+    /// Mirrors CC-driven parameter changes into the parameter tree so host
+    /// automation recording and generic host UIs see them.
+    private func publishCCParameterChanges() {
+        guard engine.ccParametersDirty else { return }
+        engine.ccParametersDirty = false
+        for raw in ccMap.keys {
+            guard let parameter = tree.parameter(withAddress: AUParameterAddress(raw)) else { continue }
+            let value = engine.parameter(AUParameterAddress(raw))
+            if parameter.value != value { parameter.setValue(value, originator: nil) }
+        }
     }
 
     private func applyCCMap(save: Bool = true) {
@@ -321,6 +356,7 @@ final class MKS50AudioUnit: AUAudioUnit {
         timer.schedule(deadline: .now() + 0.1, repeating: 0.1)
         timer.setEventHandler { [weak self] in
             guard let self else { return }
+            self.publishCCParameterChanges()
             let program = Int(self.engine.pendingProgramChange)
             guard program >= 0 else { return }
             self.engine.pendingProgramChange = -1
