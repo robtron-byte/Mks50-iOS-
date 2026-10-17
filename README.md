@@ -16,13 +16,13 @@ Ein nativer iOS-Software-Synthesizer, der die Architektur des **Roland MKS-50** 
 | **ENV** | Alpha-Juno-Hüllkurve mit 4 Zeiten und 3 Pegeln (T1/L1, T2/L2, T3/L3, T4) plus Key-Follow; Env-Modi normal/invertiert, mit/ohne Dynamics für DCO und VCF |
 | **LFO** | Rate und Delay (Einblendung pro Tastenanschlag) |
 | **Chorus** | Juno-artiger Stereo-BBD-Chorus mit Rate-Regler |
-| **Patch** | Key-Modi **Poly / Chord / Mono**, 16 Chord-Memory-Speicher (per „LEARN“ von gehaltenen Tasten), Portamento, Bender-Range, Mod-Sensitivity, Key Shift, Volume |
+| **Patch** | Key-Modi **Poly / Chord / Mono**, 16 Chord-Memory-Speicher (per „LEARN CHORD“ vom angeschlossenen MIDI-Keyboard), Portamento, Bender-Range, Mod-Sensitivity, Key Shift, Volume |
 | **Stimmen** | 6 Stimmen (wie das Original), Voice Stealing, Sustain-Pedal |
 | **TAL-Pha-Extras** | Pulse-Detune (±12 HT), Pulse-Hard-Sync und Env→Pulse-Pitch (Sync-Sweeps), **Voice Drift** („Voice Calibration“: feste Toleranzen pro Stimme bei Tonhöhe, Cutoff und Hüllkurvenzeiten plus langsames Wandern), **Stereo-Unison** mit allen 6 Stimmen, Detune-Spread und Panorama |
 | **MIDI** | CoreMIDI (USB, Netzwerk, **Bluetooth LE MIDI**), virtueller Port „MKS50 Synth“ für andere Apps, Empfangskanal Omni/1–16, Pitch Bend, Mod Wheel (CC1), Aftertouch, Sustain (CC64), Portamento (CC5/CC65), Program Change |
 | **SysEx** | Empfang von MKS-50/Alpha-Juno-**Tone-Dumps (APR)** und **Einzelparameter (IPR)**, z. B. vom PG-300 oder einem Editor; Import/Export von `.syx`-Dateien; Senden des aktuellen Sounds an ein echtes MKS-50 |
 | **Presets** | 16 eigene Factory-Sounds (u. a. Hoover, Juno Brass, Strings, House Stab), User-Presets (AUv3-Preset-System, funktioniert auch im Host) |
-| **UI** | SwiftUI-Panel im Look der schwarz-orangen Hardware, Drehregler (ziehen, Doppeltipp = Standardwert), Hüllkurvengrafik, Multitouch-Keyboard mit Velocity, Bend-/Mod-/Aftertouch-Streifen, VoiceOver-Unterstützung |
+| **UI** | Kompaktes SwiftUI-Panel im Look der schwarz-orangen Hardware, in Seiten aufgeteilt (OSC · MOD · FILTER · ENV · AMP/FX · PATCH · EXTRA) mit großen Drehreglern und Tastern statt vieler kleiner Elemente. Statt Tastatur gibt es **einen großen Spiel-Button** mit zuweisbarer MIDI-Note (±Halbton/±Oktave oder *MIDI LEARN* vom Keyboard) und *HOLD*-Funktion zum Schrauben bei gehaltenem Ton. VoiceOver-Unterstützung |
 
 Die Parameteradressen 0–35 entsprechen exakt den Tone-Parameternummern des MKS-50. Damit sind die SysEx-Nachrichten direkt kompatibel, und Host-Automation verwendet dieselben Wertebereiche wie die Hardware (0–127 bzw. diskrete Schalter).
 
@@ -34,7 +34,7 @@ Die Parameteradressen 0–35 entsprechen exakt den Tone-Parameternummern des MKS
 - **Apple-AUv3-Instrument-Vorlage**: Eine Audio-Unit-Klasse (`MKS50AudioUnit`) wird sowohl in der App (in-process über `AUAudioUnit.registerSubclass`) als auch in der Extension genutzt. Die App ist damit nur ein „Host“ ihres eigenen Plugins – genau wie Desktop-Plugins Standalone und VST/AU aus einem Kern bauen.
 - **Juno-/Alpha-Juno-Emulationen (z. B. TAL-U-NO-LX, Dexed-artige Editoren mit SysEx-Unterstützung)**: Parameter in Hardware-Einheiten, SysEx-kompatible Tone-Daten, Preset-Import per `.syx`.
 - **Echtzeit-Regeln aus JUCE/iPlug**: Im Render-Thread wird nichts allokiert und nie blockiert. MIDI vom UI-/CoreMIDI-Thread kommt über eine Queue, die der Audio-Thread nur mit `os_unfair_lock_trylock` liest. Parameter-Events des Hosts werden sample-genau verarbeitet.
-- **iOS-spezifisch**: Multitouch-Keyboard statt Maus, Bluetooth-MIDI-Pairing mit Apples Standard-Dialog, Audio-Session mit 5-ms-Puffer und Hintergrund-Audio, Wiederanlauf nach Unterbrechungen und Routenwechseln, Dateien über die Dateien-App, Querformat-Layout für iPhone und iPad.
+- **iOS-spezifisch**: große Touch-Ziele (≥ 44 pt) statt Maus-Bedienung, Bluetooth-MIDI-Pairing mit Apples Standard-Dialog, Audio-Session mit 5-ms-Puffer und Hintergrund-Audio, Wiederanlauf nach Unterbrechungen und Routenwechseln, Dateien über die Dateien-App, Querformat-Layout für iPhone und iPad.
 
 ## Effizienz (ohne Klangeinbußen)
 
@@ -65,7 +65,7 @@ Shared/                 wird in App UND Extension kompiliert
   DSP/                  DCO, LadderFilter, Envelope, Chorus, SynthEngine
   AU/                   MKS50AudioUnit (AUv3, Parameterbaum, Presets, State)
   Model/                Parameter (MKS-50-Nummerierung), ToneData + SysEx, Presets, Chords
-  UI/                   SwiftUI-Panel, Regler, Keyboard, ViewModel
+  UI/                   SwiftUI-Panel (Seiten), Regler, Spiel-Button, ViewModel
 MKS50App/               Standalone-App: AVAudioEngine-Host, CoreMIDI, Einstellungen
 MKS50AU/                AUv3-Extension: AudioUnitViewController (Factory + UI)
 Config/                 Info.plists (Hintergrund-Audio, AudioComponents)
@@ -88,7 +88,8 @@ Hinweis: Auch der Debug-Build ist mit `-O` optimiert, weil Swift-DSP ohne Optimi
 
 - **Regler**: hoch/runter oder links/rechts ziehen; Doppeltipp setzt den Standardwert.
 - **Presets**: Tippen auf die grüne Anzeige öffnet die Preset-Liste; Pfeile blättern durch die Factory-Sounds.
-- **Chord Memory**: Key-Mode auf CHORD stellen, Akkord auf der Tastatur halten, LEARN tippen. Die Akkorde werden mit dem Preset gespeichert.
+- **Spiel-Button**: Gedrückt halten spielt die zugewiesene Note. Die Pfeile ändern sie um einen Halbton bzw. eine Oktave. *MIDI LEARN* antippen und eine Taste am Keyboard spielen übernimmt diese Note. Mit *HOLD* bleibt der Ton nach dem Antippen stehen, bis du erneut tippst.
+- **Chord Memory**: Key-Mode auf CHORD stellen, Akkord auf dem MIDI-Keyboard halten, auf der PATCH-Seite *LEARN CHORD* tippen. Die Akkorde werden mit dem Preset gespeichert.
 - **Hardware-MKS-50**: In den Einstellungen den MIDI-Kanal wählen; der Papierflieger sendet den aktuellen Tone als APR-SysEx. Tone-Dumps vom Gerät werden live übernommen.
 
 ## Grenzen / Ideen für später

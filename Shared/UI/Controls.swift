@@ -20,17 +20,17 @@ struct PanelSection<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(Theme.accent)
                 .padding(.bottom, 1)
                 .overlay(Rectangle().fill(Theme.accent).frame(height: 1).offset(y: 2), alignment: .bottom)
             content
         }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.panelEdge, lineWidth: 1))
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.panelEdge, lineWidth: 1))
     }
 }
 
@@ -40,7 +40,7 @@ struct Knob: View {
     @Binding var value: Float
     var maxValue: Float = 127
     var defaultValue: Float = 0
-    var size: CGFloat = 40
+    var size: CGFloat = 50
     var display: ((Float) -> String)? = nil
 
     @State private var dragStart: Float?
@@ -50,18 +50,18 @@ struct Knob: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(label)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(Theme.label)
                 .lineLimit(1)
                 .fixedSize()
             ZStack {
                 Circle()
                     .trim(from: 0, to: 0.75)
-                    .stroke(Theme.panelEdge, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .stroke(Theme.panelEdge, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(135))
                 Circle()
                     .trim(from: 0, to: 0.75 * fraction)
-                    .stroke(Theme.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .stroke(Theme.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(135))
                 Circle()
                     .fill(LinearGradient(colors: [Color(white: 0.32), Theme.knobBody],
@@ -76,7 +76,8 @@ struct Knob: View {
             }
             .frame(width: size, height: size)
             .contentShape(Rectangle())
-            .gesture(
+            // High priority so the knob wins over the page's scroll view.
+            .highPriorityGesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { g in
                         if dragStart == nil { dragStart = value }
@@ -99,7 +100,7 @@ struct Knob: View {
             }
 
             Text(display?(value) ?? "\(Int(value.rounded()))")
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundColor(Theme.dimLabel)
                 .lineLimit(1)
                 .fixedSize()
@@ -113,25 +114,25 @@ struct StepSelector: View {
     let label: String
     let options: [String]
     @Binding var value: Float
-    var cellWidth: CGFloat = 20
+    var cellWidth: CGFloat = 34
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(Theme.label)
-            HStack(spacing: 2) {
+            HStack(spacing: 3) {
                 ForEach(options.indices, id: \.self) { i in
                     let selected = Int(value.rounded()) == i
                     Button {
                         value = Float(i)
                     } label: {
                         Text(options[i])
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
                             .foregroundColor(selected ? .black : Theme.label)
-                            .frame(minWidth: cellWidth, minHeight: 22)
-                            .padding(.horizontal, 2)
-                            .background(RoundedRectangle(cornerRadius: 3)
+                            .frame(minWidth: cellWidth, minHeight: 32)
+                            .padding(.horizontal, 3)
+                            .background(RoundedRectangle(cornerRadius: 5)
                                 .fill(selected ? Theme.accent : Theme.knobBody))
                     }
                     .buttonStyle(.plain)
@@ -175,51 +176,41 @@ struct EnvelopeGraph: View {
     }
 }
 
-/// Spring-loaded or latching vertical strip (pitch bend, modulation).
-struct ControlStrip: View {
-    let label: String
-    /// Bipolar strips (pitch bend) center at 0 and spring back.
-    var bipolar = false
-    let onChange: (Float) -> Void
-
-    @State private var position: Float = 0
+/// Large text button, optionally lit (toggle state).
+struct BigButton: View {
+    let title: String
+    var active = false
+    let action: () -> Void
 
     var body: some View {
-        VStack(spacing: 3) {
-            GeometryReader { geo in
-                let height = geo.size.height
-                let normalized = bipolar ? (position + 1) / 2 : position
-                ZStack(alignment: .top) {
-                    RoundedRectangle(cornerRadius: 5).fill(Theme.knobBody)
-                    if bipolar {
-                        Rectangle().fill(Theme.panelEdge).frame(height: 1).offset(y: height / 2)
-                    }
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Theme.accent)
-                        .frame(height: 10)
-                        .padding(.horizontal, 3)
-                        .offset(y: (1 - CGFloat(normalized)) * (height - 10))
-                }
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { g in
-                            let n = Float(1 - min(max(g.location.y / height, 0), 1))
-                            position = bipolar ? n * 2 - 1 : n
-                            onChange(position)
-                        }
-                        .onEnded { _ in
-                            if bipolar {
-                                withAnimation(.easeOut(duration: 0.15)) { position = 0 }
-                                onChange(0)
-                            }
-                        }
-                )
-            }
-            Text(label)
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(Theme.dimLabel)
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundColor(active ? .black : Theme.label)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .frame(minWidth: 72, minHeight: 44)
+                .background(RoundedRectangle(cornerRadius: 8).fill(active ? Theme.accent : Theme.knobBody))
         }
-        .frame(width: 26)
+        .buttonStyle(.plain)
+    }
+}
+
+/// Square icon button (≥ 44 pt touch target).
+struct StepButton: View {
+    let symbol: String
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(Theme.label)
+                .frame(width: 44, height: 44)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.knobBody))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 }

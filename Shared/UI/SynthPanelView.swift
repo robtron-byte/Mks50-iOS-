@@ -1,280 +1,368 @@
 import SwiftUI
 
-/// All MKS-50 tone and patch parameters laid out as a hardware-style panel.
+/// Pages of the panel. Fewer, larger controls per page instead of one long
+/// strip of tiny knobs.
+enum PanelPage: String, CaseIterable, Identifiable {
+    case osc = "OSC"
+    case mod = "MOD"
+    case filter = "FILTER"
+    case env = "ENV"
+    case ampFx = "AMP · FX"
+    case patch = "PATCH"
+    case extra = "EXTRA"
+
+    var id: String { rawValue }
+}
+
+/// All MKS-50 tone and patch parameters, one page at a time.
 struct SynthPanelView: View {
     @ObservedObject var model: SynthViewModel
+    @AppStorage("panelPage") private var pageRaw = PanelPage.osc.rawValue
+
+    private var page: PanelPage { PanelPage(rawValue: pageRaw) ?? .osc }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 8) {
-                dcoSection
-                dcoModSection
-                vcfSection
-                envSection
-                vcaSection
-                lfoSection
-                hpfChorusSection
-                controlSection
-                extraSection
+        VStack(spacing: 0) {
+            pageTabs
+            ScrollView(.vertical, showsIndicators: false) {
+                pageContent
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+        }
+    }
+
+    private var pageTabs: some View {
+        HStack(spacing: 4) {
+            ForEach(PanelPage.allCases) { p in
+                let selected = p == page
+                Button {
+                    pageRaw = p.rawValue
+                } label: {
+                    Text(p.rawValue)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(selected ? .black : Theme.label)
+                        .frame(maxWidth: .infinity, minHeight: 34)
+                        .background(RoundedRectangle(cornerRadius: 7)
+                            .fill(selected ? Theme.accent : Theme.knobBody))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+    }
+
+    @ViewBuilder private var pageContent: some View {
+        switch page {
+        case .osc: oscPage
+        case .mod: modPage
+        case .filter: filterPage
+        case .env: envPage
+        case .ampFx: ampFxPage
+        case .patch: patchPage
+        case .extra: extraPage
         }
     }
 
     // MARK: Helpers
 
-    private func knob(_ p: Param, _ label: String? = nil, size: CGFloat = 40) -> some View {
+    private func knob(_ p: Param, _ label: String? = nil) -> some View {
         let display: ((Float) -> String)? = (p.isDiscrete || p == .pulseDetune) ? { value in p.string(for: value) } : nil
         return Knob(label: label ?? p.shortName,
                     value: model.binding(p),
                     maxValue: Float(p.maxValue),
                     defaultValue: Float(p.defaultValue),
-                    size: size,
                     display: display)
     }
 
-    private func selector(_ p: Param, _ label: String? = nil, width: CGFloat = 20) -> some View {
+    private func selector(_ p: Param, _ label: String? = nil) -> some View {
         StepSelector(label: label ?? p.shortName,
                      options: p.valueStrings ?? [],
-                     value: model.binding(p),
-                     cellWidth: width)
+                     value: model.binding(p))
     }
 
-    // MARK: Sections
+    private func group<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
+        PanelSection(title: title, content: content)
+    }
 
-    private var dcoSection: some View {
-        PanelSection(title: "DCO") {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 6) {
-                    selector(.dcoRange, width: 24)
+    // MARK: Pages
+
+    private var oscPage: some View {
+        let wave = group("WAVE") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 14) {
                     selector(.dcoPulse)
-                    selector(.dcoSubLevel)
-                }
-                VStack(alignment: .leading, spacing: 6) {
                     selector(.dcoSaw)
+                }
+                HStack(spacing: 14) {
                     selector(.dcoSub)
-                    selector(.dcoNoiseLevel)
+                    selector(.dcoSubLevel)
                 }
             }
         }
-    }
-
-    private var dcoModSection: some View {
-        PanelSection(title: "DCO MOD") {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    knob(.dcoLfoDepth)
-                    knob(.dcoEnvDepth)
-                    knob(.dcoAfterDepth)
+        let dco = group("DCO") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 14) {
+                    selector(.dcoRange)
+                    selector(.dcoNoiseLevel)
                 }
-                HStack(spacing: 6) {
+                HStack(spacing: 18) {
                     knob(.dcoPwDepth)
                     knob(.dcoPwmRate)
                 }
-                selector(.dcoEnvMode, width: 30)
+            }
+        }
+        // Side by side when there is room, stacked on narrow phones.
+        return ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 14) { wave; dco }
+            VStack(spacing: 14) { wave; dco }
+        }
+    }
+
+    private var modPage: some View {
+        HStack(alignment: .top, spacing: 14) {
+            group("LFO") {
+                HStack(spacing: 18) {
+                    knob(.lfoRate)
+                    knob(.lfoDelay)
+                }
+            }
+            group("DCO MOD") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 18) {
+                        knob(.dcoLfoDepth)
+                        knob(.dcoEnvDepth)
+                        knob(.dcoAfterDepth)
+                    }
+                    selector(.dcoEnvMode)
+                }
             }
         }
     }
 
-    private var vcfSection: some View {
-        PanelSection(title: "VCF") {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    knob(.vcfCutoff, size: 46)
-                    knob(.vcfResonance, size: 46)
-                    knob(.vcfEnvDepth, size: 46)
+    private var filterPage: some View {
+        VStack(spacing: 14) {
+            group("VCF") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 18) {
+                        knob(.vcfCutoff)
+                        knob(.vcfResonance)
+                        knob(.vcfEnvDepth)
+                        knob(.vcfKeyFollow)
+                        knob(.vcfLfoDepth)
+                        knob(.vcfAfterDepth)
+                    }
+                    HStack(spacing: 24) {
+                        selector(.vcfEnvMode)
+                        selector(.hpfCutoff, "HPF")
+                    }
                 }
-                HStack(spacing: 6) {
-                    knob(.vcfLfoDepth, size: 34)
-                    knob(.vcfKeyFollow, size: 34)
-                    knob(.vcfAfterDepth, size: 34)
-                }
-                selector(.vcfEnvMode, width: 30)
             }
         }
     }
 
-    private var envSection: some View {
-        PanelSection(title: "ENV") {
-            VStack(alignment: .leading, spacing: 6) {
+    private var envPage: some View {
+        group("ENVELOPE") {
+            HStack(alignment: .center, spacing: 18) {
                 EnvelopeGraph(envelope: model.envelope)
-                    .frame(width: 190, height: 44)
-                HStack(spacing: 4) {
-                    knob(.envT1, size: 34)
-                    knob(.envL1, size: 34)
-                    knob(.envT2, size: 34)
-                    knob(.envL2, size: 34)
+                    .frame(width: 220, height: 120)
+                VStack(spacing: 10) {
+                    HStack(spacing: 14) {
+                        knob(.envT1)
+                        knob(.envT2)
+                        knob(.envT3)
+                        knob(.envT4)
+                    }
+                    HStack(spacing: 14) {
+                        knob(.envL1)
+                        knob(.envL2)
+                        knob(.envL3)
+                        knob(.envKeyFollow)
+                    }
                 }
-                HStack(spacing: 4) {
-                    knob(.envT3, size: 34)
-                    knob(.envL3, size: 34)
-                    knob(.envT4, size: 34)
-                    knob(.envKeyFollow, size: 34)
+            }
+        }
+    }
+
+    private var ampFxPage: some View {
+        HStack(alignment: .top, spacing: 14) {
+            group("VCA") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 18) {
+                        knob(.vcaLevel)
+                        knob(.vcaAfterDepth)
+                    }
+                    selector(.vcaEnvMode)
                 }
             }
-        }
-    }
-
-    private var vcaSection: some View {
-        PanelSection(title: "VCA") {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    knob(.vcaLevel)
-                    knob(.vcaAfterDepth)
+            group("CHORUS") {
+                VStack(alignment: .leading, spacing: 10) {
+                    selector(.chorus, "CHORUS")
+                    knob(.chorusRate)
                 }
-                selector(.vcaEnvMode, width: 30)
+            }
+            group("OUTPUT") {
+                knob(.volume)
             }
         }
     }
 
-    private var lfoSection: some View {
-        PanelSection(title: "LFO") {
-            VStack(spacing: 6) {
-                knob(.lfoRate)
-                knob(.lfoDelay)
-            }
-        }
-    }
-
-    private var hpfChorusSection: some View {
-        PanelSection(title: "HPF / CHORUS") {
-            VStack(alignment: .leading, spacing: 8) {
-                selector(.hpfCutoff, "HPF CUTOFF")
-                selector(.chorus, width: 30)
-                knob(.chorusRate, "CHORUS RATE")
-            }
-        }
-    }
-
-    private var controlSection: some View {
-        PanelSection(title: "PATCH") {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 6) {
-                    selector(.keyMode, width: 34)
-                    HStack(alignment: .bottom, spacing: 6) {
-                        knob(.chordIndex, "CHORD", size: 34)
-                        VStack(alignment: .leading, spacing: 4) {
+    private var patchPage: some View {
+        HStack(alignment: .top, spacing: 14) {
+            group("KEY") {
+                VStack(alignment: .leading, spacing: 10) {
+                    selector(.keyMode)
+                    HStack(alignment: .center, spacing: 14) {
+                        knob(.chordIndex, "CHORD")
+                        VStack(alignment: .leading, spacing: 8) {
                             Text(model.chordDescription(model.intValue(.chordIndex)))
-                                .font(.system(size: 9, design: .monospaced))
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
                                 .foregroundColor(Theme.displayText)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .background(RoundedRectangle(cornerRadius: 3).fill(Theme.display))
-                            Button("LEARN") { model.learnChord() }
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.black)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
-                                .background(RoundedRectangle(cornerRadius: 3).fill(Theme.accent))
-                                .buttonStyle(.plain)
+                                .background(RoundedRectangle(cornerRadius: 4).fill(Theme.display))
+                            BigButton(title: "LEARN CHORD") { model.learnChord() }
                         }
                     }
-                    selector(.portaSwitch, "PORTAMENTO", width: 30)
                 }
-                VStack(spacing: 6) {
-                    HStack(spacing: 6) {
-                        knob(.portaTime, size: 34)
-                        knob(.benderRange, size: 34)
+            }
+            group("PERFORM") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 18) {
+                        knob(.portaTime)
+                        knob(.benderRange)
+                        knob(.modSensitivity)
+                        knob(.keyShift)
                     }
-                    HStack(spacing: 6) {
-                        knob(.modSensitivity, size: 34)
-                        knob(.keyShift, size: 34)
+                    selector(.portaSwitch, "PORTAMENTO")
+                }
+            }
+        }
+    }
+
+    private var extraPage: some View {
+        HStack(alignment: .top, spacing: 14) {
+            group("PULSE") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 18) {
+                        knob(.pulseDetune)
+                        knob(.pulseEnvMod)
                     }
-                    knob(.volume, size: 34)
+                    selector(.pulseSync, "PULSE SYNC")
+                }
+            }
+            group("VOICES") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 18) {
+                        knob(.voiceDrift)
+                        knob(.unisonDetune)
+                    }
+                    Text("Unison: PATCH → KEY MODE → UNISON")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.dimLabel)
                 }
             }
         }
     }
 }
 
-extension SynthPanelView {
-    /// Additions in the style of TAL-Pha that the hardware does not have.
-    fileprivate var extraSection: some View {
-        PanelSection(title: "EXTRA") {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    knob(.pulseDetune, size: 34)
-                    knob(.pulseEnvMod, size: 34)
-                    selector(.pulseSync, "PLS SYNC", width: 28)
-                }
-                HStack(spacing: 6) {
-                    knob(.voiceDrift, size: 34)
-                    knob(.unisonDetune, size: 34)
-                }
-                Text("UNISON: KEY MODE → UNISON")
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundColor(Theme.dimLabel)
+/// Large single "play" pad with an assignable MIDI note.
+struct PlayBar: View {
+    @ObservedObject var model: SynthViewModel
+    @State private var pressed = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            BigButton(title: model.isLearningPadNote ? "PLAY A KEY…" : "MIDI LEARN",
+                      active: model.isLearningPadNote) { model.toggleLearnPadNote() }
+
+            HStack(spacing: 6) {
+                StepButton(symbol: "chevron.left.2", label: "Octave down") { model.transposePad(-12) }
+                StepButton(symbol: "chevron.left", label: "Semitone down") { model.transposePad(-1) }
             }
+
+            pad
+
+            HStack(spacing: 6) {
+                StepButton(symbol: "chevron.right", label: "Semitone up") { model.transposePad(1) }
+                StepButton(symbol: "chevron.right.2", label: "Octave up") { model.transposePad(12) }
+            }
+
+            BigButton(title: "HOLD", active: model.padLatch) { model.padLatch.toggle() }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Theme.panel)
+    }
+
+    private var pad: some View {
+        let lit = model.padSounding
+        return VStack(spacing: 2) {
+            Text(model.padNoteName)
+                .font(.system(size: 24, weight: .heavy, design: .rounded))
+            Text(model.padLatch ? (lit ? "TAP TO STOP" : "TAP TO HOLD") : "PLAY")
+                .font(.system(size: 10, weight: .bold))
+                .opacity(0.8)
+        }
+        .foregroundColor(lit ? .black : Theme.label)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(RoundedRectangle(cornerRadius: 12)
+            .fill(lit ? Theme.accent : Theme.knobBody))
+        .overlay(RoundedRectangle(cornerRadius: 12)
+            .stroke(lit ? Theme.accent : Theme.panelEdge, lineWidth: 2))
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !pressed {
+                        pressed = true
+                        model.padTouchDown()
+                    }
+                }
+                .onEnded { _ in
+                    pressed = false
+                    model.padTouchUp()
+                }
+        )
+        .accessibilityElement()
+        .accessibilityLabel("Play \(model.padNoteName)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction {
+            model.padTouchDown()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { model.padTouchUp() }
         }
     }
 }
 
-/// Panel + performance controls + keyboard. Shared by the app and the AUv3 UI.
+/// Panel + play bar. Shared by the app and the AUv3 UI.
 struct SynthMainView<Toolbar: View>: View {
     @ObservedObject var model: SynthViewModel
     @ViewBuilder var toolbar: Toolbar
 
     var body: some View {
-        GeometryReader { geo in
-            let keyboardHeight = min(150, max(90, geo.size.height * 0.3))
-            VStack(spacing: 0) {
-                toolbar
-                SynthPanelView(model: model)
-                    .frame(maxHeight: .infinity)
-                performanceBar
-                    .frame(height: keyboardHeight)
-            }
-            .overlay(alignment: .top) { statusBanner }
+        VStack(spacing: 0) {
+            toolbar
+            SynthPanelView(model: model)
+                .frame(maxHeight: .infinity)
+            PlayBar(model: model)
+                .frame(height: 76)
         }
+        .overlay(alignment: .top) { statusBanner }
         .background(Theme.background.ignoresSafeArea())
         .onAppear { model.setPolling(true) }
         .onDisappear { model.setPolling(false) }
     }
 
-    private var performanceBar: some View {
-        HStack(spacing: 6) {
-            VStack(spacing: 6) {
-                octaveButton("chevron.up", 1)
-                Text(octaveLabel)
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(Theme.dimLabel)
-                octaveButton("chevron.down", -1)
-            }
-            .frame(width: 34)
-            ControlStrip(label: "BEND", bipolar: true) { model.pitchBend($0) }
-            ControlStrip(label: "MOD") { model.modWheel($0) }
-            ControlStrip(label: "AFTER") { model.aftertouch($0) }
-            KeyboardView(baseNote: model.keyboardBaseNote,
-                         onNoteOn: { note, velocity in model.noteOn(note, velocity: velocity) },
-                         onNoteOff: { note in model.noteOff(note) })
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Theme.panel)
-    }
-
-    private var octaveLabel: String { "C\(model.keyboardBaseNote / 12 - 1)" }
-
-    private func octaveButton(_ symbol: String, _ delta: Int) -> some View {
-        Button { model.shiftKeyboard(octaves: delta) } label: {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(Theme.label)
-                .frame(width: 32, height: 28)
-                .background(RoundedRectangle(cornerRadius: 4).fill(Theme.knobBody))
-        }
-        .buttonStyle(.plain)
-    }
-
     @ViewBuilder private var statusBanner: some View {
         if let message = model.statusMessage {
             Text(message)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.black)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
                 .background(Capsule().fill(Theme.accent))
                 .padding(.top, 50)
                 .transition(.opacity)

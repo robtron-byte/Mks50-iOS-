@@ -106,6 +106,14 @@ final class SynthEngine {
     /// Set by the audio thread when a program change arrives; consumed on main.
     var pendingProgramChange: Int32 = -1
 
+    /// Keys currently held by any source (1 = down), for chord LEARN.
+    /// Written on the audio thread, read on main.
+    private let heldKeyFlags: UnsafeMutablePointer<UInt8>
+    /// Last note-on key and a counter that changes with every note-on,
+    /// so the UI can "MIDI-learn" the note of the play button.
+    private(set) var lastNoteOnKey: Int32 = -1
+    private(set) var noteOnCounter: UInt32 = 0
+
     init() {
         let capacity = 4096
         params = .allocate(capacity: Param.storageSize)
@@ -135,6 +143,9 @@ final class SynthEngine {
         queue = .allocate(capacity: SynthEngine.queueCapacity)
         queue.initialize(repeating: 0, count: SynthEngine.queueCapacity)
 
+        heldKeyFlags = .allocate(capacity: 128)
+        heldKeyFlags.initialize(repeating: 0, count: 128)
+
         for p in Param.allCases { params[p.rawValue] = Float(p.defaultValue) }
         for (i, chord) in ChordMemory.defaultChords.enumerated() { setChord(i, chord) }
         prepare(sampleRate: 44100, maximumFrames: capacity)
@@ -151,6 +162,7 @@ final class SynthEngine {
         chordSizes.deallocate()
         queueLock.deallocate()
         queue.deallocate()
+        heldKeyFlags.deallocate()
     }
 
     // MARK: Setup (not real-time)
@@ -185,6 +197,7 @@ final class SynthEngine {
             voices[i].gateAmp = 0
         }
         keyStackCount = 0
+        heldKeyFlags.update(repeating: 0, count: 128)
         chorus.reset()
         dcXL = 0; dcYL = 0; dcXR = 0; dcYR = 0
     }
@@ -210,6 +223,11 @@ final class SynthEngine {
         let count = min(notes.count, ChordMemory.maxNotes)
         for j in 0..<count { chordNotes[slot * ChordMemory.maxNotes + j] = Int8(clamping: notes[j]) }
         chordSizes[slot] = Int8(count)
+    }
+
+    /// Keys currently held (main thread snapshot).
+    var heldKeys: [Int] {
+        (0..<128).filter { heldKeyFlags[$0] != 0 }
     }
 
     func chord(_ slot: Int) -> [Int] {
@@ -250,9 +268,13 @@ final class SynthEngine {
         let d1 = Int(data1 & 0x7F)
         let d2 = Int(data2 & 0x7F)
         switch status & 0xF0 {
-        case 0x90:
-            if d2 > 0 { noteOn(d1, velocity: d2) } else { noteOff(d1) }
-        case 0x80:
+        case 0x90 where d2 > 0:
+            heldKeyFlags[d1] = 1
+            lastNoteOnKey = Int32(d1)
+            noteOnCounter &+= 1
+            noteOn(d1, velocity: d2)
+        case 0x80, 0x90:
+            heldKeyFlags[d1] = 0
             noteOff(d1)
         case 0xB0:
             controlChange(d1, d2)
@@ -287,6 +309,7 @@ final class SynthEngine {
             bend = 0; modWheel = 0; aftertouch = 0
             if sustainPedal { sustainPedal = false; releaseSustained() }
         case 123:
+            heldKeyFlags.update(repeating: 0, count: 128)
             allNotesOff()
         default:
             break

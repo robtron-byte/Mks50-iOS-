@@ -10,9 +10,18 @@ final class SynthViewModel: ObservableObject {
     @Published private(set) var values: [Float]
     @Published private(set) var toneName: String = ""
     @Published private(set) var userPresets: [AUAudioUnitPreset] = []
-    @Published var keyboardBaseNote: Int = 48
-    @Published private(set) var heldNotes: Set<Int> = []
     @Published var statusMessage: String?
+
+    // Play button ("pad"): one assignable MIDI note instead of a keyboard.
+    @Published private(set) var padNote: Int
+    @Published private(set) var padSounding = false
+    @Published var padLatch = false {
+        didSet { if !padLatch && padSounding && !padTouching { padStop() } }
+    }
+    @Published private(set) var isLearningPadNote = false
+    private var padTouching = false
+    private var learnStartCounter: UInt32 = 0
+    private static let padNoteKey = "padNote"
 
     private var parameters: [Int: AUParameter] = [:]
     private var timer: Timer?
@@ -21,6 +30,8 @@ final class SynthViewModel: ObservableObject {
     init(audioUnit: MKS50AudioUnit) {
         self.audioUnit = audioUnit
         values = Array(repeating: 0, count: Param.storageSize)
+        let stored = UserDefaults.standard.object(forKey: SynthViewModel.padNoteKey) as? Int
+        padNote = min(max(stored ?? 60, 0), 127)
         audioUnit.parameterTree?.allParameters.forEach { parameters[Int($0.address)] = $0 }
         poll()
         refreshUserPresets()
@@ -53,6 +64,16 @@ final class SynthViewModel: ObservableObject {
         }
         if changed { values = next }
         if toneName != audioUnit.toneName { toneName = audioUnit.toneName }
+
+        // MIDI-learn: the next incoming note-on (from any source) becomes the pad note.
+        if isLearningPadNote, audioUnit.engine.noteOnCounter != learnStartCounter {
+            let key = Int(audioUnit.engine.lastNoteOnKey)
+            isLearningPadNote = false
+            if (0...127).contains(key) {
+                setPadNote(key)
+                flash("Play button: \(SynthViewModel.noteName(key))")
+            }
+        }
     }
 
     // MARK: Parameters
@@ -78,42 +99,62 @@ final class SynthViewModel: ObservableObject {
                          t4: SynthEngine.envelopeTime(value(.envT4)))
     }
 
-    // MARK: Performance
+    // MARK: Play button
 
-    func noteOn(_ note: Int, velocity: Int) {
-        heldNotes.insert(note)
-        audioUnit.sendMIDI(0x90, UInt8(note & 0x7F), UInt8(max(1, min(127, velocity))))
+    static func noteName(_ note: Int) -> String {
+        let names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        return names[((note % 12) + 12) % 12] + "\(note / 12 - 1)"   // C4 = MIDI 60
     }
 
-    func noteOff(_ note: Int) {
-        heldNotes.remove(note)
-        audioUnit.sendMIDI(0x80, UInt8(note & 0x7F), 0)
+    var padNoteName: String { SynthViewModel.noteName(padNote) }
+
+    func padTouchDown() {
+        padTouching = true
+        if padLatch && padSounding {
+            padStop()                     // second tap releases a latched note
+        } else if !padSounding {
+            audioUnit.sendMIDI(0x90, UInt8(padNote), 100)
+            padSounding = true
+        }
     }
 
-    /// -1...1
-    func pitchBend(_ amount: Float) {
-        let v = Int((max(-1, min(1, amount)) * 8191).rounded()) + 8192
-        audioUnit.sendMIDI(0xE0, UInt8(v & 0x7F), UInt8((v >> 7) & 0x7F))
+    func padTouchUp() {
+        padTouching = false
+        if !padLatch { padStop() }
     }
 
-    /// 0...1
-    func modWheel(_ amount: Float) {
-        audioUnit.sendMIDI(0xB0, 1, UInt8(max(0, min(127, Int(amount * 127)))))
+    private func padStop() {
+        guard padSounding else { return }
+        audioUnit.sendMIDI(0x80, UInt8(padNote), 0)
+        padSounding = false
     }
 
-    /// 0...1 channel aftertouch
-    func aftertouch(_ amount: Float) {
-        audioUnit.sendMIDI(0xD0, UInt8(max(0, min(127, Int(amount * 127)))), 0)
+    func setPadNote(_ note: Int) {
+        let clamped = min(max(note, 0), 127)
+        guard clamped != padNote else { return }
+        let wasSounding = padSounding
+        padStop()
+        padNote = clamped
+        UserDefaults.standard.set(clamped, forKey: SynthViewModel.padNoteKey)
+        if wasSounding && padLatch {
+            audioUnit.sendMIDI(0x90, UInt8(padNote), 100)
+            padSounding = true
+        }
+    }
+
+    func transposePad(_ semitones: Int) { setPadNote(padNote + semitones) }
+
+    func toggleLearnPadNote() {
+        isLearningPadNote.toggle()
+        learnStartCounter = audioUnit.engine.noteOnCounter
+        if isLearningPadNote { flash("Play a note on your MIDI keyboard") }
     }
 
     func panic() {
-        heldNotes.removeAll()
+        padStop()
+        padTouching = false
         audioUnit.sendMIDI(0xB0, 123, 0)
         audioUnit.sendMIDI(0xB0, 120, 0)
-    }
-
-    func shiftKeyboard(octaves: Int) {
-        keyboardBaseNote = max(12, min(96, keyboardBaseNote + octaves * 12))
     }
 
     // MARK: Chord memory
@@ -122,13 +163,15 @@ final class SynthViewModel: ObservableObject {
         ChordMemory.describe(audioUnit.engine.chord(slot))
     }
 
-    /// Stores the currently held on-screen keys as the selected chord.
+    /// Stores the keys currently held on a connected MIDI keyboard as the
+    /// selected chord.
     func learnChord() {
-        guard heldNotes.count >= 1 else {
-            flash("Hold keys first, then tap LEARN")
+        let held = audioUnit.engine.heldKeys
+        guard !held.isEmpty else {
+            flash("Hold a chord on your MIDI keyboard, then tap LEARN")
             return
         }
-        let chord = ChordMemory.chord(fromHeld: Array(heldNotes))
+        let chord = ChordMemory.chord(fromHeld: held)
         audioUnit.engine.setChord(intValue(.chordIndex), chord)
         flash("Chord \(intValue(.chordIndex) + 1): \(ChordMemory.describe(chord))")
         objectWillChange.send()
