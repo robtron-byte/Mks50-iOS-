@@ -11,17 +11,22 @@ final class AudioHost: ObservableObject {
     private let engine = AVAudioEngine()
     private var unitNode: AVAudioUnit?
     private var observers: [NSObjectProtocol] = []
+    /// AVAudioSession activation can block for a while; never do it on main.
+    private let sessionQueue = DispatchQueue(label: "mks50.audiosession", qos: .userInitiated)
 
     init() {
-        configureSession()
         observeSession()
-        loadAudioUnit()
+        sessionQueue.async { [weak self] in
+            self?.configureSession()
+            DispatchQueue.main.async { self?.loadAudioUnit() }
+        }
     }
 
     deinit {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
+    /// Runs on `sessionQueue`.
     private func configureSession() {
         let session = AVAudioSession.sharedInstance()
         do {
@@ -29,7 +34,8 @@ final class AudioHost: ObservableObject {
             try session.setPreferredIOBufferDuration(0.005)
             try session.setActive(true)
         } catch {
-            errorMessage = "Audio session: \(error.localizedDescription)"
+            let message = "Audio session: \(error.localizedDescription)"
+            DispatchQueue.main.async { [weak self] in self?.errorMessage = message }
         }
     }
 
@@ -47,8 +53,10 @@ final class AudioHost: ObservableObject {
         })
         observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification,
                                             object: nil, queue: .main) { [weak self] _ in
-            self?.configureSession()
-            self?.reconnect()
+            self?.sessionQueue.async {
+                self?.configureSession()
+                DispatchQueue.main.async { self?.reconnect() }
+            }
         })
     }
 
@@ -115,8 +123,10 @@ final class AudioHost: ObservableObject {
     }
 
     private func restart() {
-        try? AVAudioSession.sharedInstance().setActive(true)
-        start()
+        sessionQueue.async { [weak self] in
+            try? AVAudioSession.sharedInstance().setActive(true)
+            DispatchQueue.main.async { self?.start() }
+        }
     }
 
     /// Route / sample-rate changes stop the engine; rebuild the connection.
