@@ -24,12 +24,13 @@ struct SynthPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             pageTabs
-            ScrollView(.vertical, showsIndicators: false) {
-                pageContent
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+            // Scroll only on screens where a page does not fit, so knob
+            // drags never fight with a scroll view on normal devices.
+            ViewThatFits(in: .vertical) {
+                paddedPage
+                ScrollView(.vertical, showsIndicators: false) { paddedPage }
             }
+            .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 
@@ -53,6 +54,13 @@ struct SynthPanelView: View {
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
+    }
+
+    private var paddedPage: some View {
+        pageContent
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
     }
 
     @ViewBuilder private var pageContent: some View {
@@ -272,7 +280,9 @@ struct SynthPanelView: View {
 /// Large single "play" pad with an assignable MIDI note.
 struct PlayBar: View {
     @ObservedObject var model: SynthViewModel
-    @State private var pressed = false
+    /// Resets automatically when the touch is cancelled (Control Center,
+    /// calls, backgrounding), so the pad can never get stuck.
+    @GestureState private var pressing = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -316,17 +326,12 @@ struct PlayBar: View {
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    if !pressed {
-                        pressed = true
-                        model.padTouchDown()
-                    }
-                }
-                .onEnded { _ in
-                    pressed = false
-                    model.padTouchUp()
-                }
+                .updating($pressing) { _, state, _ in state = true }
         )
+        .onChange(of: pressing) { isDown in
+            if isDown { model.padTouchDown() } else { model.padTouchUp() }
+        }
+        .onDisappear { model.padTouchUp() }
         .accessibilityElement()
         .accessibilityLabel("Play \(model.padNoteName)")
         .accessibilityAddTraits(.isButton)
