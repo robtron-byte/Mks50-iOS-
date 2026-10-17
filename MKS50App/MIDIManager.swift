@@ -27,7 +27,9 @@ final class MIDIManager: ObservableObject {
     private var outputPort = MIDIPortRef()
     private var virtualDestination = MIDIEndpointRef()
     private var connected: [MIDIEndpointRef] = []
-    private var sysexBuffer: [UInt8] = []
+    /// One reassembly buffer per input (hardware ports / virtual port), so
+    /// interleaved SysEx from different callbacks never mixes.
+    private var sysexBuffers: [[UInt8]] = [[], []]
     private let sysexLimit = 65536
     private var activityPending = false
 
@@ -39,11 +41,11 @@ final class MIDIManager: ObservableObject {
         guard status == noErr else { return }
 
         MIDIInputPortCreateWithProtocol(client, "Input" as CFString, ._1_0, &inputPort) { [weak self] list, _ in
-            self?.receive(list)
+            self?.receive(list, input: 0)
         }
         MIDIOutputPortCreate(client, "Output" as CFString, &outputPort)
         MIDIDestinationCreateWithProtocol(client, "MKS50 Synth" as CFString, ._1_0, &virtualDestination) { [weak self] list, _ in
-            self?.receive(list)
+            self?.receive(list, input: 1)
         }
         refreshConnections()
     }
@@ -93,7 +95,7 @@ final class MIDIManager: ObservableObject {
 
     // MARK: Input (CoreMIDI thread)
 
-    private func receive(_ list: UnsafePointer<MIDIEventList>) {
+    private func receive(_ list: UnsafePointer<MIDIEventList>, input: Int) {
         for packet in list.unsafeSequence() {
             let count = min(Int(packet.pointee.wordCount), 64)
             // Read only the valid words in place (the last packet of a list is
@@ -113,7 +115,7 @@ final class MIDIManager: ObservableObject {
                         onChannelMessage?(status, UInt8((word >> 8) & 0x7F), UInt8(word & 0x7F))
                         noteActivity()
                     case 0x3 where i + 1 < count:
-                        handleSysEx7(word, words[i + 1])
+                        handleSysEx7(word, words[i + 1], input: input)
                     default:
                         break
                     }
@@ -132,7 +134,7 @@ final class MIDIManager: ObservableObject {
         }
     }
 
-    private func handleSysEx7(_ w0: UInt32, _ w1: UInt32) {
+    private func handleSysEx7(_ w0: UInt32, _ w1: UInt32, input: Int) {
         let status = (w0 >> 20) & 0xF
         let length = Int((w0 >> 16) & 0xF)
         let all: [UInt8] = [UInt8((w0 >> 8) & 0xFF), UInt8(w0 & 0xFF),
@@ -147,17 +149,17 @@ final class MIDIManager: ObservableObject {
             message.append(0xF7)
             emitSysEx(message)
         case 0x1: // start
-            sysexBuffer = [0xF0]
-            sysexBuffer.append(contentsOf: bytes)
+            sysexBuffers[input] = [0xF0]
+            sysexBuffers[input].append(contentsOf: bytes)
         case 0x2: // continue
-            if !sysexBuffer.isEmpty, sysexBuffer.count < sysexLimit { sysexBuffer.append(contentsOf: bytes) }
+            if !sysexBuffers[input].isEmpty, sysexBuffers[input].count < sysexLimit { sysexBuffers[input].append(contentsOf: bytes) }
         case 0x3: // end
-            if !sysexBuffer.isEmpty {
-                sysexBuffer.append(contentsOf: bytes)
-                sysexBuffer.append(0xF7)
-                emitSysEx(sysexBuffer)
+            if !sysexBuffers[input].isEmpty {
+                sysexBuffers[input].append(contentsOf: bytes)
+                sysexBuffers[input].append(0xF7)
+                emitSysEx(sysexBuffers[input])
             }
-            sysexBuffer.removeAll(keepingCapacity: true)
+            sysexBuffers[input].removeAll(keepingCapacity: true)
         default:
             break
         }
@@ -168,12 +170,15 @@ final class MIDIManager: ObservableObject {
         noteActivity()
     }
 
+    /// Called from CoreMIDI threads; all state is touched on main only.
     private func noteActivity() {
-        guard !activityPending else { return }
-        activityPending = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.activityPending = false
-            self?.lastActivity = Date()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.activityPending else { return }
+            self.activityPending = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                self?.activityPending = false
+                self?.lastActivity = Date()
+            }
         }
     }
 

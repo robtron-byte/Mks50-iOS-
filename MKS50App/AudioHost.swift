@@ -90,7 +90,9 @@ final class AudioHost: ObservableObject {
     }
 
     private func start() {
-        guard !engine.isRunning else { return }
+        // Never start an engine without the synth attached (that raises an
+        // Objective-C exception); instantiation is asynchronous.
+        guard unitNode != nil, !engine.isRunning else { return }
         do {
             engine.prepare()
             try engine.start()

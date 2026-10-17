@@ -307,7 +307,19 @@ final class SynthEngine {
         }
     }
 
+    /// A key mode switch releases everything (as the hardware does). Called
+    /// before every note event and every control block, so a mode change
+    /// made while the engine is idle never cuts off the next note.
+    private func syncKeyMode() {
+        let keyMode = pi(.keyMode)
+        if keyMode != lastKeyMode {
+            if lastKeyMode >= 0 { allNotesOff() }
+            lastKeyMode = keyMode
+        }
+    }
+
     private func noteOn(_ key: Int, velocity: Int) {
+        syncKeyMode()
         let vel = Float(velocity) / 127
         if pi(.keyMode) == 0 {
             polyNoteOn(key, vel)
@@ -317,6 +329,7 @@ final class SynthEngine {
     }
 
     private func noteOff(_ key: Int) {
+        syncKeyMode()
         if pi(.keyMode) == 0 {
             for i in 0..<SynthEngine.maxVoices where voices[i].active && voices[i].gate && voices[i].key == key {
                 if sustainPedal { voices[i].sustained = true } else { releaseVoice(i) }
@@ -546,12 +559,7 @@ final class SynthEngine {
         let sr = sampleRate
         let fn = Float(n)
 
-        // Key mode switch releases everything (as the hardware does).
-        let keyMode = pi(.keyMode)
-        if keyMode != lastKeyMode {
-            if lastKeyMode >= 0 { allNotesOff() }
-            lastKeyMode = keyMode
-        }
+        syncKeyMode()
 
         // LFO: triangle only, like the Alpha Juno / MKS-50.
         let lfoHz = 0.1 * powf(300, p(.lfoRate) / 127)
