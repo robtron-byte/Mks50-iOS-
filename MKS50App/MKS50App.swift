@@ -154,6 +154,12 @@ struct AppMainView: View {
             } label: { Image(systemName: "paperplane") }
                 .accessibilityLabel("Send tone to hardware")
 
+            Button { model.toggleCCLearn() } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .foregroundColor(model.ccLearnActive ? Theme.accent : Theme.label)
+            }
+            .accessibilityLabel("MIDI CC learn")
+
             Button { model.panic() } label: { Image(systemName: "exclamationmark.octagon") }
                 .accessibilityLabel("All notes off")
 

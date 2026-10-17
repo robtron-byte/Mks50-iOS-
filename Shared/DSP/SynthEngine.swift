@@ -114,6 +114,14 @@ final class SynthEngine {
     private(set) var lastNoteOn: UInt32 = 0
     private var noteOnCounter: UInt32 = 0
 
+    /// MIDI CC → parameter address (-1 = not mapped). Written on main
+    /// (single aligned Int16 stores), read on the audio thread.
+    private let ccTargets: UnsafeMutablePointer<Int16>
+    /// Last control change, packed as `counter << 16 | cc << 8 | value`
+    /// so the UI can read a consistent snapshot for CC learn.
+    private(set) var lastControlChange: UInt32 = 0
+    private var ccCounter: UInt32 = 0
+
     init() {
         let capacity = 4096
         params = .allocate(capacity: Param.storageSize)
@@ -145,6 +153,8 @@ final class SynthEngine {
 
         heldKeyFlags = .allocate(capacity: 128)
         heldKeyFlags.initialize(repeating: 0, count: 128)
+        ccTargets = .allocate(capacity: 128)
+        ccTargets.initialize(repeating: -1, count: 128)
 
         for p in Param.allCases { params[p.rawValue] = Float(p.defaultValue) }
         for (i, chord) in ChordMemory.defaultChords.enumerated() { setChord(i, chord) }
@@ -163,6 +173,7 @@ final class SynthEngine {
         queueLock.deallocate()
         queue.deallocate()
         heldKeyFlags.deallocate()
+        ccTargets.deallocate()
     }
 
     // MARK: Setup (not real-time)
@@ -223,6 +234,12 @@ final class SynthEngine {
         let count = min(notes.count, ChordMemory.maxNotes)
         for j in 0..<count { chordNotes[slot * ChordMemory.maxNotes + j] = Int8(clamping: notes[j]) }
         chordSizes[slot] = Int8(count)
+    }
+
+    /// Assigns a MIDI CC (0...119) to a parameter, or clears it with `nil`.
+    func setCCTarget(_ cc: Int, _ param: Param?) {
+        guard (0..<120).contains(cc) else { return }
+        ccTargets[cc] = Int16(param?.rawValue ?? -1)
     }
 
     /// Keys currently held (main thread snapshot).
@@ -290,6 +307,22 @@ final class SynthEngine {
     }
 
     private func controlChange(_ cc: Int, _ value: Int) {
+        ccCounter &+= 1
+        lastControlChange = (ccCounter << 16) | UInt32(cc) << 8 | UInt32(value)
+
+        // User assignments (MIDI learn) take priority over the fixed CCs;
+        // channel mode messages 120...127 can never be reassigned.
+        if cc < 120 {
+            let target = Int(ccTargets[cc])
+            if target >= 0, let p = Param(rawValue: target) {
+                let maxValue = Float(p.maxValue)
+                var v = Float(value) / 127 * maxValue
+                if p.maxValue < 127 { v = v.rounded() }
+                params[target] = v
+                return
+            }
+        }
+
         switch cc {
         case 1:
             modWheel = Float(value) / 127

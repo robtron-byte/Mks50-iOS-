@@ -21,6 +21,12 @@ final class SynthViewModel: ObservableObject {
     @Published private(set) var isLearningPadNote = false
     private var padTouching = false
     private var learnStartStamp: UInt32 = 0
+
+    // MIDI CC learn: tap a control, then move a knob on the controller.
+    @Published private(set) var ccLearnActive = false
+    @Published private(set) var ccLearnTarget: Param?
+    @Published private(set) var ccMap: [Int: Int] = [:]
+    private var ccLearnStamp: UInt32 = 0
     private static let padNoteKey = "padNote"
 
     private var parameters: [Int: AUParameter] = [:]
@@ -33,6 +39,7 @@ final class SynthViewModel: ObservableObject {
         let stored = UserDefaults.standard.object(forKey: SynthViewModel.padNoteKey) as? Int
         padNote = min(max(stored ?? 60, 0), 127)
         audioUnit.parameterTree?.allParameters.forEach { parameters[Int($0.address)] = $0 }
+        ccMap = audioUnit.ccMap
         poll()
         refreshUserPresets()
         setPolling(true)
@@ -64,6 +71,19 @@ final class SynthViewModel: ObservableObject {
         }
         if changed { values = next }
         if toneName != audioUnit.toneName { toneName = audioUnit.toneName }
+
+        // CC learn: the next incoming control change is assigned to the armed control.
+        let ccStamp = audioUnit.engine.lastControlChange
+        if ccLearnActive, let target = ccLearnTarget, ccStamp != ccLearnStamp {
+            ccLearnStamp = ccStamp
+            let cc = Int((ccStamp >> 8) & 0x7F)
+            if cc < 120 {
+                audioUnit.assignCC(cc, to: target)
+                ccMap = audioUnit.ccMap
+                ccLearnTarget = nil
+                flash("CC \(cc) → \(target.displayName)")
+            }
+        }
 
         // MIDI-learn: the next incoming note-on (from any source) becomes the pad note.
         let stamp = audioUnit.engine.lastNoteOn
@@ -161,6 +181,33 @@ final class SynthViewModel: ObservableObject {
         padTouching = false
         audioUnit.sendMIDI(status(0xB0), 123, 0)
         audioUnit.sendMIDI(status(0xB0), 120, 0)
+    }
+
+    // MARK: MIDI CC learn
+
+    func toggleCCLearn() {
+        ccLearnActive.toggle()
+        ccLearnTarget = nil
+        if ccLearnActive { flash("Tap a control, then move a knob on your MIDI controller") }
+    }
+
+    func armCCLearn(_ p: Param) {
+        ccLearnTarget = (ccLearnTarget == p) ? nil : p
+        ccLearnStamp = audioUnit.engine.lastControlChange
+    }
+
+    func ccNumber(for p: Param) -> Int? { ccMap[p.rawValue] }
+
+    func removeCC(for p: Param) {
+        audioUnit.removeCC(for: p)
+        ccMap = audioUnit.ccMap
+        flash("\(p.displayName): CC removed")
+    }
+
+    func removeAllCCs() {
+        audioUnit.removeAllCCs()
+        ccMap = audioUnit.ccMap
+        flash("All CC assignments removed")
     }
 
     // MARK: Chord memory

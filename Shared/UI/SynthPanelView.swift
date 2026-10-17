@@ -84,12 +84,14 @@ struct SynthPanelView: View {
                     maxValue: Float(p.maxValue),
                     defaultValue: Float(p.defaultValue),
                     display: display)
+            .modifier(CCLearnOverlay(model: model, param: p))
     }
 
     private func selector(_ p: Param, _ label: String? = nil) -> some View {
         StepSelector(label: label ?? p.shortName,
                      options: p.valueStrings ?? [],
                      value: model.binding(p))
+            .modifier(CCLearnOverlay(model: model, param: p))
     }
 
     private func group<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
@@ -342,6 +344,79 @@ struct PlayBar: View {
     }
 }
 
+/// In CC-learn mode: covers a control, shows its CC and arms it on tap.
+struct CCLearnOverlay: ViewModifier {
+    @ObservedObject var model: SynthViewModel
+    let param: Param
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            if model.ccLearnActive {
+                let armed = model.ccLearnTarget == param
+                let cc = model.ccNumber(for: param)
+                ZStack(alignment: .topTrailing) {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(armed ? Theme.accent.opacity(0.3) : Color.black.opacity(0.35))
+                        .overlay(RoundedRectangle(cornerRadius: 8)
+                            .stroke(armed ? Theme.accent : (cc != nil ? Theme.displayText : Theme.panelEdge),
+                                    lineWidth: armed ? 2.5 : 1))
+                    Text(cc.map { "CC \($0)" } ?? "–")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(cc != nil ? Theme.displayText : Theme.dimLabel))
+                        .offset(x: 4, y: -7)
+                }
+                .padding(-4)
+                .contentShape(Rectangle())
+                .onTapGesture { model.armCCLearn(param) }
+                .accessibilityElement()
+                .accessibilityLabel("\(param.displayName), \(cc.map { "MIDI CC \($0)" } ?? "no MIDI CC")")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint("Arms this control for MIDI learn")
+            }
+        }
+    }
+}
+
+/// Replaces the play bar while CC learn is active.
+struct CCLearnBar: View {
+    @ObservedObject var model: SynthViewModel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(Theme.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("MIDI CC LEARN")
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundColor(Theme.accent)
+                Text(instruction)
+                    .font(.system(size: 13))
+                    .foregroundColor(Theme.label)
+                    .lineLimit(2)
+            }
+            Spacer()
+            if let target = model.ccLearnTarget, model.ccNumber(for: target) != nil {
+                BigButton(title: "REMOVE CC") { model.removeCC(for: target) }
+            }
+            BigButton(title: "DONE", active: true) { model.toggleCCLearn() }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Theme.panel)
+    }
+
+    private var instruction: String {
+        if let target = model.ccLearnTarget {
+            return "\(target.displayName): move a knob or fader on your controller…"
+        }
+        return "Tap a control, then move a knob or fader on your MIDI controller."
+    }
+}
+
 /// Panel + play bar. Shared by the app and the AUv3 UI.
 struct SynthMainView<Toolbar: View>: View {
     @ObservedObject var model: SynthViewModel
@@ -352,8 +427,13 @@ struct SynthMainView<Toolbar: View>: View {
             toolbar
             SynthPanelView(model: model)
                 .frame(maxHeight: .infinity)
-            PlayBar(model: model)
-                .frame(height: 76)
+            if model.ccLearnActive {
+                CCLearnBar(model: model)
+                    .frame(height: 76)
+            } else {
+                PlayBar(model: model)
+                    .frame(height: 76)
+            }
         }
         .overlay(alignment: .top) { statusBanner }
         .background(Theme.background.ignoresSafeArea())
@@ -416,6 +496,11 @@ struct PluginToolbar: View {
             }
             Button { model.stepFactoryPreset(1) } label: { Image(systemName: "chevron.right") }
             Spacer()
+            Button { model.toggleCCLearn() } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .foregroundColor(model.ccLearnActive ? Theme.accent : Theme.label)
+            }
+            .accessibilityLabel("MIDI CC learn")
             Button { model.panic() } label: { Image(systemName: "exclamationmark.octagon") }
         }
         .foregroundColor(Theme.label)

@@ -41,6 +41,30 @@ struct SettingsView: View {
                     ForEach(midi.destinations) { Text($0.name) }
                 }
 
+                Section("MIDI CC Assignments") {
+                    let mapped = Param.allCases.compactMap { p in model.ccNumber(for: p).map { (p, $0) } }
+                    if mapped.isEmpty {
+                        Text("None yet – use the slider button in the toolbar to learn.")
+                            .foregroundColor(.secondary)
+                    }
+                    ForEach(mapped.indices, id: \.self) { i in
+                        let param = mapped[i].0
+                        let cc = mapped[i].1
+                        HStack {
+                            Text(param.displayName)
+                            Spacer()
+                            Text("CC \(cc)").foregroundColor(.secondary).monospacedDigit()
+                            Button(role: .destructive) { model.removeCC(for: param) } label: {
+                                Image(systemName: "minus.circle.fill")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                    if !mapped.isEmpty {
+                        Button("Remove All", role: .destructive) { model.removeAllCCs() }
+                    }
+                }
+
                 Section("SysEx") {
                     Text("Incoming MKS-50 / Alpha Juno tone dumps (APR) and parameter changes (IPR), e.g. from a PG-300 or an editor, are applied live. The paper-plane button sends the current tone to every MIDI output.")
                         .font(.footnote)

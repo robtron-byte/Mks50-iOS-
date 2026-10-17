@@ -102,6 +102,7 @@ final class MKS50AudioUnit: AUAudioUnit {
         }
 
         maximumFramesToRender = 4096
+        loadCCMap()
         currentPreset = factoryPresetList.first
         startProgramChangeWatcher()
     }
@@ -269,6 +270,50 @@ final class MKS50AudioUnit: AUAudioUnit {
             for (i, chord) in chords.enumerated() { engine.setChord(i, chord) }
         }
         toneName = tone.name
+    }
+
+    // MARK: MIDI CC learn
+
+    private static let ccMapKey = "mks50.midiCCMap"
+
+    /// Parameter (raw value) → MIDI CC. A device setting, independent of presets.
+    private(set) var ccMap: [Int: Int] = [:]
+
+    func cc(for p: Param) -> Int? { ccMap[p.rawValue] }
+
+    /// One CC controls one parameter and vice versa.
+    func assignCC(_ cc: Int, to p: Param) {
+        guard (0..<120).contains(cc) else { return }
+        ccMap = ccMap.filter { $0.value != cc && $0.key != p.rawValue }
+        ccMap[p.rawValue] = cc
+        applyCCMap()
+    }
+
+    func removeCC(for p: Param) {
+        ccMap.removeValue(forKey: p.rawValue)
+        applyCCMap()
+    }
+
+    func removeAllCCs() {
+        ccMap.removeAll()
+        applyCCMap()
+    }
+
+    private func loadCCMap() {
+        let stored = UserDefaults.standard.dictionary(forKey: MKS50AudioUnit.ccMapKey) as? [String: Int] ?? [:]
+        for (key, cc) in stored {
+            if let raw = Int(key), Param(rawValue: raw) != nil, (0..<120).contains(cc) { ccMap[raw] = cc }
+        }
+        applyCCMap(save: false)
+    }
+
+    private func applyCCMap(save: Bool = true) {
+        for cc in 0..<120 { engine.setCCTarget(cc, nil) }
+        for (raw, cc) in ccMap { engine.setCCTarget(cc, Param(rawValue: raw)) }
+        if save {
+            let stored = Dictionary(uniqueKeysWithValues: ccMap.map { (String($0.key), $0.value) })
+            UserDefaults.standard.set(stored, forKey: MKS50AudioUnit.ccMapKey)
+        }
     }
 
     private func startProgramChangeWatcher() {
