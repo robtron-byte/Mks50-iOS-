@@ -67,6 +67,7 @@ final class SynthEngine {
     private let chorus = Chorus()
     private let delay = StereoDelay()
     private let reverb = Reverb()
+    private let distortion = AcidDistortion()
 
     /// Tempo reported by the AU host (BPM), 0 = none (use the TEMPO parameter).
     var hostTempo: Double = 0
@@ -265,6 +266,7 @@ final class SynthEngine {
         chorus.prepare(sampleRate: self.sampleRate)
         delay.prepare(sampleRate: self.sampleRate)
         reverb.prepare(sampleRate: self.sampleRate)
+        distortion.prepare(sampleRate: self.sampleRate)
         reset()
     }
 
@@ -286,6 +288,7 @@ final class SynthEngine {
         chorus.reset()
         delay.reset()
         reverb.reset()
+        distortion.reset()
         dcXL = 0; dcYL = 0; dcXR = 0; dcYR = 0
     }
 
@@ -1236,6 +1239,15 @@ final class SynthEngine {
             dcXR = xr; dcYR = yr
             mixR[n] = yr * gain
         }
+
+        // Distortion on the dry synth, before chorus / delay / reverb, so
+        // the effect tails stay clean.
+        distortion.process(left: mixL, right: mixR, frames: frames,
+                           mode: pi(.distMode),
+                           drive: p(.distDrive) / 127,
+                           tone: p(.distTone) / 127,
+                           level: p(.distLevel) / 127,
+                           mix: p(.distMix) / 127)
 
         let chorusHz = 0.15 * powf(60, p(.chorusRate) / 127)
         chorus.process(inputLeft: mixL, inputRight: mixR, left: left, right: right, frames: frames,

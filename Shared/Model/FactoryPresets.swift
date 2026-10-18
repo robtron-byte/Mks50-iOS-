@@ -59,11 +59,20 @@ enum FactoryPresets {
               10, 0, 18, 60, 42,  72, 6, 0, 18, 40, 10,  108, 8,  74, 60,
               70, 127, 70, 118, 70, 118, 74, 0,  74, 2]),
 
+        // TB-303 style: the VCA follows the gate (GATE-D, accents via
+        // velocity), the envelope only sweeps the resonant filter. Ties
+        // slide (portamento AUTO) without retriggering the envelope.
+        // Hold a key (or HOLD + play) to run the line.
         make(.bass, "ACID LINE",
-             [0, 0, 2,  0, 1, 0,  1, 0, 0,  1, 0,
-              0, 0, 0, 0, 0,  20, 112, 0, 88, 60, 0,  120, 0,  64, 0,
-              0, 127, 42, 0, 50, 0, 18, 0,  60, 2],
-             keyMode: 2, porta: 1, portaTime: 22),
+             [0, 0, 3,  0, 1, 0,  1, 0, 0,  1, 0,
+              0, 0, 0, 0, 0,  22, 116, 0, 92, 50, 0,  118, 0,  64, 0,
+              0, 127, 58, 18, 45, 10, 14, 0,  60, 2],
+             keyMode: 2, porta: 2, portaTime: 14,
+             extra: [.envRetrigger: 1,
+                     .seqOn: 1, .seqStyle: 3, .seqGate: 72, .seqGateVar: 45,
+                     .distMode: 2, .distDrive: 52, .distTone: 72, .distLevel: 64, .distMix: 100,
+                     .delayMix: 22, .delayDivision: 6, .delayFeedback: 35,
+                     .seqStep0: 45, .seqStep1: 13, .seqStep2: 25, .seqStep3: 77, .seqStep4: 16, .seqStep5: 0, .seqStep6: 45, .seqStep7: 87, .seqStep8: 25, .seqStep9: 13, .seqStep10: 0, .seqStep11: 52, .seqStep12: 13, .seqStep13: 80, .seqStep14: 18, .seqStep15: 57]),
 
         make(.keys, "GLASS BELL",
              [0, 0, 2,  3, 0, 0,  2, 0, 0,  3, 1,

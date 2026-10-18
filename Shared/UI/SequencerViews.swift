@@ -39,9 +39,13 @@ struct SequencerPage: View {
 
     @ViewBuilder private var knobs: some View {
         ParamKnob(param: model.model(.seqRate), model: model)
+            .environment(\.encoderColor, Theme.blue).frame(maxWidth: .infinity)
         ParamKnob(param: model.model(.seqGate), model: model)
+            .environment(\.encoderColor, Theme.green).frame(maxWidth: .infinity)
         ParamKnob(param: model.model(.seqGateVar), model: model)
+            .environment(\.encoderColor, Theme.white).frame(maxWidth: .infinity)
         ParamKnob(param: model.model(.seqLength), model: model)
+            .environment(\.encoderColor, Theme.orange).frame(maxWidth: .infinity)
     }
 
     private var pattern: some View {
@@ -105,15 +109,19 @@ private struct StepCell: View {
     var body: some View {
         let step = SeqStep(raw: Int(param.value.rounded()))
         let inRange = index <= Int(length.value.rounded())
-        let tint = Theme.blue
         ZStack(alignment: .top) {
             RoundedRectangle(cornerRadius: Theme.corner)
-                .fill(step == nil ? Theme.cell : (step!.accent ? Theme.white : tint))
-            if step?.accent == true {
-                Rectangle().fill(Theme.red).frame(height: 4)
+                .fill(step == nil ? Theme.cell : (step!.accent ? Theme.orange : Theme.white))
+            if step == nil {
+                RoundedRectangle(cornerRadius: Theme.corner).stroke(Theme.hairline, lineWidth: 1)
+            }
+            // Beat markers: every 4th step gets a small dot, as on TE grids.
+            if index % 4 == 0 {
+                Circle().fill(step == nil ? Theme.dimLabel : Theme.ink.opacity(0.5))
+                    .frame(width: 3, height: 3).offset(y: 4)
             }
             VStack(spacing: 1) {
-                Text(step.map { $0.note == 0 ? "0" : String(format: "%+d", $0.note) } ?? "·")
+                Text(step.map { $0.note == 0 ? "0" : String(format: "%+d", $0.note) } ?? " ")
                     .font(Theme.pixel(12, .bold))
                 Text("\(index + 1)")
                     .font(Theme.pixel(8, .regular))
@@ -124,12 +132,12 @@ private struct StepCell: View {
         }
         .overlay(alignment: .trailing) {
             if step?.tie == true {
-                Rectangle().fill(Theme.red).frame(width: 4).offset(x: 4)
+                Rectangle().fill(Theme.blue).frame(width: 4).offset(x: 4)
             }
         }
         .overlay {
             RoundedRectangle(cornerRadius: Theme.corner)
-                .stroke(playing ? Theme.label : .clear, lineWidth: 2)
+                .stroke(playing ? Theme.green : .clear, lineWidth: 2)
         }
         .frame(width: 38, height: 44)
         .opacity(inRange ? 1 : 0.35)

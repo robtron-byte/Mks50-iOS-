@@ -122,6 +122,13 @@ enum Param: Int, CaseIterable, Identifiable {
     /// Per-step gate variation (appended so the step addresses stay put).
     case seqGateVar
 
+    // MARK: Distortion (acid style, before chorus / delay / reverb)
+    case distMode
+    case distDrive
+    case distTone
+    case distLevel
+    case distMix
+
     static let toneParameterCount = 36
     static let storageSize = 128
 
@@ -164,6 +171,8 @@ enum Param: Int, CaseIterable, Identifiable {
             return 1
         case .seqStyle:
             return SequenceGenerator.styleNames.count - 1
+        case .distMode:
+            return AcidDistortion.modeNames.count - 1
         case .seqRate:
             return LFOShape.divisionNames.count - 1
         case .seqLength:
@@ -231,6 +240,8 @@ enum Param: Int, CaseIterable, Identifiable {
             return ["OFF", "ON"]
         case .seqStyle:
             return SequenceGenerator.styleNames
+        case .distMode:
+            return AcidDistortion.modeNames
         case .seqRate:
             return LFOShape.divisionNames
         case .seqLength:
@@ -286,6 +297,10 @@ enum Param: Int, CaseIterable, Identifiable {
         case .seqRate: return 2          // 1/16
         case .seqLength: return 15       // 16 steps
         case .seqGate: return 70
+        case .distDrive: return 64
+        case .distTone: return 80
+        case .distLevel: return 64
+        case .distMix: return 127
         default: return 0
         }
     }
@@ -376,6 +391,11 @@ enum Param: Int, CaseIterable, Identifiable {
         case .seqLength: return "Sequencer Steps"
         case .seqGate: return "Sequencer Gate"
         case .seqGateVar: return "Sequencer Gate Variation"
+        case .distMode: return "Distortion"
+        case .distDrive: return "Distortion Drive"
+        case .distTone: return "Distortion Tone"
+        case .distLevel: return "Distortion Level"
+        case .distMix: return "Distortion Mix"
         case .seqStep0, .seqStep1, .seqStep2, .seqStep3, .seqStep4, .seqStep5, .seqStep6, .seqStep7,
              .seqStep8, .seqStep9, .seqStep10, .seqStep11, .seqStep12, .seqStep13, .seqStep14, .seqStep15:
             return "Step \(rawValue - Param.seqStep0.rawValue + 1)"
@@ -455,6 +475,11 @@ enum Param: Int, CaseIterable, Identifiable {
         case .seqLength: return "STEPS"
         case .seqGate: return "GATE"
         case .seqGateVar: return "G.VAR"
+        case .distMode: return "DIST"
+        case .distDrive: return "DRIVE"
+        case .distTone: return "TONE"
+        case .distLevel: return "LEVEL"
+        case .distMix: return "MIX"
         case .seqStep0, .seqStep1, .seqStep2, .seqStep3, .seqStep4, .seqStep5, .seqStep6, .seqStep7,
              .seqStep8, .seqStep9, .seqStep10, .seqStep11, .seqStep12, .seqStep13, .seqStep14, .seqStep15:
             return "STEP \(rawValue - Param.seqStep0.rawValue + 1)"

@@ -59,8 +59,8 @@ struct RecorderStrip: View {
             HStack(spacing: 6) {
                 Image(systemName: recorder.phase == .idle ? "record.circle" : "stop.circle.fill")
                     .font(.system(size: 18, weight: .bold))
-                Text(statusText)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                Text(statusText.lowercased())
+                    .font(Theme.pixel(12, .bold))
                     .lineLimit(1)
                     .frame(minWidth: 64, alignment: .leading)
             }
@@ -72,6 +72,8 @@ struct RecorderStrip: View {
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(recorder.phase == .idle ? Theme.cell : Theme.accent.opacity(0.45))
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Theme.hairline, lineWidth: 1)
                         if recorder.phase == .recording {
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(Theme.accent)
@@ -125,10 +127,10 @@ private struct BPMControl: View {
             VStack(spacing: 0) {
                 Text("\(Int(param.value.rounded()) + 40)")
                     .font(.system(size: 16, weight: .bold, design: .monospaced))
-                    .foregroundColor(Theme.display)
-                Text("BPM")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(Theme.label)
+                    .foregroundColor(Theme.readout)
+                Text("bpm")
+                    .font(Theme.pixel(9, .regular))
+                    .foregroundColor(Theme.dimLabel)
             }
             .frame(minWidth: 44)
             StepButton(symbol: "plus", label: "Tempo up") { step(1) }

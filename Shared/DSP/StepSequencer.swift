@@ -110,8 +110,9 @@ struct StepSequencer {
         // Tied steps hold until the next step; others stop after the gate.
         var stepGate = gate
         if gateVariation > 0 {
-            let offset = StepSequencer.gateOffset(index: index, steps: steps)
-            stepGate = min(max(gate + gateVariation * 0.7 * offset, 0.05), 1)
+            // Blend from the GATE knob towards the groove's length.
+            let target = StepSequencer.grooveGate(index: index, count: count, steps: steps)
+            stepGate = min(max(gate + gateVariation * (target - gate), 0.05), 1)
         }
         let length = s.tie ? 1.0 : (s.accent ? min(1, stepGate + 0.15) : stepGate)
         gateOffBeat = s.tie ? .infinity : Double(step) * quarters + quarters * length
@@ -119,21 +120,50 @@ struct StepSequencer {
         return events
     }
 
-    /// Gate offset -1...1 of one step for GATE VAR. Derived from the pattern
-    /// itself, so it repeats every pass (a groove, not jitter) and changes
-    /// with NEW / VARY. Downbeats lean long, off-beat 16ths short.
-    static func gateOffset(index: Int, steps: UnsafePointer<Float>) -> Double {
+    /// Gate lengths of the groove, from staccato to legato.
+    private static let grooveLevels: [Double] = [0.18, 0.4, 0.65, 0.92]
+
+    /// Groove templates for one beat (four 16ths), as `grooveLevels` indices.
+    /// Each pairs with a variation used on the last beat of the bar as a
+    /// phrase ending.
+    private static let grooveTemplates: [(main: [Int], end: [Int])] = [
+        ([3, 1, 2, 1], [3, 1, 1, 3]),      // long – short – mid – short
+        ([3, 1, 1, 2], [2, 1, 3, 0]),      // gallop
+        ([2, 0, 3, 0], [3, 0, 3, 1]),      // off-beat push
+        ([3, 2, 1, 0], [1, 1, 2, 3]),      // decaying, answer swells
+        ([1, 1, 3, 1], [3, 1, 1, 1]),      // stab on the "and"
+    ]
+
+    /// Gate length (0...1) of one step for G.VAR. A groove template, picked
+    /// from the pattern itself, repeats every beat (so it locks to the
+    /// rhythm) with a variation on the bar's last beat, then reads the
+    /// pattern: notes before a rest ring out, accents get longer, octave
+    /// jumps up become short bleeps. Changes with NEW / VARY.
+    static func grooveGate(index: Int, count: Int, steps: UnsafePointer<Float>) -> Double {
         var h: UInt64 = 0xcbf2_9ce4_8422_2325
         for i in 0..<maxSteps {
             h = (h ^ UInt64(max(0, Int(steps[i].rounded())))) &* 0x100_0000_01b3
         }
-        h = (h ^ UInt64(index + 1)) &* 0x100_0000_01b3
-        h ^= h >> 29
-        h = h &* 0xbf58_476d_1ce4_e5b9
-        h ^= h >> 32
-        let random = Double(h % 10_000) / 5_000 - 1
-        let bias: Double = index % 4 == 0 ? 0.35 : (index % 2 == 1 ? -0.25 : 0)
-        return min(max(random * 0.8 + bias, -1), 1)
+        h ^= h >> 31
+        let template = grooveTemplates[Int(h % UInt64(grooveTemplates.count))]
+        let inBeat = index % 4
+        let lastBeat = (index % 16) / 4 == 3 || index / 4 == (count - 1) / 4
+        var level = lastBeat && count > 4 ? template.end[inBeat] : template.main[inBeat]
+
+        if let step = SeqStep(raw: Int(steps[index].rounded())) {
+            let next = SeqStep(raw: Int(steps[(index + 1) % count].rounded()))
+            if next == nil {
+                level = max(level, 2)                  // room to ring before a rest
+            } else if let n = next, n.note - step.note >= 12 {
+                level = min(level, 1)                  // clipped before an octave leap
+            }
+            if step.accent { level = min(level + 1, 3) }
+            let prevIndex = (index + count - 1) % count
+            if let prev = SeqStep(raw: Int(steps[prevIndex].rounded())), step.note - prev.note >= 12 {
+                level = 0                              // the leap itself: a short bleep
+            }
+        }
+        return grooveLevels[level]
     }
 
     /// Stops the pattern; returns the note to release (-1: none).

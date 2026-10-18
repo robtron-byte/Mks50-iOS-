@@ -1,38 +1,55 @@
 import SwiftUI
 import UIKit
 
-/// MKS-50 / Alpha Juno look: dark rack-grey panel, white silk-screen print,
-/// Roland red and Roland blue as section colours, light grey switch caps and
-/// the yellow-green backlit LCD.
+/// Teenage Engineering-inspired look (OP-1 / OP-XY): near-black body, flat
+/// surfaces separated by hairlines instead of shadows, white keys for the
+/// selected state, small lowercase monospaced type, and the OP-1's four
+/// encoder colours (blue, green, white, orange) as the only colour.
 enum Theme {
-    static let background = Color(red: 0.07, green: 0.072, blue: 0.078)
-    static let panel = Color(red: 0.135, green: 0.14, blue: 0.15)        // rack grey
-    static let panelEdge = Color(red: 0.26, green: 0.27, blue: 0.29)
-    static let accent = Color(red: 0.86, green: 0.21, blue: 0.17)        // Roland red
-    static let accentSoft = Color(red: 0.86, green: 0.21, blue: 0.17).opacity(0.22)
-    static let label = Color(red: 0.92, green: 0.93, blue: 0.94)         // white print
-    static let dimLabel = Color(red: 0.56, green: 0.58, blue: 0.61)
-    static let knobBody = Color(red: 0.19, green: 0.195, blue: 0.21)
-    static let cell = Color(red: 0.20, green: 0.205, blue: 0.22)
-    static let led = Color(red: 1.0, green: 0.18, blue: 0.12)
-    static let display = Color(red: 0.66, green: 0.73, blue: 0.33)       // backlit LCD
-    static let displayText = Color(red: 0.08, green: 0.11, blue: 0.04)
-    /// Text on a lit (coloured) button.
-    static let ink = Color(red: 0.06, green: 0.065, blue: 0.07)
+    // Body
+    static let background = Color(red: 0.043, green: 0.043, blue: 0.047)     // #0B0B0C
+    static let panel = Color(red: 0.086, green: 0.086, blue: 0.094)          // #161618
+    static let cell = Color(red: 0.133, green: 0.133, blue: 0.145)           // #222225 key
+    static let hairline = Color(red: 0.19, green: 0.19, blue: 0.205)         // #303034
+    static let panelEdge = hairline
+    static let knobBody = cell
 
-    // Section colours: MKS-50 blue, Roland red, grey caps, white print.
-    static let red = Color(red: 0.86, green: 0.21, blue: 0.17)
-    static let blue = Color(red: 0.20, green: 0.50, blue: 0.86)          // MKS-50 blue
-    static let silver = Color(red: 0.72, green: 0.74, blue: 0.77)
-    static let white = Color(red: 0.93, green: 0.94, blue: 0.95)
-    static let stripes = [red, blue, silver, white]
+    // Type
+    static let label = Color(red: 0.93, green: 0.93, blue: 0.92)             // #EDEDEB
+    static let dimLabel = Color(red: 0.54, green: 0.54, blue: 0.57)          // #8A8A91
+    /// Text on a lit (white or coloured) key.
+    static let ink = Color(red: 0.05, green: 0.05, blue: 0.055)
 
-    /// Colour of a panel section, following the signal flow.
+    // OP-1 encoder colours
+    static let blue = Color(red: 0.20, green: 0.47, blue: 1.0)               // #3378FF
+    static let green = Color(red: 0.11, green: 0.80, blue: 0.47)             // #1CCC78
+    static let white = Color(red: 0.91, green: 0.91, blue: 0.89)             // #E8E8E3
+    static let orange = Color(red: 1.0, green: 0.37, blue: 0.13)             // #FF5E21
+    static let encoders = [blue, green, white, orange]
+
+    // Roles
+    static let accent = orange                  // record, alerts, brand
+    static let accentSoft = orange.opacity(0.22)
+    static let led = orange
+    static let red = orange                     // legacy name: "hot" colour
+    static let silver = white
+    static let stripes = encoders
+    /// Selected keys / tabs: OP-XY white.
+    static let selected = white
+
+    // Screen: black OLED with white type and coloured graphics.
+    static let display = Color.black
+    static let displayText = Color(red: 0.96, green: 0.96, blue: 0.95)
+    static let readout = green
+
+    /// Colour of a panel section (title mark and single knobs), following
+    /// the signal flow: sources blue, modulation green, filter / drive
+    /// orange, envelopes / amp / keys white.
     static func sectionColor(_ title: String) -> Color {
         switch title {
-        case "WAVE", "DCO", "PULSE", "LFO", "DCO MOD", "DELAY", "REVERB", "CHORUS", "ARP", "SEQ", "PATTERN": return blue
-        case "VCF", "HPF": return red
-        case "KEY", "PERFORM", "VOICES": return silver
+        case "WAVE", "DCO", "PULSE", "DELAY", "SEQ": return blue
+        case "LFO", "DCO MOD", "REVERB", "ARP", "PATTERN", "CHORUS": return green
+        case "VCF", "HPF", "DIST": return orange
         default: return white
         }
     }
@@ -42,15 +59,36 @@ enum Theme {
         .system(size: size, weight: weight, design: .monospaced)
     }
 
-    /// Corner radius for cells, keys and cards: nearly square, pixel-like.
-    static let corner: CGFloat = 3
+    /// Corner radius for keys; cards use `cardCorner`.
+    static let corner: CGFloat = 4
+    static let cardCorner: CGFloat = 8
 }
 
 private struct SectionTintKey: EnvironmentKey {
     static let defaultValue = Theme.accent
 }
 
+private struct KnobSizeKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 44
+}
+
+private struct EncoderColorKey: EnvironmentKey {
+    static let defaultValue: Color? = nil
+}
+
 extension EnvironmentValues {
+    /// OP-1 encoder colour of a knob in a knob row; nil elsewhere.
+    var encoderColor: Color? {
+        get { self[EncoderColorKey.self] }
+        set { self[EncoderColorKey.self] = newValue }
+    }
+
+    /// Knob diameter; the panel scales it with the screen width.
+    var knobSize: CGFloat {
+        get { self[KnobSizeKey.self] }
+        set { self[KnobSizeKey.self] = newValue }
+    }
+
     /// Colour of the enclosing panel section; knobs and buttons light up in it.
     var sectionTint: Color {
         get { self[SectionTintKey.self] }
@@ -69,8 +107,9 @@ struct PressableButtonStyle: ButtonStyle {
     }
 }
 
-/// A labelled panel section ("DCO", "VCF", ...): flat rounded card with a
-/// small coloured dot and title, in the style of compact hardware like OP-XY.
+/// A labelled panel section ("dco", "vcf", ...): flat card, hairline edge,
+/// a coloured mark and a lowercase title followed by a rule, as printed on
+/// TE hardware.
 struct PanelSection<Content: View>: View {
     let title: String
     var icon: String? = nil
@@ -78,21 +117,42 @@ struct PanelSection<Content: View>: View {
 
     var body: some View {
         let tint = Theme.sectionColor(title)
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Rectangle().fill(tint).frame(width: 6, height: 6)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
+                Circle().fill(tint).frame(width: 6, height: 6)
                 Text(title.lowercased())
-                    .font(Theme.pixel(11, .bold))
-                    .foregroundColor(Theme.dimLabel)
+                    .font(Theme.pixel(11, .medium))
+                    .foregroundColor(Theme.label)
                     .lineLimit(1)
                     .fixedSize()
+                Rectangle().fill(Theme.hairline).frame(height: 1)
             }
             content
                 .environment(\.sectionTint, tint)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(RoundedRectangle(cornerRadius: Theme.corner + 1).fill(Theme.panel))
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        // Sections share the full row width instead of hugging their content.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Theme.cardCorner).fill(Theme.panel))
+        .overlay(RoundedRectangle(cornerRadius: Theme.cardCorner).stroke(Theme.hairline, lineWidth: 1))
+    }
+}
+
+/// Counts knobs while a knob row's content is built, so each knob gets the
+/// OP-1 encoder colour of its position (blue, green, white, orange).
+final class EncoderCounter {
+    private var index: Int?
+
+    func beginRow() { index = 0 }
+    func endRow() { index = nil }
+
+    /// Colour for the next knob in the current row; nil outside a row.
+    func next() -> Color? {
+        guard let i = index else { return nil }
+        index = i + 1
+        return Theme.encoders[i % Theme.encoders.count]
     }
 }
 
@@ -105,37 +165,43 @@ struct Knob: View {
     @Binding var value: Float
     var maxValue: Float = 127
     var defaultValue: Float = 0
-    var size: CGFloat = 44
+    /// Fixed diameter; nil follows the panel's `knobSize`.
+    var fixedSize: CGFloat? = nil
     var display: ((Float) -> String)? = nil
 
     @State private var dragStart: Float?
     @Environment(\.sectionTint) private var tint
+    @Environment(\.knobSize) private var knobSize
+    @Environment(\.encoderColor) private var encoderColor
+    private var size: CGFloat { fixedSize ?? knobSize }
 
     static let ledCount = 13
 
     private var fraction: Double { Double(value / maxValue) }
     private var valueText: String { display?(value) ?? "\(Int(value.rounded()))" }
 
+    private var color: Color { encoderColor ?? tint }
+
     var body: some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 4) {
             ZStack {
-                // Pixel LED ring: 13 square dots over 270°.
-                ForEach(0..<Knob.ledCount, id: \.self) { i in
-                    let lit = Double(i) <= fraction * Double(Knob.ledCount - 1) + 0.001 && fraction > 0
-                    Rectangle()
-                        .fill(lit ? tint : Theme.cell)
-                        .frame(width: 3, height: 3)
-                        .offset(y: -size / 2 + 1.5)
-                        .rotationEffect(.degrees(-135 + 270 * Double(i) / Double(Knob.ledCount - 1)))
-                }
+                // Value arc over a hairline track (270°, gap at the bottom).
                 Circle()
-                    .fill(tint)
-                    .padding(8)
-                    .shadow(color: .black.opacity(0.5), radius: 1.5, y: 1)
+                    .trim(from: 0, to: 0.75)
+                    .stroke(Theme.hairline, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(135))
+                Circle()
+                    .trim(from: 0, to: 0.75 * fraction)
+                    .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(135))
+                // Flat coloured cap with an ink notch, like an OP-1 encoder.
+                Circle()
+                    .fill(color)
+                    .padding(size * 0.17)
                 Capsule()
                     .fill(Theme.ink)
-                    .frame(width: 3, height: size * 0.2)
-                    .offset(y: -size * 0.16)
+                    .frame(width: max(2.5, size * 0.06), height: size * 0.2)
+                    .offset(y: -size * 0.19)
                     .rotationEffect(.degrees(-135 + 270 * fraction))
             }
             .frame(width: size, height: size)
@@ -157,7 +223,7 @@ struct Knob: View {
                         .foregroundColor(Theme.ink)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(RoundedRectangle(cornerRadius: Theme.corner).fill(tint))
+                        .background(RoundedRectangle(cornerRadius: Theme.corner).fill(color))
                         .fixedSize()
                         .offset(y: -26)
                         .allowsHitTesting(false)
@@ -292,13 +358,13 @@ struct StepSelector<Cell: View>: View {
 
     private var title: some View {
         Text(label.lowercased())
-            .font(Theme.pixel(10))
-            .foregroundColor(Theme.label)
+            .font(Theme.pixel(10, .regular))
+            .foregroundColor(Theme.dimLabel)
             .lineLimit(1)
     }
 
     private var cells: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 4) {
             ForEach(0..<count, id: \.self) { i in
                 let selected = Int(value.rounded()) == i
                 Button {
@@ -306,10 +372,20 @@ struct StepSelector<Cell: View>: View {
                 } label: {
                     cell(i, selected)
                         .foregroundColor(selected ? Theme.ink : Theme.label)
-                        .frame(minWidth: cellWidth, minHeight: 28)
+                        // Cells grow to fill the row (capped, so they stay keys).
+                        .frame(minWidth: cellWidth, maxWidth: 76, minHeight: 28)
                         .padding(.horizontal, 2)
                         .background(RoundedRectangle(cornerRadius: Theme.corner)
-                            .fill(selected ? tint : Theme.cell))
+                            .fill(selected ? Theme.selected : Theme.cell))
+                        .overlay(alignment: .bottom) {
+                            // Section colour as a thin LED line under the lit key.
+                            if selected {
+                                Rectangle().fill(tint).frame(height: 2)
+                                    .clipShape(RoundedRectangle(cornerRadius: 1))
+                                    .padding(.horizontal, 5)
+                                    .offset(y: 4)
+                            }
+                        }
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(PressableButtonStyle())
@@ -326,7 +402,7 @@ extension StepSelector where Cell == Text {
          inline: Bool = false) {
         self.init(label: label, count: options.count, value: value, cellWidth: cellWidth,
                   accessibilityNames: options, inline: inline) { i, _ in
-            Text(options[i]).font(Theme.pixel(11, .bold))
+            Text(options[i].lowercased()).font(Theme.pixel(11, .bold))
         }
     }
 }
@@ -356,10 +432,17 @@ struct EnvelopeGraph: View {
 
             var fill = path
             fill.addLine(to: CGPoint(x: 0, y: y(0)))
-            ctx.fill(fill, with: .color(Theme.displayText.opacity(0.15)))
-            ctx.stroke(path, with: .color(Theme.displayText), lineWidth: 2)
+            ctx.fill(fill, with: .color(Theme.orange.opacity(0.18)))
+            ctx.stroke(path, with: .color(Theme.orange), lineWidth: 1.5)
+            for k in 1..<4 {
+                let gy = 4 + h * CGFloat(k) / 4
+                ctx.stroke(Path { $0.move(to: CGPoint(x: 0, y: gy)); $0.addLine(to: CGPoint(x: size.width, y: gy)) },
+                           with: .color(Theme.hairline.opacity(0.6)), lineWidth: 0.5)
+            }
         }
+        .padding(4)
         .background(RoundedRectangle(cornerRadius: 6).fill(Theme.display))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.hairline, lineWidth: 1))
     }
 }
 
@@ -379,7 +462,8 @@ struct BigButton: View {
             .foregroundColor(active ? Theme.ink : Theme.label)
             .padding(.horizontal, 12)
             .frame(minWidth: 64, minHeight: 40)
-            .background(RoundedRectangle(cornerRadius: Theme.corner).fill(active ? Theme.blue : Theme.cell))
+            .background(RoundedRectangle(cornerRadius: Theme.corner).fill(active ? Theme.selected : Theme.cell))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner).stroke(active ? .clear : Theme.hairline, lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
@@ -399,6 +483,7 @@ struct StepButton: View {
                 .foregroundColor(Theme.label)
                 .frame(width: 40, height: 40)
                 .background(RoundedRectangle(cornerRadius: Theme.corner).fill(Theme.cell))
+                .overlay(RoundedRectangle(cornerRadius: Theme.corner).stroke(Theme.hairline, lineWidth: 1))
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())

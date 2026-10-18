@@ -168,10 +168,10 @@ struct SelectorCell: View {
         case .dcoSub:
             WaveIcon(shape: Self.subShape(index), span: 1)     // shows -1 and -2 oct subs
         case .dcoPulse, .dcoSaw:
-            Text("OFF").font(.system(size: 10, weight: .bold, design: .rounded))
+            Text("off").font(Theme.pixel(10, .bold))
         case .dcoSubLevel, .dcoNoiseLevel:
             if index == 0 {
-                Text("OFF").font(.system(size: 10, weight: .bold, design: .rounded))
+                Text("off").font(Theme.pixel(10, .bold))
             } else {
                 LevelIcon(level: index)
             }
@@ -187,17 +187,17 @@ struct SelectorCell: View {
             VStack(spacing: 1) {
                 Image(systemName: ["pianokeys", "music.note.list", "1.circle", "square.stack.3d.up"][min(index, 3)])
                     .font(.system(size: 12, weight: .semibold))
-                Text(param.valueStrings?[index] ?? "").font(.system(size: 8, weight: .bold))
+                Text((param.valueStrings?[index] ?? "").lowercased()).font(Theme.pixel(8, .bold))
             }
         case .chorus, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync,
              .arpOn, .arpHold, .seqOn:
             HStack(spacing: 4) {
                 Circle().frame(width: 6, height: 6).opacity(index == 1 ? 1 : 0.3)
-                Text(index == 1 ? "ON" : "OFF").font(.system(size: 11, weight: .bold, design: .rounded))
+                Text(index == 1 ? "on" : "off").font(Theme.pixel(11, .bold))
             }
         default:
-            Text(param.valueStrings?[index] ?? "\(index)")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+            Text((param.valueStrings?[index] ?? "\(index)").lowercased())
+                .font(Theme.pixel(11, .bold))
         }
     }
 

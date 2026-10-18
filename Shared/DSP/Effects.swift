@@ -254,3 +254,104 @@ enum DelayDivision {
     static let names = ["1/32", "1/16T", "1/16", "1/16.", "1/8T", "1/8", "1/8.", "1/4T", "1/4", "1/4.", "1/2", "1/1"]
     static let quarters: [Float] = [0.125, 1.0 / 6, 0.25, 0.375, 1.0 / 3, 0.5, 0.75, 2.0 / 3, 1, 1.5, 2, 4]
 }
+
+/// Distortion voiced for 303-style acid lines. A mid/treble pre-emphasis
+/// pushes the resonant filter peak into the clipper (the "squelch" gets
+/// louder and nastier), the clipper is asymmetric for even harmonics, and a
+/// post tone low-pass tames the fizz. MIX blends with the dry signal so the
+/// bass weight stays when driving hard.
+///
+/// Modes: 1 OD (soft tube-like overdrive), 2 DIST (hard cubic clipper,
+/// DS-1 style mid push), 3 RAT (high-gain diode clipping, scooped).
+final class AcidDistortion {
+    static let modeNames = ["OFF", "OD", "DIST", "RAT"]
+
+    private var sampleRate: Float = 44100
+    private var preL: Float = 0, preR: Float = 0          // pre-emphasis low-pass
+    private var dcXL: Float = 0, dcYL: Float = 0          // DC blocker after the clipper
+    private var dcXR: Float = 0, dcYR: Float = 0
+    private var lp1L: Float = 0, lp2L: Float = 0          // post tone (2 × one-pole)
+    private var lp1R: Float = 0, lp2R: Float = 0
+    private var preCoef: Float = 0
+    private var dcCoef: Float = 0.999
+    private var gainSmoothed: Float = 1
+    private var mixSmoothed: Float = 0
+
+    func prepare(sampleRate: Float) {
+        self.sampleRate = sampleRate
+        preCoef = 1 - expf(-2 * Float.pi * 280 / sampleRate)
+        dcCoef = expf(-2 * Float.pi * 12 / sampleRate)
+        reset()
+    }
+
+    func reset() {
+        preL = 0; preR = 0
+        dcXL = 0; dcYL = 0; dcXR = 0; dcYR = 0
+        lp1L = 0; lp2L = 0; lp1R = 0; lp2R = 0
+        mixSmoothed = 0
+    }
+
+    /// - Parameters: drive, tone, level, mix: 0...1.
+    func process(left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>, frames: Int,
+                 mode: Int, drive: Float, tone: Float, level: Float, mix: Float) {
+        let targetMix: Float = mode == 0 ? 0 : mix
+        if mode == 0 && mixSmoothed < 0.0001 {
+            mixSmoothed = 0
+            return
+        }
+        let m = min(max(mode, 1), 3)
+        // 0 ... 42 dB of drive; RAT starts hotter.
+        let targetGain = powf(10, (drive * 42 + (m == 3 ? 8 : 0)) / 20)
+        let emphasis: Float = m == 1 ? 0.6 : (m == 2 ? 1.8 : 1.1)
+        // Output: -18 ... +6 dB, roughly level-matched to the dry synth.
+        let out = powf(10, (level * 24 - 18) / 20) * (m == 1 ? 0.55 : 0.38)
+        let toneHz = min(600 * powf(25, tone), sampleRate * 0.45)
+        let lpCoef = 1 - expf(-2 * Float.pi * toneHz / sampleRate)
+        let smooth: Float = 0.002
+
+        for n in 0..<frames {
+            gainSmoothed += (targetGain - gainSmoothed) * smooth
+            mixSmoothed += (targetMix - mixSmoothed) * smooth
+            let g = gainSmoothed
+
+            let xl = left[n], xr = right[n]
+            preL += (xl - preL) * preCoef
+            preR += (xr - preR) * preCoef
+            let el = (xl + emphasis * (xl - preL)) * g
+            let er = (xr + emphasis * (xr - preR)) * g
+
+            var yl = AcidDistortion.clip(el, mode: m)
+            var yr = AcidDistortion.clip(er, mode: m)
+
+            let dl = yl - dcXL + dcCoef * dcYL
+            dcXL = yl; dcYL = dl
+            let dr = yr - dcXR + dcCoef * dcYR
+            dcXR = yr; dcYR = dr
+
+            lp1L += (dl - lp1L) * lpCoef; lp2L += (lp1L - lp2L) * lpCoef
+            lp1R += (dr - lp1R) * lpCoef; lp2R += (lp1R - lp2R) * lpCoef
+            yl = lp2L * out
+            yr = lp2R * out
+
+            let w = mixSmoothed
+            left[n] = xl + (yl - xl) * w
+            right[n] = xr + (yr - xr) * w
+        }
+    }
+
+    @inline(__always) private static func clip(_ x: Float, mode: Int) -> Float {
+        switch mode {
+        case 1:
+            // Asymmetric soft clip (tube-ish): bias shifts the curve.
+            return tanhf(x * 0.7 + 0.25) - 0.244_918_66
+        case 2:
+            // Cubic soft-to-hard clipper.
+            let v = min(max(x * 0.6, -1), 1)
+            return 1.5 * v - 0.5 * v * v * v
+        default:
+            // Diode pair with unequal forward voltage.
+            let y = 0.636_619_8 * atanf(x * 1.5)
+            return y < 0 ? y * 0.82 : y
+        }
+    }
+}

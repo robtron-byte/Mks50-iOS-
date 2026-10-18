@@ -110,6 +110,7 @@ struct ChordReadout: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(RoundedRectangle(cornerRadius: 4).fill(Theme.display))
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.hairline, lineWidth: 1))
             BigButton(title: "LEARN CHORD", icon: "music.note.list") { model.learnChord() }
         }
     }
@@ -151,7 +152,15 @@ struct SynthPanelView: View {
     let model: SynthViewModel
     @AppStorage("panelPage") private var pageRaw = PanelPage.osc.rawValue
 
+    @State private var width: CGFloat = 390
+    private let encoders = EncoderCounter()
+
     private var page: PanelPage { PanelPage(rawValue: pageRaw) ?? .osc }
+
+    /// Knobs grow with the screen: 40 pt on small phones, ~50 pt on Pro Max
+    /// widths, capped on iPad / landscape.
+    private var knobSize: CGFloat { min(max((width - 28) / 8, 40), 54).rounded() }
+    private var knobSpacing: CGFloat { (knobSize * 0.36).rounded() }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -164,6 +173,12 @@ struct SynthPanelView: View {
             }
             .frame(maxHeight: .infinity, alignment: .top)
         }
+        .environment(\.knobSize, knobSize)
+        .background(GeometryReader { geo in
+            Color.clear
+                .onAppear { width = geo.size.width }
+                .onChangeCompat(of: geo.size.width) { width = $0 }
+        })
     }
 
     @Environment(\.horizontalSizeClass) private var hSize
@@ -197,9 +212,10 @@ struct SynthPanelView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
-                    .foregroundColor(selected ? .white : Theme.label)
+                    .foregroundColor(selected ? Theme.ink : Theme.dimLabel)
                     .frame(maxWidth: .infinity, minHeight: 30)
-                    .background(RoundedRectangle(cornerRadius: Theme.corner).fill(selected ? Theme.blue : Theme.cell))
+                    .background(RoundedRectangle(cornerRadius: Theme.corner).fill(selected ? Theme.selected : Theme.panel))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.corner).stroke(selected ? .clear : Theme.hairline, lineWidth: 1))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PressableButtonStyle())
@@ -232,8 +248,17 @@ struct SynthPanelView: View {
 
     // MARK: Helpers
 
-    private func knob(_ p: Param, _ label: String? = nil) -> ParamKnob {
-        ParamKnob(param: model.model(p), model: model, label: label)
+    /// A knob; inside a knob row it takes its OP-1 colour and an equal
+    /// share of the row width (no gap at the right edge).
+    private func knob(_ p: Param, _ label: String? = nil) -> some View {
+        encoderSlot(ParamKnob(param: model.model(p), model: model, label: label))
+    }
+
+    private func encoderSlot<V: View>(_ view: V) -> some View {
+        let color = encoders.next()
+        return view
+            .environment(\.encoderColor, color)
+            .frame(maxWidth: color != nil ? .infinity : nil)
     }
 
     private func selector(_ p: Param, _ label: String? = nil, inline: Bool = false) -> ParamSelector {
@@ -245,19 +270,19 @@ struct SynthPanelView: View {
         PanelSection(title: title, icon: icon, content: content)
     }
 
-    /// Sections side by side when they fit the width, otherwise stacked
-    /// (never cut off at the screen edge).
+    /// Sections flow into lines: as many side by side as fit the width,
+    /// each line stretched to the full width (never cut off at the edge).
     private func row<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        let c = content()
-        return ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 10) { c }
-            VStack(alignment: .leading, spacing: 10) { c }
-        }
+        SectionFlow(spacing: 10) { content() }
     }
 
-    /// One row of knobs with even spacing.
+    /// One row of knobs with even spacing, coloured like OP-1 encoders.
+    /// The content is built right here, in order, so `knob()` can count.
     private func knobs<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        HStack(alignment: .top, spacing: 16) { content() }
+        encoders.beginRow()
+        let c = content()
+        encoders.endRow()
+        return HStack(alignment: .top, spacing: knobSpacing) { c }
     }
 
     /// Knob row on top, switches below – the same order on every page.
@@ -294,8 +319,8 @@ struct SynthPanelView: View {
         row {
             group("LFO", "wave.3.right") {
                 stack {
-                    HStack(alignment: .top, spacing: 16) {
-                        LFORateControl(sync: model.model(.lfoSync), model: model)
+                    knobs {
+                        encoderSlot(LFORateControl(sync: model.model(.lfoSync), model: model))
                         knob(.lfoDelay)
                         selector(.lfoSync, "SYNC")
                         selector(.lfoKeySync)
@@ -334,7 +359,7 @@ struct SynthPanelView: View {
                 }
             }
             group("HPF", "line.3.horizontal.decrease.circle") {
-                stack {
+                HStack(alignment: .bottom, spacing: 16) {
                     knob(.hpfFreq, "FREQ")
                     selector(.hpfCutoff, "STEP")
                 }
@@ -346,7 +371,7 @@ struct SynthPanelView: View {
         group("ENVELOPE", "chart.xyaxis.line") {
             let graph = stack {
                 LiveEnvelopeGraph(model: model)
-                    .frame(width: 200, height: 110)
+                    .frame(minWidth: 200, maxWidth: .infinity, minHeight: 110, maxHeight: 110)
                 selector(.envRetrigger)
             }
             let controls = stack {
@@ -385,11 +410,22 @@ struct SynthPanelView: View {
 
     private var fxPage: some View {
         row {
+            group("DIST", "bolt.fill") {
+                stack {
+                    knobs {
+                        knob(.distDrive)
+                        knob(.distTone)
+                        knob(.distLevel)
+                        knob(.distMix)
+                    }
+                    selector(.distMode, inline: true)
+                }
+            }
             group("DELAY", "repeat") {
                 stack {
                     knobs {
                         knob(.delayMix)
-                        DelayTimeControl(sync: model.model(.delaySync), model: model)
+                        encoderSlot(DelayTimeControl(sync: model.model(.delaySync), model: model))
                         knob(.delayFeedback)
                         knob(.delayTone)
                     }
@@ -421,7 +457,7 @@ struct SynthPanelView: View {
     private var arpPage: some View {
         group("ARP", "arrow.up.arrow.down") {
             stack {
-                HStack(alignment: .top, spacing: 16) {
+                knobs {
                     selector(.arpOn, "ARP")
                     knob(.arpRate)
                     knob(.arpGate)
@@ -475,8 +511,8 @@ struct SynthPanelView: View {
                         knob(.voiceDrift)
                         knob(.unisonDetune)
                     }
-                    Text("Unison: PATCH › KEY › UNISON")
-                        .font(.system(size: 10, weight: .semibold))
+                    Text("unison: patch › key › unison")
+                        .font(Theme.pixel(10, .regular))
                         .foregroundColor(Theme.dimLabel)
                 }
             }
@@ -508,16 +544,15 @@ struct PlayBar: View {
         .defersSystemGestures(on: .bottom)
     }
 
-    /// Upright iPhone: pad with transpose arrows on top, switches below.
+    /// Upright iPhone: note selection on the left (left hand), the play
+    /// pad on the right (right hand), switches below.
     private var portraitBody: some View {
         VStack(spacing: 6) {
-            HStack(spacing: 6) {
-                StepButton(symbol: "chevron.left.2", label: "Octave down") { model.transposePad(-12) }
-                StepButton(symbol: "chevron.left", label: "Semitone down") { model.transposePad(-1) }
-                pad
-                StepButton(symbol: "chevron.right", label: "Semitone up") { model.transposePad(1) }
-                StepButton(symbol: "chevron.right.2", label: "Octave up") { model.transposePad(12) }
+            HStack(spacing: 8) {
+                noteSelector(stacked: true)
+                pad.frame(minHeight: 86)
             }
+            .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 6) {
                 BigButton(title: model.isLearningPadNote ? "KEY…" : "LEARN",
                           icon: "pianokeys", active: model.isLearningPadNote) { model.toggleLearnPadNote() }
@@ -532,50 +567,61 @@ struct PlayBar: View {
         .background(Theme.background)
     }
 
+    /// Landscape: switches and note selection on the left, pad on the right.
     private var landscapeBody: some View {
         HStack(spacing: 10) {
             BigButton(title: model.isLearningPadNote ? "PLAY A KEY…" : "LEARN",
                       icon: "pianokeys", active: model.isLearningPadNote) { model.toggleLearnPadNote() }
-
-            HStack(spacing: 6) {
-                StepButton(symbol: "chevron.left.2", label: "Octave down") { model.transposePad(-12) }
-                StepButton(symbol: "chevron.left", label: "Semitone down") { model.transposePad(-1) }
-            }
-
-            pad
-
-            HStack(spacing: 6) {
-                StepButton(symbol: "chevron.right", label: "Semitone up") { model.transposePad(1) }
-                StepButton(symbol: "chevron.right.2", label: "Octave up") { model.transposePad(12) }
-            }
-
             BigButton(title: "HOLD", icon: model.padLatch ? "lock.fill" : "lock.open",
                       active: model.padLatch) { model.padLatch.toggle() }
-
             ParamToggle(param: model.model(.arpOn), model: model, title: "ARP", icon: "arrow.up.arrow.down")
             ParamToggle(param: model.model(.seqOn), model: model, title: "SEQ", icon: "square.grid.4x3.fill")
+            noteSelector(stacked: false)
+            pad
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
         .background(Theme.background)
     }
 
+    /// Note readout (black screen) with octave / semitone steppers: stacked
+    /// above them in portrait, beside them in landscape.
+    @ViewBuilder private func noteSelector(stacked: Bool) -> some View {
+        let readout = Text(model.padNoteName.lowercased())
+            .font(Theme.pixel(18, .bold))
+            .foregroundColor(Theme.displayText)
+            .frame(minWidth: 64, maxWidth: .infinity, minHeight: 36)
+            .background(RoundedRectangle(cornerRadius: Theme.corner).fill(Theme.display))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner).stroke(Theme.hairline, lineWidth: 1))
+            .accessibilityLabel("Pad note \(model.padNoteName)")
+        let steppers = HStack(spacing: 6) {
+            StepButton(symbol: "chevron.left.2", label: "Octave down") { model.transposePad(-12) }
+            StepButton(symbol: "chevron.left", label: "Semitone down") { model.transposePad(-1) }
+            StepButton(symbol: "chevron.right", label: "Semitone up") { model.transposePad(1) }
+            StepButton(symbol: "chevron.right.2", label: "Octave up") { model.transposePad(12) }
+        }
+        if stacked {
+            VStack(spacing: 6) { readout; steppers }
+                .fixedSize(horizontal: true, vertical: false)
+        } else {
+            HStack(spacing: 6) { readout.fixedSize(); steppers }
+        }
+    }
+
     private var pad: some View {
         let lit = model.padSounding || pressing
         return HStack(spacing: 8) {
             Rectangle()
-                .fill(lit ? Theme.ink : Theme.blue)
+                .fill(lit ? Theme.ink : Theme.orange)
                 .frame(width: 8, height: 8)
-            Text(model.padNoteName)
-                .font(Theme.pixel(18, .bold))
             Text(model.padLatch ? (model.padSounding ? "tap to stop" : "tap to hold") : "play")
-                .font(Theme.pixel(11))
-                .opacity(0.7)
+                .font(Theme.pixel(14, .bold))
         }
         .foregroundColor(lit ? Theme.ink : Theme.label)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Flat key, lit MKS-50 blue while playing.
-        .background(RoundedRectangle(cornerRadius: Theme.corner + 1).fill(lit ? Theme.blue : Theme.cell))
+        .background(RoundedRectangle(cornerRadius: Theme.corner + 1).fill(lit ? Theme.selected : Theme.cell))
+        .overlay(RoundedRectangle(cornerRadius: Theme.corner + 1).stroke(lit ? .clear : Theme.hairline, lineWidth: 1))
         .overlay {
             PressSurface(onDown: {
                 pressing = true
@@ -726,7 +772,7 @@ struct SynthMainView<Toolbar: View, Accessory: View>: View {
                 .frame(maxHeight: .infinity)
             accessory
             BottomBar(learn: model.learn, model: model)
-                .frame(height: PortraitReader.isPortrait(hSize, vSize) ? 108 : 54)
+                .frame(height: PortraitReader.isPortrait(hSize, vSize) ? 146 : 54)
         }
         .overlay(alignment: .top) { StatusBanner(model: model) }
         .background(Theme.background.ignoresSafeArea())
@@ -760,11 +806,11 @@ private struct StatusBanner: View {
     var body: some View {
         if let message = model.statusMessage {
             Text(message)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white)
+                .font(Theme.pixel(12, .medium))
+                .foregroundColor(Theme.ink)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
-                .background(Capsule().fill(Theme.accent))
+                .background(RoundedRectangle(cornerRadius: Theme.corner).fill(Theme.selected))
                 .padding(.top, 50)
                 .transition(.opacity)
                 .allowsHitTesting(false)
@@ -772,7 +818,8 @@ private struct StatusBanner: View {
     }
 }
 
-/// Backlit LCD tone name display (Alpha Juno-2 style).
+/// Preset display: a small black OLED screen as on the OP-1 – category tag
+/// in orange, program number in blue, name in white.
 struct ToneDisplay: View {
     let number: String
     let name: String
@@ -781,43 +828,39 @@ struct ToneDisplay: View {
     var body: some View {
         HStack(spacing: 8) {
             if !category.isEmpty {
-                Text(category)
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .foregroundColor(Theme.display)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(RoundedRectangle(cornerRadius: 3).fill(Theme.displayText.opacity(0.85)))
+                Text(category.lowercased())
+                    .font(Theme.pixel(10, .bold))
+                    .foregroundColor(Theme.orange)
                     .lineLimit(1)
                     .fixedSize()
             }
             Text(number)
                 .lineLimit(1)
-                .foregroundColor(Theme.displayText.opacity(0.65))
-            Text(name.isEmpty ? "----------" : name.uppercased())
+                .foregroundColor(Theme.blue)
+            Text(name.isEmpty ? "----------" : name.lowercased())
                 .foregroundColor(Theme.displayText)
                 .lineLimit(1)
+            Spacer(minLength: 0)
             Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(Theme.displayText.opacity(0.6))
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(Theme.dimLabel)
         }
-        .font(.system(size: 15, weight: .bold, design: .monospaced))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .font(Theme.pixel(14, .medium))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .frame(minWidth: 190, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 5).fill(Theme.display))
-        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.black.opacity(0.5), lineWidth: 2))
+        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.display))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.hairline, lineWidth: 1))
     }
 }
 
-/// Small "αJUNO"-style wordmark used in the toolbars.
+/// Wordmark: lowercase monospaced, an orange dot as the only colour.
 struct BrandMark: View {
     var body: some View {
-        HStack(spacing: 1) {
-            Text("α")
-                .font(.system(size: 20, weight: .black, design: .serif))
-                .foregroundColor(Theme.accent)
-            Text("MKS-50")
-                .font(.system(size: 15, weight: .black, design: .rounded))
+        HStack(spacing: 4) {
+            Circle().fill(Theme.orange).frame(width: 7, height: 7)
+            Text("mks-50")
+                .font(Theme.pixel(15, .bold))
                 .foregroundColor(Theme.label)
         }
         .lineLimit(1)
@@ -886,5 +929,72 @@ struct PluginToolbar: View {
     private var presetNumber: String {
         guard let n = model.currentPreset?.number else { return "--" }
         return n >= 0 ? String(format: "%02d", n + 1) : "U"
+    }
+}
+
+// MARK: - Section flow layout
+
+/// Lays sections out in lines: each line takes as many sections (at their
+/// ideal width) as fit, then shares the leftover width among them, so a
+/// line always spans the full width. Wider screens get more per line.
+struct SectionFlow: Layout {
+    var spacing: CGFloat = 10
+
+    private struct Line {
+        var indices: [Int] = []
+        var widths: [CGFloat] = []
+        var height: CGFloat = 0
+    }
+
+    private func lines(width: CGFloat, subviews: Subviews) -> [Line] {
+        let ideals = subviews.map { min($0.sizeThatFits(.unspecified).width, width) }
+        var result: [Line] = []
+        var current = Line()
+        var used: CGFloat = 0
+        for (i, w) in ideals.enumerated() {
+            let needed = current.indices.isEmpty ? w : used + spacing + w
+            if !current.indices.isEmpty && needed > width {
+                result.append(current)
+                current = Line()
+                used = 0
+            }
+            used = current.indices.isEmpty ? w : used + spacing + w
+            current.indices.append(i)
+            current.widths.append(w)
+        }
+        if !current.indices.isEmpty { result.append(current) }
+
+        // Stretch every line to the full width.
+        for k in result.indices {
+            let line = result[k]
+            let total = line.widths.reduce(0, +) + spacing * CGFloat(line.widths.count - 1)
+            let extra = max(0, width - total) / CGFloat(line.widths.count)
+            result[k].widths = line.widths.map { $0 + extra }
+            result[k].height = zip(line.indices, result[k].widths).map { i, w in
+                subviews[i].sizeThatFits(ProposedViewSize(width: w, height: nil)).height
+            }.max() ?? 0
+        }
+        return result
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? subviews.map { $0.sizeThatFits(.unspecified).width }
+            .reduce(0) { $0 + $1 + spacing } - spacing
+        let ls = lines(width: max(width, 0), subviews: subviews)
+        let height = ls.map(\.height).reduce(0, +) + spacing * CGFloat(max(ls.count - 1, 0))
+        return CGSize(width: max(width, 0), height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for line in lines(width: bounds.width, subviews: subviews) {
+            var x = bounds.minX
+            for (i, w) in zip(line.indices, line.widths) {
+                subviews[i].place(at: CGPoint(x: x, y: y), anchor: .topLeading,
+                                  proposal: ProposedViewSize(width: w, height: line.height))
+                x += w + spacing
+            }
+            y += line.height + spacing
+        }
     }
 }
