@@ -254,8 +254,6 @@ final class SynthViewModel: ObservableObject {
         ChordMemory.describe(audioUnit.engine.chord(slot))
     }
 
-    /// Stores the keys currently held on a connected MIDI keyboard as the
-    /// selected chord.
     // MARK: Step sequencer
 
     func sequencerSteps() -> [Int] {
@@ -303,6 +301,8 @@ final class SynthViewModel: ObservableObject {
         set(p, Float(SeqStep(note: s.note + delta, accent: s.accent, tie: s.tie).raw))
     }
 
+    /// Stores the keys currently held on a connected MIDI keyboard as the
+    /// selected chord.
     func learnChord() {
         // A latched play-button note must not end up in the learned chord.
         let held = audioUnit.engine.heldKeys.filter { !(padSounding && $0 == padNote) }

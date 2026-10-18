@@ -453,8 +453,8 @@ enum Param: Int, CaseIterable, Identifiable {
         if self == .arpGate || self == .seqGate {
             return "\(Int(Arpeggiator.gateFraction(value) * 100)) %"
         }
-        if let step = SeqStep(raw: Int(value.rounded())), seqStepIndex != nil {
-            return step.label
+        if seqStepIndex != nil {
+            return SeqStep(raw: Int(value.rounded()))?.label ?? "REST"
         }
         if self == .lfoRate {
             let hz = 0.1 * powf(300, value / 127)

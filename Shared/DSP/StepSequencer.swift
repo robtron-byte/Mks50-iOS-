@@ -20,7 +20,7 @@ struct SeqStep: Equatable {
     init?(raw: Int) {
         guard raw > 0 else { return nil }
         let c = min(raw, 127) - 1
-        note = c % 32 - 12
+        note = min(c % 32 - 12, SeqStep.noteRange.upperBound)   // 31 is unused
         accent = (c / 32) & 1 == 1
         tie = (c / 64) & 1 == 1
     }

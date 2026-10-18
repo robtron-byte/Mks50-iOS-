@@ -73,7 +73,7 @@ enum SequenceGenerator {
         let answer = pick([0, 0, -2, 3, 5, -5], &rng)
         for rep in 0..<(16 / motifLength) {
             let last = rep == 16 / motifLength - 1
-            steps += motif.map { step in
+            steps += motif.map { (step: SeqStep?) -> SeqStep? in
                 guard let s = step, last else { return step }
                 return SeqStep(note: s.note + answer, accent: s.accent)
             }

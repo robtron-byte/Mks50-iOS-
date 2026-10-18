@@ -409,9 +409,11 @@ final class MKS50AudioUnit: AUAudioUnit {
         ("fx", "Effects", [.delayMix, .delayTime, .delayFeedback, .delaySync, .delayDivision, .delayTone,
                            .delayPingPong, .reverbMix, .reverbSize, .reverbDamp, .tempo]),
         ("arp", "Arpeggiator", [.arpOn, .arpMode, .arpRate, .arpOctaves, .arpGate, .arpHold]),
-        ("seq", "Sequencer", [.seqOn, .seqStyle, .seqRate, .seqLength, .seqGate]
-            + (0..<StepSequencer.maxSteps).map { Param.seqStep($0) }),
+        ("seq", "Sequencer", sequencerParams),
     ]
+
+    private static let sequencerParams: [Param] =
+        [.seqOn, .seqStyle, .seqRate, .seqLength, .seqGate] + (0..<StepSequencer.maxSteps).map { Param.seqStep($0) }
 
     static func makeParameterTree() -> AUParameterTree {
         let groups = sections.map { section -> AUParameterGroup in

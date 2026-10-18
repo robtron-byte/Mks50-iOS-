@@ -190,7 +190,7 @@ struct SelectorCell: View {
                 Text(param.valueStrings?[index] ?? "").font(.system(size: 8, weight: .bold))
             }
         case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync,
-             .arpOn, .arpHold:
+             .arpOn, .arpHold, .seqOn:
             HStack(spacing: 4) {
                 Circle().frame(width: 6, height: 6).opacity(index == 1 ? 1 : 0.3)
                 Text(index == 1 ? "ON" : "OFF").font(.system(size: 11, weight: .bold, design: .rounded))
