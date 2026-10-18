@@ -50,6 +50,8 @@ struct StepSequencer {
     private(set) var soundingKey = -1
     private(set) var currentStep = -1
     private var gateOffBeat: Double = 0
+    /// G.VAR made the sounding step legato: it ties into the next step.
+    private var grooveTie = false
     private var lastStep: Int64 = .min
 
     /// - Parameters:
@@ -86,12 +88,13 @@ struct StepSequencer {
                 events.off = soundingKey
                 soundingKey = -1
             }
+            grooveTie = false
             return events
         }
 
         let key = min(max(root + s.note, 0), 127)
         let tiedFromPrevious = previous >= 0 && soundingKey >= 0
-            && (SeqStep(raw: Int(steps[previous].rounded()))?.tie ?? false)
+            && ((SeqStep(raw: Int(steps[previous].rounded()))?.tie ?? false) || grooveTie)
         if soundingKey >= 0 {
             events.off = soundingKey
             events.legato = tiedFromPrevious && soundingKey != key
@@ -112,26 +115,30 @@ struct StepSequencer {
         if gateVariation > 0 {
             // Blend from the GATE knob towards the groove's length.
             let target = StepSequencer.grooveGate(index: index, count: count, steps: steps)
-            stepGate = min(max(gate + gateVariation * (target - gate), 0.05), 1)
+            stepGate = min(max(gate + gateVariation * (target - gate), 0.05), 1.5)
         }
-        let length = s.tie ? 1.0 : (s.accent ? min(1, stepGate + 0.15) : stepGate)
-        gateOffBeat = s.tie ? .infinity : Double(step) * quarters + quarters * length
+        // Past a full step the note runs legato into the next one (a tie).
+        grooveTie = stepGate > 1
+        let tied = s.tie || grooveTie
+        let length = tied ? 1.0 : (s.accent ? min(1, stepGate + 0.15) : stepGate)
+        gateOffBeat = tied ? .infinity : Double(step) * quarters + quarters * length
         if gateOffBeat <= beat { gateOffBeat = beat + quarters * length }
         return events
     }
 
-    /// Gate lengths of the groove, from staccato to legato.
-    private static let grooveLevels: [Double] = [0.18, 0.4, 0.65, 0.92]
+    /// Gate lengths of the groove: staccato, short, mid, full step, and
+    /// legato (> 1: ties into the next step, slides with portamento AUTO).
+    private static let grooveLevels: [Double] = [0.18, 0.42, 0.7, 1.0, 1.5]
 
     /// Groove templates for one beat (four 16ths), as `grooveLevels` indices.
     /// Each pairs with a variation used on the last beat of the bar as a
     /// phrase ending.
     private static let grooveTemplates: [(main: [Int], end: [Int])] = [
-        ([3, 1, 2, 1], [3, 1, 1, 3]),      // long – short – mid – short
-        ([3, 1, 1, 2], [2, 1, 3, 0]),      // gallop
-        ([2, 0, 3, 0], [3, 0, 3, 1]),      // off-beat push
-        ([3, 2, 1, 0], [1, 1, 2, 3]),      // decaying, answer swells
-        ([1, 1, 3, 1], [3, 1, 1, 1]),      // stab on the "and"
+        ([3, 1, 2, 1], [4, 1, 1, 3]),      // long – short – mid – short, legato pickup
+        ([3, 1, 1, 4], [2, 1, 3, 0]),      // gallop sliding into the beat
+        ([2, 0, 4, 0], [3, 0, 4, 1]),      // off-beat push, held "and"
+        ([4, 2, 1, 0], [1, 1, 3, 4]),      // legato downbeat, decaying; answer swells
+        ([1, 1, 4, 1], [3, 1, 4, 1]),      // stab on the "and"
     ]
 
     /// Gate length (0...1) of one step for G.VAR. A groove template, picked
@@ -153,11 +160,11 @@ struct StepSequencer {
         if let step = SeqStep(raw: Int(steps[index].rounded())) {
             let next = SeqStep(raw: Int(steps[(index + 1) % count].rounded()))
             if next == nil {
-                level = max(level, 2)                  // room to ring before a rest
+                level = max(level, 3)                  // ring out fully before a rest
             } else if let n = next, n.note - step.note >= 12 {
                 level = min(level, 1)                  // clipped before an octave leap
             }
-            if step.accent { level = min(level + 1, 3) }
+            if step.accent { level = min(level + 1, 4) }
             let prevIndex = (index + count - 1) % count
             if let prev = SeqStep(raw: Int(steps[prevIndex].rounded())), step.note - prev.note >= 12 {
                 level = 0                              // the leap itself: a short bleep
@@ -170,6 +177,7 @@ struct StepSequencer {
     mutating func stop() -> Int {
         let key = soundingKey
         soundingKey = -1
+        grooveTie = false
         lastStep = .min
         currentStep = -1
         return key
@@ -178,6 +186,7 @@ struct StepSequencer {
     /// Voices were released elsewhere: forget the sounding note.
     mutating func silence() {
         soundingKey = -1
+        grooveTie = false
         lastStep = .min
     }
 }

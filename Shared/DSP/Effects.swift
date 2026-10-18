@@ -261,8 +261,9 @@ enum DelayDivision {
 /// post tone low-pass tames the fizz. MIX blends with the dry signal so the
 /// bass weight stays when driving hard.
 ///
-/// Modes: 1 OD (soft tube-like overdrive), 2 DIST (hard cubic clipper,
-/// DS-1 style mid push), 3 RAT (high-gain diode clipping, scooped).
+/// Modes: 1 OD (two-stage asymmetric tube overdrive), 2 DIST (soft stage
+/// into a hard clipper with a strong mid push, DS-1 style), 3 RAT (high-gain
+/// diode fuzz with a touch of rectification for the rasp).
 final class AcidDistortion {
     static let modeNames = ["OFF", "OD", "DIST", "RAT"]
 
@@ -300,13 +301,15 @@ final class AcidDistortion {
             return
         }
         let m = min(max(mode, 1), 3)
-        // 0 ... 42 dB of drive; RAT starts hotter.
-        let targetGain = powf(10, (drive * 42 + (m == 3 ? 8 : 0)) / 20)
-        let emphasis: Float = m == 1 ? 0.6 : (m == 2 ? 1.8 : 1.1)
-        // Output: -18 ... +6 dB, roughly level-matched to the dry synth.
-        let out = powf(10, (level * 24 - 18) / 20) * (m == 1 ? 0.55 : 0.38)
-        let toneHz = min(600 * powf(25, tone), sampleRate * 0.45)
+        // +6 ... +54 dB of drive (already gritty at 0); RAT starts hotter.
+        let targetGain = powf(10, (6 + drive * 48 + (m == 3 ? 6 : 0)) / 20)
+        let emphasis: Float = m == 1 ? 1.0 : (m == 2 ? 2.5 : 1.6)
+        // Output: -18 ... +6 dB around the dry synth's level.
+        let out = powf(10, (level * 24 - 18) / 20) * (m == 1 ? 0.55 : (m == 2 ? 0.4 : 0.45))
+        // Tone: 1 ... 16 kHz, second pole an octave above (keeps the bite).
+        let toneHz = min(1000 * powf(16, tone), sampleRate * 0.45)
         let lpCoef = 1 - expf(-2 * Float.pi * toneHz / sampleRate)
+        let lpCoef2 = 1 - expf(-2 * Float.pi * min(toneHz * 2, sampleRate * 0.45) / sampleRate)
         let smooth: Float = 0.002
 
         for n in 0..<frames {
@@ -328,8 +331,8 @@ final class AcidDistortion {
             let dr = yr - dcXR + dcCoef * dcYR
             dcXR = yr; dcYR = dr
 
-            lp1L += (dl - lp1L) * lpCoef; lp2L += (lp1L - lp2L) * lpCoef
-            lp1R += (dr - lp1R) * lpCoef; lp2R += (lp1R - lp2R) * lpCoef
+            lp1L += (dl - lp1L) * lpCoef; lp2L += (lp1L - lp2L) * lpCoef2
+            lp1R += (dr - lp1R) * lpCoef; lp2R += (lp1R - lp2R) * lpCoef2
             yl = lp2L * out
             yr = lp2R * out
 
@@ -342,16 +345,18 @@ final class AcidDistortion {
     @inline(__always) private static func clip(_ x: Float, mode: Int) -> Float {
         switch mode {
         case 1:
-            // Asymmetric soft clip (tube-ish): bias shifts the curve.
-            return tanhf(x * 0.7 + 0.25) - 0.244_918_66
+            // Two cascaded asymmetric tube stages.
+            let a = tanhf(x + 0.35) - 0.336_375_8
+            return tanhf(2.2 * a) * 1.03
         case 2:
-            // Cubic soft-to-hard clipper.
-            let v = min(max(x * 0.6, -1), 1)
-            return 1.5 * v - 0.5 * v * v * v
+            // Soft stage into a hard clipper: square-ish, buzzy.
+            let v = tanhf(x) * 1.9
+            return min(max(v, -0.8), 0.8) * 1.25
         default:
-            // Diode pair with unequal forward voltage.
-            let y = 0.636_619_8 * atanf(x * 1.5)
-            return y < 0 ? y * 0.82 : y
+            // Silicon diodes, unequal halves, plus some full-wave
+            // rectification (even harmonics, fuzzy rasp).
+            let d = x >= 0 ? 1 - expf(-2.2 * x) : -(1 - expf(1.8 * x)) * 0.8
+            return min(max(0.8 * d + 0.35 * abs(d), -1), 1)
         }
     }
 }
