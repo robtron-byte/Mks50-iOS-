@@ -522,13 +522,13 @@ struct PlayBar: View {
         }
         .foregroundColor(lit ? Theme.ink : Theme.label)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // TR-808 step key: dark key with an orange lamp stripe, lit when playing.
-        .background(RoundedRectangle(cornerRadius: 4).fill(lit ? Theme.orange : Theme.cell))
+        // Grey key with a red lamp stripe, lit red while playing.
+        .background(RoundedRectangle(cornerRadius: 4).fill(lit ? Theme.red : Theme.cell))
         .overlay(alignment: .top) {
-            Rectangle().fill(Theme.orange).frame(height: lit ? 0 : 3).padding(.horizontal, 10)
+            Rectangle().fill(Theme.red).frame(height: lit ? 0 : 3).padding(.horizontal, 10)
         }
-        .overlay(RoundedRectangle(cornerRadius: 4).stroke(lit ? Theme.yellow : Theme.panelEdge, lineWidth: 2))
-        .shadow(color: lit ? Theme.orange.opacity(0.6) : .clear, radius: 8)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(lit ? Theme.white : Theme.panelEdge, lineWidth: 2))
+        .shadow(color: lit ? Theme.red.opacity(0.6) : .clear, radius: 8)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)

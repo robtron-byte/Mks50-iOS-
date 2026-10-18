@@ -1,38 +1,38 @@
 import SwiftUI
 
-/// Retro Roland look (Alpha Juno / TAL-Pha, with the TR-808 colour stripes of
-/// early electro): matte black panel, cream silk-screen print, red / orange /
-/// yellow / cream section colours and an amber-green backlit LCD.
+/// MKS-50 / Alpha Juno look: dark rack-grey panel, white silk-screen print,
+/// Roland red and Roland blue as section colours, light grey switch caps and
+/// the yellow-green backlit LCD.
 enum Theme {
-    static let background = Color(red: 0.055, green: 0.052, blue: 0.05)
-    static let panel = Color(red: 0.115, green: 0.11, blue: 0.105)
-    static let panelEdge = Color(red: 0.25, green: 0.235, blue: 0.22)
-    static let accent = Color(red: 0.89, green: 0.25, blue: 0.16)        // Roland red
-    static let accentSoft = Color(red: 0.89, green: 0.25, blue: 0.16).opacity(0.22)
-    static let label = Color(red: 0.93, green: 0.90, blue: 0.83)         // cream silk-screen
-    static let dimLabel = Color(red: 0.60, green: 0.57, blue: 0.52)
-    static let knobBody = Color(red: 0.17, green: 0.165, blue: 0.16)
-    static let cell = Color(red: 0.17, green: 0.162, blue: 0.155)
-    static let led = Color(red: 1.0, green: 0.22, blue: 0.1)
-    static let display = Color(red: 0.70, green: 0.74, blue: 0.36)       // backlit LCD
-    static let displayText = Color(red: 0.09, green: 0.11, blue: 0.04)
+    static let background = Color(red: 0.07, green: 0.072, blue: 0.078)
+    static let panel = Color(red: 0.135, green: 0.14, blue: 0.15)        // rack grey
+    static let panelEdge = Color(red: 0.26, green: 0.27, blue: 0.29)
+    static let accent = Color(red: 0.86, green: 0.21, blue: 0.17)        // Roland red
+    static let accentSoft = Color(red: 0.86, green: 0.21, blue: 0.17).opacity(0.22)
+    static let label = Color(red: 0.92, green: 0.93, blue: 0.94)         // white print
+    static let dimLabel = Color(red: 0.56, green: 0.58, blue: 0.61)
+    static let knobBody = Color(red: 0.19, green: 0.195, blue: 0.21)
+    static let cell = Color(red: 0.20, green: 0.205, blue: 0.22)
+    static let led = Color(red: 1.0, green: 0.18, blue: 0.12)
+    static let display = Color(red: 0.66, green: 0.73, blue: 0.33)       // backlit LCD
+    static let displayText = Color(red: 0.08, green: 0.11, blue: 0.04)
     /// Text on a lit (coloured) button.
-    static let ink = Color(red: 0.07, green: 0.06, blue: 0.05)
+    static let ink = Color(red: 0.06, green: 0.065, blue: 0.07)
 
-    // TR-808 style stripe colours.
-    static let red = Color(red: 0.89, green: 0.25, blue: 0.16)
-    static let orange = Color(red: 0.95, green: 0.50, blue: 0.13)
-    static let yellow = Color(red: 0.96, green: 0.77, blue: 0.22)
-    static let cream = Color(red: 0.91, green: 0.87, blue: 0.76)
-    static let stripes = [red, orange, yellow, cream]
+    // Section colours (red / blue print of the Alpha Juno, grey caps).
+    static let red = Color(red: 0.86, green: 0.21, blue: 0.17)
+    static let blue = Color(red: 0.30, green: 0.60, blue: 0.86)
+    static let silver = Color(red: 0.72, green: 0.74, blue: 0.77)
+    static let white = Color(red: 0.93, green: 0.94, blue: 0.95)
+    static let stripes = [red, blue, silver, white]
 
     /// Colour of a panel section, following the signal flow.
     static func sectionColor(_ title: String) -> Color {
         switch title {
-        case "WAVE", "DCO", "PULSE", "KEY", "PERFORM", "VOICES": return red
-        case "LFO", "DCO MOD", "DELAY", "REVERB", "CHORUS": return orange
-        case "VCF", "HPF": return yellow
-        default: return cream
+        case "WAVE", "DCO", "PULSE", "VCF", "HPF": return red
+        case "LFO", "DCO MOD", "DELAY", "REVERB", "CHORUS": return blue
+        case "KEY", "PERFORM", "VOICES": return silver
+        default: return white
         }
     }
 }
@@ -49,7 +49,7 @@ extension EnvironmentValues {
     }
 }
 
-/// The four-colour stripe of the 808 era, used as a decorative rule.
+/// Four-colour rule (red / blue / grey / white), used as a decorative stripe.
 struct RetroStripe: View {
     var height: CGFloat = 3
 
