@@ -408,6 +408,7 @@ final class MKS50AudioUnit: AUAudioUnit {
         ("extra", "Extra", [.pulseDetune, .pulseSync, .pulseEnvMod, .voiceDrift, .unisonDetune]),
         ("fx", "Effects", [.delayMix, .delayTime, .delayFeedback, .delaySync, .delayDivision, .delayTone,
                            .delayPingPong, .reverbMix, .reverbSize, .reverbDamp, .tempo]),
+        ("arp", "Arpeggiator", [.arpOn, .arpMode, .arpRate, .arpOctaves, .arpGate, .arpHold]),
     ]
 
     static func makeParameterTree() -> AUParameterTree {

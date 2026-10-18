@@ -86,6 +86,11 @@ final class SynthEngine {
     /// Bar-accurate loop recorder (fed with the final output).
     let recorder = LoopRecorder()
 
+    /// Tempo-synced arpeggiator; plays through the normal note path.
+    private var arp = Arpeggiator()
+    private var arpWasOn = false
+    private var arpHoldWasOn = false
+
     /// Call once per render cycle, before rendering.
     func beginRenderCycle(tempo: Double, beatPosition: Double) {
         hostTempo = tempo
@@ -257,6 +262,7 @@ final class SynthEngine {
             voices[i].gateAmp = 0
         }
         keyStackCount = 0
+        arp.reset()
         heldKeyFlags.update(repeating: 0, count: 128)
         chorus.reset()
         delay.reset()
@@ -340,10 +346,18 @@ final class SynthEngine {
             heldKeyFlags[d1] = 1
             noteOnCounter &+= 1
             lastNoteOn = (noteOnCounter << 8) | UInt32(d1)
-            noteOn(d1, velocity: d2)
+            if pi(.arpOn) == 1 {
+                arpKeyDown(d1, velocity: d2)
+            } else {
+                noteOn(d1, velocity: d2)
+            }
         case 0x80, 0x90:
             heldKeyFlags[d1] = 0
-            noteOff(d1)
+            if pi(.arpOn) == 1 && arpWasOn {
+                if pi(.arpHold) == 0 { arp.remove(d1) }
+            } else {
+                noteOff(d1)
+            }
         case 0xB0:
             controlChange(d1, d2)
         case 0xD0:
@@ -542,6 +556,56 @@ final class SynthEngine {
             releaseVoice(i)
         }
         keyStackCount = 0
+        arp.reset()
+    }
+
+    // MARK: Arpeggiator
+
+    private func arpKeyDown(_ key: Int, velocity: Int) {
+        if !arpWasOn { arpSwitched(on: true) }
+        if pi(.arpHold) == 1 {
+            // HOLD: a new chord (played after all keys were released)
+            // replaces the latched one.
+            var othersHeld = false
+            for k in 0..<128 where k != key && heldKeyFlags[k] != 0 { othersHeld = true }
+            if !othersHeld { arp.removeAll() }
+        }
+        arp.add(key, velocity: velocity)
+    }
+
+    /// Switching the arpeggiator on takes over the keys already held;
+    /// switching it off stops the pattern.
+    private func arpSwitched(on: Bool) {
+        arpWasOn = on
+        if on {
+            for i in 0..<SynthEngine.maxVoices where voices[i].gate { releaseVoice(i) }
+            keyStackCount = 0
+            arp.reset()
+            for k in 0..<128 where heldKeyFlags[k] != 0 { arp.add(k, velocity: 100) }
+        } else {
+            arp.stop { key in noteOff(key) }
+            arp.removeAll()
+        }
+    }
+
+    /// Called once per control block with the beat position of its first frame.
+    private func arpTick(beat: Double) {
+        let on = pi(.arpOn) == 1
+        if on != arpWasOn { arpSwitched(on: on) }
+        guard on else { return }
+        let hold = pi(.arpHold) == 1
+        if arpHoldWasOn && !hold {
+            // HOLD released: drop the keys that are no longer pressed.
+            for k in 0..<128 where heldKeyFlags[k] == 0 { arp.remove(k) }
+        }
+        arpHoldWasOn = hold
+        arp.process(beat: beat,
+                    rateIndex: pi(.arpRate),
+                    octaves: pi(.arpOctaves),
+                    mode: pi(.arpMode),
+                    gate: Arpeggiator.gateFraction(p(.arpGate)),
+                    noteOn: { key, velocity in noteOn(key, velocity: velocity) },
+                    noteOff: { key in noteOff(key) })
     }
 
     // Mono, chord and unison modes share one "voice group" driven by a key
@@ -973,7 +1037,7 @@ final class SynthEngine {
         // Idle once no voice sounds and the output (incl. delay / reverb
         // tails) has stayed below -100 dBFS for 100 ms.
         let tailFrames = Int(sampleRate * 0.1)
-        if !anyActive && idleFrames >= tailFrames {
+        if !anyActive && idleFrames >= tailFrames && arp.isEmpty && (pi(.arpOn) == 1) == arpWasOn {
             left.update(repeating: 0, count: frames)
             right.update(repeating: 0, count: frames)
             return true
@@ -1014,6 +1078,7 @@ final class SynthEngine {
         var pos = 0
         while pos < frames {
             let n = min(SynthEngine.controlInterval, frames - pos)
+            arpTick(beat: renderStartBeat + Double(renderFrameOffset) * beatsPerFrame)
             updateGlobalControl(frames: n)
             for i in 0..<SynthEngine.maxVoices where voices[i].active {
                 renderVoice(i, left: mixL + pos, right: mixR + pos, frames: n)

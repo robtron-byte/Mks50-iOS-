@@ -89,6 +89,14 @@ enum Param: Int, CaseIterable, Identifiable {
     /// when no key was held (bound notes glide without a new attack).
     case envRetrigger
 
+    // MARK: Arpeggiator (tempo-synced, plays through the current key mode)
+    case arpOn
+    case arpMode
+    case arpRate
+    case arpOctaves
+    case arpGate
+    case arpHold
+
     static let toneParameterCount = 36
     static let storageSize = 128
 
@@ -110,8 +118,14 @@ enum Param: Int, CaseIterable, Identifiable {
         case .dcoSaw, .dcoSub:
             return 5
         case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync,
-             .envRetrigger:
+             .envRetrigger, .arpOn, .arpHold:
             return 1
+        case .arpMode:
+            return Arpeggiator.modeNames.count - 1
+        case .arpRate:
+            return LFOShape.divisionNames.count - 1
+        case .arpOctaves:
+            return 3
         case .lfoWave:
             return LFOShape.names.count - 1
         case .lfoDivision:
@@ -161,6 +175,14 @@ enum Param: Int, CaseIterable, Identifiable {
             return ["POLY", "CHORD", "MONO", "UNISON"]
         case .envRetrigger:
             return ["MULTI", "LEGATO"]
+        case .arpOn, .arpHold:
+            return ["OFF", "ON"]
+        case .arpMode:
+            return Arpeggiator.modeNames
+        case .arpRate:
+            return LFOShape.divisionNames
+        case .arpOctaves:
+            return ["1", "2", "3", "4"]
         case .chordIndex:
             return ChordMemory.defaultNames
         case .midiChannel:
@@ -201,6 +223,8 @@ enum Param: Int, CaseIterable, Identifiable {
         case .reverbDamp: return 50
         case .tempo: return 80
         case .lfoDivision: return 8      // 1/4
+        case .arpRate: return 2          // 1/16
+        case .arpGate: return 80
         default: return 0
         }
     }
@@ -276,6 +300,12 @@ enum Param: Int, CaseIterable, Identifiable {
         case .lfoKeySync: return "LFO Key Sync"
         case .hpfFreq: return "HPF Frequency"
         case .envRetrigger: return "Envelope Trigger"
+        case .arpOn: return "Arpeggiator"
+        case .arpMode: return "Arp Mode"
+        case .arpRate: return "Arp Rate"
+        case .arpOctaves: return "Arp Octaves"
+        case .arpGate: return "Arp Gate"
+        case .arpHold: return "Arp Hold"
         }
     }
 
@@ -340,6 +370,12 @@ enum Param: Int, CaseIterable, Identifiable {
         case .lfoKeySync: return "KEY SYNC"
         case .hpfFreq: return "HPF FREQ"
         case .envRetrigger: return "TRIGGER"
+        case .arpOn: return "ARP"
+        case .arpMode: return "MODE"
+        case .arpRate: return "RATE"
+        case .arpOctaves: return "OCTAVES"
+        case .arpGate: return "GATE"
+        case .arpHold: return "HOLD"
         }
     }
 
@@ -350,6 +386,7 @@ enum Param: Int, CaseIterable, Identifiable {
             let hz = SynthEngine.hpfSweepHz(value)
             return hz < 1000 ? "\(Int(hz)) Hz" : String(format: "%.1f kHz", hz / 1000)
         }
+        if self == .arpGate { return "\(Int(Arpeggiator.gateFraction(value) * 100)) %" }
         if self == .lfoRate {
             let hz = 0.1 * powf(300, value / 127)
             return hz < 10 ? String(format: "%.2f Hz", hz) : String(format: "%.1f Hz", hz)

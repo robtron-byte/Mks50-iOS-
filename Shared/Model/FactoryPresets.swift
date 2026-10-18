@@ -211,6 +211,29 @@ enum FactoryPresets {
 
         // MARK: LFO sequences (tempo-synced LFO, sample & hold)
 
+        // Arpeggiator sequences: hold a chord (or use HOLD) and play.
+        make(.sequence, "ARP ROBOT",
+             [0, 0, 0,  1, 0, 0,  2, 0, 0,  2, 0,
+              0, 0, 0, 0, 0,  40, 105, 0, 90, 127, 0,  112, 0,  64, 0,
+              0, 127, 22, 0, 26, 0, 18, 20,  60, 2],
+             extra: [.arpOn: 1, .arpMode: 0, .arpRate: 2, .arpOctaves: 1, .arpGate: 60,
+                     .delayMix: 45, .delayFeedback: 40, .delayDivision: 6, .delayPingPong: 1, .reverbMix: 25]),
+
+        make(.sequence, "ARP UPDOWN",
+             [0, 0, 2,  2, 0, 0,  3, 0, 0,  2, 0,
+              0, 0, 0, 100, 0,  70, 60, 0, 60, 70, 0,  104, 0,  64, 0,
+              0, 127, 20, 0, 20, 0, 14, 0,  60, 2],
+             extra: [.arpOn: 1, .arpMode: 2, .arpRate: 2, .arpOctaves: 2, .arpGate: 90,
+                     .delayMix: 35, .delayDivision: 5, .delayFeedback: 35, .reverbMix: 30]),
+
+        make(.sequence, "ARP BASS",
+             [0, 0, 2,  0, 1, 0,  0, 2, 0,  1, 0,
+              0, 0, 0, 0, 0,  34, 92, 0, 70, 60, 0,  120, 0,  64, 0,
+              0, 127, 30, 40, 30, 40, 12, 0,  60, 2],
+             keyMode: 2,
+             extra: [.arpOn: 1, .arpMode: 4, .arpRate: 2, .arpOctaves: 1, .arpGate: 70,
+                     .delayMix: 15, .delayDivision: 2]),
+
         make(.sequence, "S&H BLEEP",
              [0, 0, 0,  1, 0, 0,  2, 0, 0,  2, 0,
               0, 0, 0, 0, 0,  46, 104, 92, 40, 90, 0,  112, 0,  64, 0,

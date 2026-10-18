@@ -30,7 +30,7 @@ enum Theme {
     /// Colour of a panel section, following the signal flow.
     static func sectionColor(_ title: String) -> Color {
         switch title {
-        case "WAVE", "DCO", "PULSE", "LFO", "DCO MOD", "DELAY", "REVERB", "CHORUS": return blue
+        case "WAVE", "DCO", "PULSE", "LFO", "DCO MOD", "DELAY", "REVERB", "CHORUS", "ARP": return blue
         case "VCF", "HPF": return red
         case "KEY", "PERFORM", "VOICES": return silver
         default: return white

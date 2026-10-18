@@ -9,6 +9,7 @@ enum PanelPage: String, CaseIterable, Identifiable {
     case env = "ENV"
     case amp = "AMP"
     case fx = "FX"
+    case arp = "ARP"
     case patch = "PATCH"
     case extra = "EXTRA"
 
@@ -22,6 +23,7 @@ enum PanelPage: String, CaseIterable, Identifiable {
         case .env: return "chart.xyaxis.line"
         case .amp: return "speaker.wave.2.fill"
         case .fx: return "sparkles"
+        case .arp: return "arrow.up.arrow.down"
         case .patch: return "pianokeys"
         case .extra: return "plus.square.on.square"
         }
@@ -205,6 +207,7 @@ struct SynthPanelView: View {
         case .env: envPage
         case .amp: ampPage
         case .fx: fxPage
+        case .arp: arpPage
         case .patch: patchPage
         case .extra: extraPage
         }
@@ -396,6 +399,21 @@ struct SynthPanelView: View {
         }
     }
 
+    private var arpPage: some View {
+        group("ARP", "arrow.up.arrow.down") {
+            stack {
+                HStack(alignment: .top, spacing: 16) {
+                    selector(.arpOn, "ARP")
+                    knob(.arpRate)
+                    knob(.arpGate)
+                    selector(.arpHold)
+                }
+                selector(.arpMode, inline: true)
+                selector(.arpOctaves, inline: true)
+            }
+        }
+    }
+
     private var patchPage: some View {
         row {
             group("KEY", "pianokeys") {
@@ -475,6 +493,8 @@ struct PlayBar: View {
 
             BigButton(title: "HOLD", icon: model.padLatch ? "lock.fill" : "lock.open",
                       active: model.padLatch) { model.padLatch.toggle() }
+
+            ArpToggle(param: model.model(.arpOn), model: model)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
@@ -513,6 +533,20 @@ struct PlayBar: View {
             model.padTouchDown()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { model.padTouchUp() }
         }
+    }
+}
+
+/// Quick ARP on/off next to the play pad.
+private struct ArpToggle: View {
+    @ObservedObject var param: ParamModel
+    let model: SynthViewModel
+
+    var body: some View {
+        let on = param.value >= 0.5
+        BigButton(title: "ARP", icon: "arrow.up.arrow.down", active: on) {
+            model.set(.arpOn, on ? 0 : 1)
+        }
+        .accessibilityValue(on ? "On" : "Off")
     }
 }
 
