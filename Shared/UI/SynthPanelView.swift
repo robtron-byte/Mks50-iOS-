@@ -654,9 +654,18 @@ private struct StatusBanner: View {
 struct ToneDisplay: View {
     let number: String
     let name: String
+    var category: String = ""
 
     var body: some View {
         HStack(spacing: 8) {
+            if !category.isEmpty {
+                Text(category)
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundColor(Theme.display)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(RoundedRectangle(cornerRadius: 3).fill(Theme.displayText.opacity(0.85)))
+            }
             Text(number)
                 .foregroundColor(Theme.displayText.opacity(0.65))
             Text(name.isEmpty ? "----------" : name.uppercased())
@@ -690,6 +699,23 @@ struct BrandMark: View {
     }
 }
 
+/// One submenu per category (with icon) listing its factory presets.
+struct PresetCategoryMenus: View {
+    let model: SynthViewModel
+
+    var body: some View {
+        ForEach(model.factoryPresetGroups) { group in
+            Menu {
+                ForEach(group.presets, id: \.number) { preset in
+                    Button(preset.name) { model.select(preset) }
+                }
+            } label: {
+                Label("\(group.category.rawValue) (\(group.presets.count))", systemImage: group.category.icon)
+            }
+        }
+    }
+}
+
 /// Toolbar used inside the AUv3 plug-in view (hosts manage user presets).
 struct PluginToolbar: View {
     @ObservedObject var model: SynthViewModel
@@ -699,11 +725,9 @@ struct PluginToolbar: View {
             BrandMark()
             StepButton(symbol: "chevron.left", label: "Previous preset") { model.stepFactoryPreset(-1) }
             Menu {
-                ForEach(model.factoryPresets, id: \.number) { preset in
-                    Button(preset.name) { model.select(preset) }
-                }
+                PresetCategoryMenus(model: model)
             } label: {
-                ToneDisplay(number: presetNumber, name: model.toneName)
+                ToneDisplay(number: presetNumber, name: model.toneName, category: model.currentCategoryLabel)
             }
             StepButton(symbol: "chevron.right", label: "Next preset") { model.stepFactoryPreset(1) }
             Spacer()

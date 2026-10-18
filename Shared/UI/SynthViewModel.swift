@@ -272,6 +272,32 @@ final class SynthViewModel: ObservableObject {
     // MARK: Presets
 
     var factoryPresets: [AUAudioUnitPreset] { audioUnit.factoryPresets ?? [] }
+
+    struct PresetGroup: Identifiable {
+        let category: PresetCategory
+        let presets: [AUAudioUnitPreset]
+        var id: PresetCategory { category }
+    }
+
+    /// Factory presets grouped by category, in browsing order.
+    var factoryPresetGroups: [PresetGroup] {
+        let presets = factoryPresets
+        return PresetCategory.allCases.compactMap { category in
+            let members = presets.filter { self.category(of: $0) == category }
+            return members.isEmpty ? nil : PresetGroup(category: category, presets: members)
+        }
+    }
+
+    func category(of preset: AUAudioUnitPreset?) -> PresetCategory? {
+        guard let n = preset?.number, n >= 0, n < FactoryPresets.all.count else { return nil }
+        return FactoryPresets.all[n].category
+    }
+
+    /// Short category label for the LCD ("USER" for user presets).
+    var currentCategoryLabel: String {
+        if let category = category(of: currentPreset) { return category.short }
+        return (currentPreset?.number ?? 0) < 0 ? "USER" : ""
+    }
     var currentPreset: AUAudioUnitPreset? { audioUnit.currentPreset }
 
     func select(_ preset: AUAudioUnitPreset) {

@@ -184,9 +184,7 @@ struct AppToolbar: View {
     private var presetMenu: some View {
         Menu {
             Section("Factory") {
-                ForEach(model.factoryPresets, id: \.number) { preset in
-                    Button(preset.name) { model.select(preset) }
-                }
+                PresetCategoryMenus(model: model)
             }
             if !model.userPresets.isEmpty {
                 Section("User") {
@@ -201,7 +199,7 @@ struct AppToolbar: View {
                 }
             }
         } label: {
-            ToneDisplay(number: presetNumber, name: model.toneName)
+            ToneDisplay(number: presetNumber, name: model.toneName, category: model.currentCategoryLabel)
         }
     }
 

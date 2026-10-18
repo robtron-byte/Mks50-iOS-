@@ -10,13 +10,17 @@ struct ToneData: Codable, Equatable {
     var patch: [Int: Int]
     /// Optional chord memory contents.
     var chords: [[Int]]?
+    /// Preset category (factory sounds); nil for user / SysEx sounds.
+    var category: PresetCategory?
 
-    init(name: String, tone: [Int], patch: [Int: Int] = [:], chords: [[Int]]? = nil) {
+    init(name: String, tone: [Int], patch: [Int: Int] = [:], chords: [[Int]]? = nil,
+         category: PresetCategory? = nil) {
         precondition(tone.count == Param.toneParameterCount, "A tone needs exactly 36 values")
         self.name = name
         self.tone = tone
         self.patch = patch
         self.chords = chords
+        self.category = category
     }
 
     static var initTone: ToneData {
@@ -27,6 +31,48 @@ struct ToneData: Codable, Equatable {
 
     func value(_ p: Param) -> Int? {
         p.isTone ? tone[p.rawValue] : patch[p.rawValue]
+    }
+}
+
+/// Preset categories, in browsing order.
+enum PresetCategory: String, CaseIterable, Codable {
+    case initTone = "Init"
+    case bass = "Bass"
+    case lead = "Lead"
+    case sequence = "Sequence"
+    case stab = "Stab"
+    case keys = "Keys"
+    case stringsBrass = "Strings & Brass"
+    case pad = "Pad"
+    case fxPerc = "FX & Perc"
+
+    var icon: String {
+        switch self {
+        case .initTone: return "circle.dashed"
+        case .bass: return "speaker.wave.3.fill"
+        case .lead: return "music.mic"
+        case .sequence: return "square.grid.3x3.fill"
+        case .stab: return "bolt.fill"
+        case .keys: return "pianokeys"
+        case .stringsBrass: return "music.quarternote.3"
+        case .pad: return "cloud.fill"
+        case .fxPerc: return "sparkles"
+        }
+    }
+
+    /// Short label for the LCD.
+    var short: String {
+        switch self {
+        case .initTone: return "INIT"
+        case .bass: return "BASS"
+        case .lead: return "LEAD"
+        case .sequence: return "SEQ"
+        case .stab: return "STAB"
+        case .keys: return "KEYS"
+        case .stringsBrass: return "STR"
+        case .pad: return "PAD"
+        case .fxPerc: return "FX"
+        }
     }
 }
 
