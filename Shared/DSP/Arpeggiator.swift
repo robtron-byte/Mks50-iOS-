@@ -28,8 +28,11 @@ struct Arpeggiator {
     private(set) var keys = [Int](repeating: 0, count: capacity)
     private var velocities = [Int](repeating: 100, count: capacity)
     private(set) var count = 0
-    /// Scratch buffer for the sorted pattern (allocated once).
-    private var sorted = [Int](repeating: 0, count: capacity)
+    /// Scratch buffers for the pattern pool: held keys × chord tones
+    /// (allocated once).
+    private var poolKeys = [Int](repeating: 0, count: capacity * ChordMemory.maxNotes)
+    private var poolVelocities = [Int](repeating: 0, count: capacity * ChordMemory.maxNotes)
+    private var poolOrder = [Int](repeating: 0, count: capacity * ChordMemory.maxNotes)
 
     /// Note currently sounding (-1: none) and when it has to stop.
     private(set) var soundingKey = -1
@@ -88,7 +91,10 @@ struct Arpeggiator {
     }
 
     /// Advances to `beat` and returns the note events due (off before on).
-    mutating func process(beat: Double, rateIndex: Int, octaves: Int, mode: Int, gate: Double) -> ArpEvents {
+    /// - Parameter chord: chord-tone offsets (CHORD mode, `chordSize` of them);
+    ///   nil plays the held keys themselves.
+    mutating func process(beat: Double, rateIndex: Int, octaves: Int, mode: Int, gate: Double,
+                          chord: UnsafePointer<Int8>? = nil, chordSize: Int = 0) -> ArpEvents {
         var events = ArpEvents()
         let quarters = LFOShape.divisionQuarters[min(max(rateIndex, 0), LFOShape.divisionQuarters.count - 1)]
 
@@ -110,7 +116,7 @@ struct Arpeggiator {
             events.off = soundingKey
             soundingKey = -1
         }
-        let (key, velocity) = nextNote(octaves: octaves, mode: mode)
+        let (key, velocity) = nextNote(octaves: octaves, mode: mode, chord: chord, chordSize: chordSize)
         events.on = key
         events.velocity = velocity
         gateOffBeat = Double(step) * quarters + quarters * gate
@@ -131,20 +137,30 @@ struct Arpeggiator {
         return key
     }
 
-    private mutating func nextNote(octaves: Int, mode: Int) -> (Int, Int) {
-        let n = count
-        // Pattern source: ascending pitch, or played order for ORDER.
-        for i in 0..<n { sorted[i] = i }
+    private mutating func nextNote(octaves: Int, mode: Int,
+                                   chord: UnsafePointer<Int8>?, chordSize: Int) -> (Int, Int) {
+        // Pattern pool: every held key, expanded by the chord tones.
+        let tones = chord == nil ? 1 : min(max(chordSize, 1), ChordMemory.maxNotes)
+        var n = 0
+        for k in 0..<count {
+            for t in 0..<tones {
+                let offset = chord.map { Int($0[t]) } ?? 0
+                poolKeys[n] = min(max(keys[k] + offset, 0), 127)
+                poolVelocities[n] = velocities[k]
+                n += 1
+            }
+        }
+        for i in 0..<n { poolOrder[i] = i }
         if mode != 4 {
-            // Insertion sort of indices by key (n ≤ 16).
+            // Ascending pitch (insertion sort, n ≤ 96); ORDER keeps play order.
             for i in 1..<max(n, 1) {
-                let v = sorted[i]
+                let v = poolOrder[i]
                 var j = i - 1
-                while j >= 0 && keys[sorted[j]] > keys[v] {
-                    sorted[j + 1] = sorted[j]
+                while j >= 0 && poolKeys[poolOrder[j]] > poolKeys[v] {
+                    poolOrder[j + 1] = poolOrder[j]
                     j -= 1
                 }
-                sorted[j + 1] = v
+                poolOrder[j + 1] = v
             }
         }
         let total = n * (min(max(octaves, 0), 3) + 1)
@@ -163,8 +179,8 @@ struct Arpeggiator {
         }
         index = min(max(index, 0), total - 1)
         position = (position + 1) % 1_000_000   // just keeps the counter bounded
-        let slot = sorted[index % n]
-        let key = min(127, keys[slot] + 12 * (index / n))
-        return (key, velocities[slot])
+        let slot = poolOrder[index % n]
+        let key = min(127, poolKeys[slot] + 12 * (index / n))
+        return (key, poolVelocities[slot])
     }
 }

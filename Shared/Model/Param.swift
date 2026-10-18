@@ -97,6 +97,29 @@ enum Param: Int, CaseIterable, Identifiable {
     case arpGate
     case arpHold
 
+    // MARK: Step sequencer (16 steps, transposed by the held key)
+    case seqOn
+    case seqStyle
+    case seqRate
+    case seqLength
+    case seqGate
+    case seqStep0
+    case seqStep1
+    case seqStep2
+    case seqStep3
+    case seqStep4
+    case seqStep5
+    case seqStep6
+    case seqStep7
+    case seqStep8
+    case seqStep9
+    case seqStep10
+    case seqStep11
+    case seqStep12
+    case seqStep13
+    case seqStep14
+    case seqStep15
+
     static let toneParameterCount = 36
     static let storageSize = 128
 
@@ -106,6 +129,16 @@ enum Param: Int, CaseIterable, Identifiable {
     var id: Int { rawValue }
     var address: AUParameterAddress { AUParameterAddress(rawValue) }
     var isTone: Bool { rawValue < Param.toneParameterCount }
+
+    /// 0...15 for the sequencer step parameters, else nil.
+    var seqStepIndex: Int? {
+        let i = rawValue - Param.seqStep0.rawValue
+        return (0..<StepSequencer.maxSteps).contains(i) ? i : nil
+    }
+
+    static func seqStep(_ index: Int) -> Param {
+        Param(rawValue: Param.seqStep0.rawValue + index)!
+    }
 
     /// Device settings are not stored in sounds / presets.
     var isDeviceSetting: Bool { self == .midiChannel || self == .tempo }
@@ -118,8 +151,14 @@ enum Param: Int, CaseIterable, Identifiable {
         case .dcoSaw, .dcoSub:
             return 5
         case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync,
-             .envRetrigger, .arpOn, .arpHold:
+             .envRetrigger, .arpOn, .arpHold, .seqOn:
             return 1
+        case .seqStyle:
+            return SequenceGenerator.styleNames.count - 1
+        case .seqRate:
+            return LFOShape.divisionNames.count - 1
+        case .seqLength:
+            return StepSequencer.maxSteps - 1
         case .arpMode:
             return Arpeggiator.modeNames.count - 1
         case .arpRate:
@@ -175,8 +214,14 @@ enum Param: Int, CaseIterable, Identifiable {
             return ["POLY", "CHORD", "MONO", "UNISON"]
         case .envRetrigger:
             return ["MULTI", "LEGATO"]
-        case .arpOn, .arpHold:
+        case .arpOn, .arpHold, .seqOn:
             return ["OFF", "ON"]
+        case .seqStyle:
+            return SequenceGenerator.styleNames
+        case .seqRate:
+            return LFOShape.divisionNames
+        case .seqLength:
+            return (1...StepSequencer.maxSteps).map { "\($0)" }
         case .arpMode:
             return Arpeggiator.modeNames
         case .arpRate:
@@ -225,6 +270,9 @@ enum Param: Int, CaseIterable, Identifiable {
         case .lfoDivision: return 8      // 1/4
         case .arpRate: return 2          // 1/16
         case .arpGate: return 80
+        case .seqRate: return 2          // 1/16
+        case .seqLength: return 15       // 16 steps
+        case .seqGate: return 70
         default: return 0
         }
     }
@@ -306,6 +354,14 @@ enum Param: Int, CaseIterable, Identifiable {
         case .arpOctaves: return "Arp Octaves"
         case .arpGate: return "Arp Gate"
         case .arpHold: return "Arp Hold"
+        case .seqOn: return "Sequencer"
+        case .seqStyle: return "Sequence Style"
+        case .seqRate: return "Sequencer Rate"
+        case .seqLength: return "Sequencer Steps"
+        case .seqGate: return "Sequencer Gate"
+        case .seqStep0, .seqStep1, .seqStep2, .seqStep3, .seqStep4, .seqStep5, .seqStep6, .seqStep7,
+             .seqStep8, .seqStep9, .seqStep10, .seqStep11, .seqStep12, .seqStep13, .seqStep14, .seqStep15:
+            return "Step \(rawValue - Param.seqStep0.rawValue + 1)"
         }
     }
 
@@ -376,6 +432,14 @@ enum Param: Int, CaseIterable, Identifiable {
         case .arpOctaves: return "OCTAVES"
         case .arpGate: return "GATE"
         case .arpHold: return "HOLD"
+        case .seqOn: return "SEQ"
+        case .seqStyle: return "STYLE"
+        case .seqRate: return "RATE"
+        case .seqLength: return "STEPS"
+        case .seqGate: return "GATE"
+        case .seqStep0, .seqStep1, .seqStep2, .seqStep3, .seqStep4, .seqStep5, .seqStep6, .seqStep7,
+             .seqStep8, .seqStep9, .seqStep10, .seqStep11, .seqStep12, .seqStep13, .seqStep14, .seqStep15:
+            return "STEP \(rawValue - Param.seqStep0.rawValue + 1)"
         }
     }
 
@@ -386,7 +450,12 @@ enum Param: Int, CaseIterable, Identifiable {
             let hz = SynthEngine.hpfSweepHz(value)
             return hz < 1000 ? "\(Int(hz)) Hz" : String(format: "%.1f kHz", hz / 1000)
         }
-        if self == .arpGate { return "\(Int(Arpeggiator.gateFraction(value) * 100)) %" }
+        if self == .arpGate || self == .seqGate {
+            return "\(Int(Arpeggiator.gateFraction(value) * 100)) %"
+        }
+        if let step = SeqStep(raw: Int(value.rounded())), seqStepIndex != nil {
+            return step.label
+        }
         if self == .lfoRate {
             let hz = 0.1 * powf(300, value / 127)
             return hz < 10 ? String(format: "%.2f Hz", hz) : String(format: "%.1f Hz", hz)

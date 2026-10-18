@@ -91,8 +91,21 @@ final class SynthEngine {
 
     /// Tempo-synced arpeggiator; plays through the normal note path.
     private var arp = Arpeggiator()
+    /// True while held keys are collected by the arp / sequencer instead of
+    /// being played directly.
     private var arpWasOn = false
     private var arpHoldWasOn = false
+    /// 16-step sequencer; uses the arp's key collection (last key = root).
+    private var seq = StepSequencer()
+    private var seqWasOn = false
+    /// Next note-on is a tied sequencer step: no envelope retrigger.
+    private var legatoNote = false
+
+    /// Arp or sequencer switched on.
+    private var collectorOn: Bool { pi(.arpOn) == 1 || pi(.seqOn) == 1 }
+
+    /// Step currently played by the sequencer (-1: stopped), for the UI.
+    var sequencerStep: Int { seq.currentStep }
 
     /// Call once per render cycle, before rendering.
     func beginRenderCycle(tempo: Double, beatPosition: Double) {
@@ -266,6 +279,7 @@ final class SynthEngine {
         }
         keyStackCount = 0
         arp.reset()
+        _ = seq.stop()
         heldKeyFlags.update(repeating: 0, count: 128)
         chorus.reset()
         delay.reset()
@@ -349,14 +363,14 @@ final class SynthEngine {
             heldKeyFlags[d1] = 1
             noteOnCounter &+= 1
             lastNoteOn = (noteOnCounter << 8) | UInt32(d1)
-            if pi(.arpOn) == 1 {
+            if collectorOn {
                 arpKeyDown(d1, velocity: d2)
             } else {
                 noteOn(d1, velocity: d2)
             }
         case 0x80, 0x90:
             heldKeyFlags[d1] = 0
-            if pi(.arpOn) == 1 && arpWasOn {
+            if collectorOn && arpWasOn {
                 if pi(.arpHold) == 0 { arp.remove(d1) }
             } else {
                 noteOff(d1)
@@ -414,6 +428,7 @@ final class SynthEngine {
             heldKeyFlags.update(repeating: 0, count: 128)
             allNotesOff()
             arp.reset()
+            _ = seq.stop()
         default:
             break
         }
@@ -427,7 +442,10 @@ final class SynthEngine {
     /// Chord slot (-1 = none) and unison flag of the current key mode.
     private var group: (slot: Int, unison: Bool) {
         switch pi(.keyMode) {
-        case 1: return (min(max(pi(.chordIndex), 0), ChordMemory.slots - 1), false)
+        case 1:
+            // The arp plays the chord tones one after another, monophonic.
+            if arpWasOn && !seqWasOn { return (-1, false) }
+            return (min(max(pi(.chordIndex), 0), ChordMemory.slots - 1), false)
         case 3: return (-1, true)
         default: return (-1, false)
         }
@@ -602,6 +620,7 @@ final class SynthEngine {
         keyStackCount = 0
         // Voices are gone; the held / latched arp keys stay (key mode switch).
         arp.silence()
+        seq.silence()
     }
 
     // MARK: Arpeggiator
@@ -626,11 +645,15 @@ final class SynthEngine {
             for i in 0..<SynthEngine.maxVoices where voices[i].gate { releaseVoice(i) }
             keyStackCount = 0
             arp.reset()
+            _ = seq.stop()
+            seqWasOn = pi(.seqOn) == 1
             for k in 0..<128 where heldKeyFlags[k] != 0 { arp.add(k, velocity: 100) }
         } else {
             let key = arp.stop()
+            let seqKey = seq.stop()
             arp.removeAll()
             if key >= 0 { noteOff(key) }
+            if seqKey >= 0 { noteOff(seqKey) }
         }
     }
 
@@ -638,20 +661,60 @@ final class SynthEngine {
     private func arpTick(beat: Double) {
         // Handle a key mode switch before the arp's note events.
         syncKeyMode()
-        let on = pi(.arpOn) == 1
+        let on = collectorOn
         if on != arpWasOn { arpSwitched(on: on) }
         guard on else { return }
+        let seqOn = pi(.seqOn) == 1
+        if seqOn != seqWasOn {
+            // Hand over between arp and sequencer.
+            let a = arp.stop()
+            let q = seq.stop()
+            if a >= 0 { noteOff(a) }
+            if q >= 0 { noteOff(q) }
+            seqWasOn = seqOn
+        }
         let hold = pi(.arpHold) == 1
         if arpHoldWasOn && !hold {
             // HOLD released: drop the keys that are no longer pressed.
             for k in 0..<128 where heldKeyFlags[k] == 0 { arp.remove(k) }
         }
         arpHoldWasOn = hold
+
+        if seqOn {
+            let root = arp.count > 0 ? arp.keys[arp.count - 1] : -1
+            let ev = seq.process(beat: beat, root: root,
+                                 rateIndex: pi(.seqRate),
+                                 length: pi(.seqLength) + 1,
+                                 gate: Arpeggiator.gateFraction(p(.seqGate)),
+                                 steps: UnsafePointer(params + Param.seqStep0.rawValue))
+            if ev.legato {
+                if ev.on >= 0 {
+                    legatoNote = true
+                    noteOn(ev.on, velocity: ev.velocity)
+                    legatoNote = false
+                }
+                if ev.off >= 0 { noteOff(ev.off) }
+            } else {
+                if ev.off >= 0 { noteOff(ev.off) }
+                if ev.on >= 0 { noteOn(ev.on, velocity: ev.velocity) }
+            }
+            return
+        }
+
+        // CHORD mode: the arp walks through the chord tones of every held key.
+        var chord: UnsafePointer<Int8>? = nil
+        var chordSize = 0
+        if pi(.keyMode) == 1 {
+            let slot = min(max(pi(.chordIndex), 0), ChordMemory.slots - 1)
+            chord = UnsafePointer(chordNotes + slot * ChordMemory.maxNotes)
+            chordSize = max(1, min(Int(chordSizes[slot]), ChordMemory.maxNotes))
+        }
         let events = arp.process(beat: beat,
                                  rateIndex: pi(.arpRate),
                                  octaves: pi(.arpOctaves),
                                  mode: pi(.arpMode),
-                                 gate: Arpeggiator.gateFraction(p(.arpGate)))
+                                 gate: Arpeggiator.gateFraction(p(.arpGate)),
+                                 chord: chord, chordSize: chordSize)
         if events.off >= 0 { noteOff(events.off) }
         if events.on >= 0 {
             noteOn(events.on, velocity: events.velocity)
@@ -696,7 +759,7 @@ final class SynthEngine {
         let count = groupSize(slot, unison)
         var legato = false
         for j in 0..<count where voices[j].active && voices[j].gate { legato = true }
-        let retrigger = pi(.envRetrigger) == 0
+        let retrigger = pi(.envRetrigger) == 0 && !legatoNote
 
         for j in 0..<SynthEngine.maxVoices {
             if j < count {
@@ -1089,7 +1152,7 @@ final class SynthEngine {
         // Idle once no voice sounds and the output (incl. delay / reverb
         // tails) has stayed below -100 dBFS for 100 ms.
         let tailFrames = Int(sampleRate * 0.1)
-        if !anyActive && idleFrames >= tailFrames && arp.isEmpty && (pi(.arpOn) == 1) == arpWasOn {
+        if !anyActive && idleFrames >= tailFrames && arp.isEmpty && collectorOn == arpWasOn {
             left.update(repeating: 0, count: frames)
             right.update(repeating: 0, count: frames)
             return true

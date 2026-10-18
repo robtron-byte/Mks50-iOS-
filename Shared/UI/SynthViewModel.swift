@@ -256,6 +256,53 @@ final class SynthViewModel: ObservableObject {
 
     /// Stores the keys currently held on a connected MIDI keyboard as the
     /// selected chord.
+    // MARK: Step sequencer
+
+    func sequencerSteps() -> [Int] {
+        (0..<StepSequencer.maxSteps).map { intValue(Param.seqStep($0)) }
+    }
+
+    private func setSequencerSteps(_ raw: [Int]) {
+        for (i, v) in raw.prefix(StepSequencer.maxSteps).enumerated() { set(Param.seqStep(i), Float(v)) }
+    }
+
+    /// New random pattern in the selected style.
+    func generateSequence() {
+        let style = intValue(.seqStyle)
+        setSequencerSteps(SequenceGenerator.generate(style: style))
+        set(.seqLength, Float(StepSequencer.maxSteps - 1))
+        flash("New \(SequenceGenerator.styleNames[min(style, SequenceGenerator.styleNames.count - 1)]) sequence")
+    }
+
+    /// Small variation of the current pattern.
+    func varySequence() {
+        setSequencerSteps(SequenceGenerator.vary(sequencerSteps(), style: intValue(.seqStyle)))
+    }
+
+    /// Tap on a step: rest ↔ note (root), long press: accent → tie → plain.
+    func toggleStep(_ i: Int) {
+        let p = Param.seqStep(i)
+        set(p, SeqStep(raw: intValue(p)) == nil ? Float(SeqStep(note: 0).raw) : 0)
+    }
+
+    func cycleStepFlags(_ i: Int) {
+        let p = Param.seqStep(i)
+        guard var s = SeqStep(raw: intValue(p)) else { return }
+        switch (s.accent, s.tie) {
+        case (false, false): s.accent = true
+        case (true, false): s.accent = false; s.tie = true
+        default: s.accent = false; s.tie = false
+        }
+        set(p, Float(s.raw))
+    }
+
+    /// Step up/down in semitones.
+    func transposeStep(_ i: Int, by delta: Int) {
+        let p = Param.seqStep(i)
+        guard let s = SeqStep(raw: intValue(p)) else { return }
+        set(p, Float(SeqStep(note: s.note + delta, accent: s.accent, tie: s.tie).raw))
+    }
+
     func learnChord() {
         // A latched play-button note must not end up in the learned chord.
         let held = audioUnit.engine.heldKeys.filter { !(padSounding && $0 == padNote) }

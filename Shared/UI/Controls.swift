@@ -30,7 +30,7 @@ enum Theme {
     /// Colour of a panel section, following the signal flow.
     static func sectionColor(_ title: String) -> Color {
         switch title {
-        case "WAVE", "DCO", "PULSE", "LFO", "DCO MOD", "DELAY", "REVERB", "CHORUS", "ARP": return blue
+        case "WAVE", "DCO", "PULSE", "LFO", "DCO MOD", "DELAY", "REVERB", "CHORUS", "ARP", "SEQ", "PATTERN": return blue
         case "VCF", "HPF": return red
         case "KEY", "PERFORM", "VOICES": return silver
         default: return white
@@ -196,6 +196,8 @@ struct KnobTouchSurface: UIViewRepresentable {
     var onChanged: (CGSize) -> Void
     var onEnded: () -> Void
     var onDoubleTap: () -> Void
+    /// Every tap without movement (step buttons); nil for knobs.
+    var onTap: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -238,6 +240,8 @@ struct KnobTouchSurface: UIViewRepresentable {
             case .ended, .cancelled, .failed:
                 if moved {
                     parent.onEnded()
+                } else if g.state == .ended, let onTap = parent.onTap {
+                    onTap()
                 } else if g.state == .ended {
                     let now = CACurrentMediaTime()
                     if now - lastTap < 0.3 {
@@ -318,9 +322,10 @@ struct StepSelector<Cell: View>: View {
 
 extension StepSelector where Cell == Text {
     /// Plain text cells.
-    init(label: String, options: [String], value: Binding<Float>, cellWidth: CGFloat = 30) {
+    init(label: String, options: [String], value: Binding<Float>, cellWidth: CGFloat = 30,
+         inline: Bool = false) {
         self.init(label: label, count: options.count, value: value, cellWidth: cellWidth,
-                  accessibilityNames: options) { i, _ in
+                  accessibilityNames: options, inline: inline) { i, _ in
             Text(options[i]).font(Theme.pixel(11, .bold))
         }
     }

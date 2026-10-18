@@ -211,6 +211,25 @@ enum FactoryPresets {
 
         // MARK: LFO sequences (tempo-synced LFO, sample & hold)
 
+        // Step-sequencer patterns: hold one key (or use HOLD), it transposes.
+        make(.sequence, "SEQ KRAFT",
+             [0, 0, 0,  1, 0, 0,  2, 0, 0,  2, 0,
+              0, 0, 0, 0, 0,  40, 105, 0, 90, 127, 0,  112, 0,  64, 0,
+              0, 127, 22, 0, 26, 0, 18, 20,  60, 2],
+             keyMode: 2,
+             extra: [.seqOn: 1, .seqStyle: 0, .seqGate: 60,
+                     .delayMix: 35, .delayFeedback: 35, .delayDivision: 6, .delayPingPong: 1, .reverbMix: 20,
+                     .seqStep0: 45, .seqStep1: 25, .seqStep2: 13, .seqStep3: 25, .seqStep4: 13, .seqStep5: 25, .seqStep6: 20, .seqStep7: 25, .seqStep8: 45, .seqStep9: 25, .seqStep10: 13, .seqStep11: 25, .seqStep12: 16, .seqStep13: 25, .seqStep14: 23, .seqStep15: 25]),
+
+        make(.sequence, "SEQ ROTHER",
+             [0, 0, 2,  0, 1, 0,  0, 2, 0,  1, 0,
+              0, 0, 0, 0, 0,  34, 92, 0, 70, 60, 0,  120, 0,  64, 0,
+              0, 127, 30, 40, 30, 40, 12, 0,  60, 2],
+             keyMode: 2, porta: 1, portaTime: 10,
+             extra: [.seqOn: 1, .seqStyle: 1, .seqGate: 55,
+                     .delayMix: 20, .delayDivision: 2, .reverbMix: 15,
+                     .seqStep0: 45, .seqStep1: 0, .seqStep2: 13, .seqStep3: 25, .seqStep4: 0, .seqStep5: 13, .seqStep6: 46, .seqStep7: 0, .seqStep8: 13, .seqStep9: 0, .seqStep10: 25, .seqStep11: 43, .seqStep12: 13, .seqStep13: 0, .seqStep14: 84, .seqStep15: 13]),
+
         // Arpeggiator sequences: hold a chord (or use HOLD) and play.
         make(.sequence, "ARP ROBOT",
              [0, 0, 0,  1, 0, 0,  2, 0, 0,  2, 0,

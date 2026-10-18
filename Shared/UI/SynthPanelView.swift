@@ -10,6 +10,7 @@ enum PanelPage: String, CaseIterable, Identifiable {
     case amp = "AMP"
     case fx = "FX"
     case arp = "ARP"
+    case seq = "SEQ"
     case patch = "PATCH"
     case extra = "EXTRA"
 
@@ -24,6 +25,7 @@ enum PanelPage: String, CaseIterable, Identifiable {
         case .amp: return "speaker.wave.2.fill"
         case .fx: return "sparkles"
         case .arp: return "arrow.up.arrow.down"
+        case .seq: return "square.grid.4x3.fill"
         case .patch: return "pianokeys"
         case .extra: return "plus.square.on.square"
         }
@@ -208,6 +210,7 @@ struct SynthPanelView: View {
         case .amp: ampPage
         case .fx: fxPage
         case .arp: arpPage
+        case .seq: SequencerPage(model: model)
         case .patch: patchPage
         case .extra: extraPage
         }
@@ -494,7 +497,8 @@ struct PlayBar: View {
             BigButton(title: "HOLD", icon: model.padLatch ? "lock.fill" : "lock.open",
                       active: model.padLatch) { model.padLatch.toggle() }
 
-            ArpToggle(param: model.model(.arpOn), model: model)
+            ParamToggle(param: model.model(.arpOn), model: model, title: "ARP", icon: "arrow.up.arrow.down")
+            ParamToggle(param: model.model(.seqOn), model: model, title: "SEQ", icon: "square.grid.4x3.fill")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
@@ -536,15 +540,17 @@ struct PlayBar: View {
     }
 }
 
-/// Quick ARP on/off next to the play pad.
-private struct ArpToggle: View {
+/// Quick on/off switch (ARP, SEQ) next to the play pad.
+struct ParamToggle: View {
     @ObservedObject var param: ParamModel
     let model: SynthViewModel
+    let title: String
+    let icon: String
 
     var body: some View {
         let on = param.value >= 0.5
-        BigButton(title: "ARP", icon: "arrow.up.arrow.down", active: on) {
-            model.set(.arpOn, on ? 0 : 1)
+        BigButton(title: title, icon: icon, active: on) {
+            model.set(param.param, on ? 0 : 1)
         }
         .accessibilityValue(on ? "On" : "Off")
     }
