@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// MKS-50 / Alpha Juno look: dark rack-grey panel, white silk-screen print,
 /// Roland red and Roland blue as section colours, light grey switch caps and
@@ -49,21 +50,6 @@ extension EnvironmentValues {
     }
 }
 
-/// Four-colour rule (red / blue / grey / white), used as a decorative stripe.
-struct RetroStripe: View {
-    var height: CGFloat = 3
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(0..<Theme.stripes.count, id: \.self) { i in
-                Rectangle().fill(Theme.stripes[i])
-            }
-        }
-        .frame(height: height)
-        .accessibilityHidden(true)
-    }
-}
-
 /// Instant visual feedback on touch-down (the default `.plain` style gives
 /// none, which makes buttons feel sluggish).
 struct PressableButtonStyle: ButtonStyle {
@@ -75,7 +61,8 @@ struct PressableButtonStyle: ButtonStyle {
     }
 }
 
-/// A labelled panel section with an icon ("DCO", "VCF", ...).
+/// A labelled panel section ("DCO", "VCF", ...): flat rounded card with a
+/// small coloured dot and title, in the style of compact hardware like OP-XY.
 struct PanelSection<Content: View>: View {
     let title: String
     var icon: String? = nil
@@ -84,40 +71,34 @@ struct PanelSection<Content: View>: View {
     var body: some View {
         let tint = Theme.sectionColor(title)
         VStack(alignment: .leading, spacing: 8) {
-            // Roland-style header: title on a coloured band.
-            HStack(spacing: 5) {
-                if let icon {
-                    Image(systemName: icon)
-                        .font(.system(size: 10, weight: .bold))
-                }
-                Text(title)
-                    .font(.system(size: 11, weight: .heavy))
-                    .kerning(1.2)
+            HStack(spacing: 6) {
+                Circle().fill(tint).frame(width: 7, height: 7)
+                Text(title.lowercased())
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .kerning(0.4)
+                    .foregroundColor(Theme.dimLabel)
                     .lineLimit(1)
                     .fixedSize()
             }
-            .foregroundColor(Theme.ink)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Rectangle().fill(tint))
             content
                 .environment(\.sectionTint, tint)
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 4).fill(Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.panelEdge, lineWidth: 1))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.panel))
     }
 }
 
-/// Rotary control. Drag up/down (or left/right) to change, double-tap to reset.
-/// While dragging, a large value bubble shows the exact value.
+/// Rotary encoder with a coloured cap. Drag up/down or left/right to change,
+/// double-tap to reset. While dragging, a value bubble shows the exact value.
+/// Touch handling is UIKit based: it claims the touch immediately, so the
+/// knob wins over a surrounding scroll view also for vertical drags.
 struct Knob: View {
     let label: String
     @Binding var value: Float
     var maxValue: Float = 127
     var defaultValue: Float = 0
-    var size: CGFloat = 50
+    var size: CGFloat = 44
     var display: ((Float) -> String)? = nil
 
     @State private var dragStart: Float?
@@ -127,61 +108,48 @@ struct Knob: View {
     private var valueText: String { display?(value) ?? "\(Int(value.rounded()))" }
 
     var body: some View {
-        VStack(spacing: 2) {
-            Text(label)
-                .font(.system(size: 10, weight: .bold))
-                .kerning(0.6)
-                .foregroundColor(Theme.label)
-                .lineLimit(1)
-                .fixedSize()
+        VStack(spacing: 3) {
             ZStack {
                 Circle()
                     .trim(from: 0, to: 0.75)
-                    .stroke(Theme.panelEdge, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .stroke(Theme.cell, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .rotationEffect(.degrees(135))
                 Circle()
                     .trim(from: 0, to: 0.75 * fraction)
-                    .stroke(tint, style: StrokeStyle(lineWidth: 4, lineCap: .butt))
+                    .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .rotationEffect(.degrees(135))
-                // Black Roland knob with a ribbed skirt and a flat cap.
                 Circle()
-                    .fill(Color(white: 0.05))
-                    .padding(6)
-                    .shadow(color: .black.opacity(0.7), radius: 2, y: 1.5)
-                Circle()
-                    .fill(LinearGradient(colors: [Color(white: 0.24), Theme.knobBody],
-                                         startPoint: .top, endPoint: .bottom))
-                    .padding(10)
+                    .fill(tint)
+                    .padding(7)
+                    .shadow(color: .black.opacity(0.5), radius: 1.5, y: 1)
                 Capsule()
-                    .fill(Theme.label)
-                    .frame(width: 2.5, height: size * 0.22)
-                    .offset(y: -size * 0.22)
+                    .fill(Theme.ink)
+                    .frame(width: 3, height: size * 0.2)
+                    .offset(y: -size * 0.16)
                     .rotationEffect(.degrees(-135 + 270 * fraction))
             }
             .frame(width: size, height: size)
-            .contentShape(Rectangle())
-            // High priority so the knob wins over the page's scroll view.
-            .highPriorityGesture(
-                DragGesture(minimumDistance: 2)
-                    .onChanged { g in
+            .overlay {
+                KnobTouchSurface(
+                    onChanged: { t in
                         if dragStart == nil { dragStart = value }
-                        let delta = Float(g.translation.width - g.translation.height) / 160 * maxValue
+                        let delta = Float(t.width - t.height) / 160 * maxValue
                         let newValue = min(max((dragStart ?? 0) + delta, 0), maxValue).rounded()
                         if newValue != value { value = newValue }
-                    }
-                    .onEnded { _ in dragStart = nil }
-            )
-            .onTapGesture(count: 2) { value = defaultValue }
+                    },
+                    onEnded: { dragStart = nil },
+                    onDoubleTap: { value = defaultValue })
+            }
             .overlay(alignment: .top) {
                 if dragStart != nil {
                     Text(valueText)
-                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
                         .foregroundColor(Theme.ink)
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 3)
                         .background(Capsule().fill(tint))
                         .fixedSize()
-                        .offset(y: -30)
+                        .offset(y: -26)
                         .allowsHitTesting(false)
                 }
             }
@@ -196,13 +164,83 @@ struct Knob: View {
                 }
             }
 
+            Text(label.lowercased())
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(Theme.label)
+                .lineLimit(1)
+                .fixedSize()
             Text(valueText)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundColor(Theme.dimLabel)
                 .lineLimit(1)
                 .fixedSize()
         }
-        .frame(minWidth: size + 6)
+        .frame(minWidth: size + 8)
+    }
+}
+
+/// Transparent UIKit touch area for knobs. A long-press recogniser with zero
+/// delay begins on touch-down, which keeps a parent scroll view from taking
+/// over vertical drags.
+struct KnobTouchSurface: UIViewRepresentable {
+    var onChanged: (CGSize) -> Void
+    var onEnded: () -> Void
+    var onDoubleTap: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let press = UILongPressGestureRecognizer(target: context.coordinator,
+                                                 action: #selector(Coordinator.handle(_:)))
+        press.minimumPressDuration = 0
+        press.allowableMovement = .greatestFiniteMagnitude
+        view.addGestureRecognizer(press)
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        context.coordinator.parent = self
+    }
+
+    final class Coordinator: NSObject {
+        var parent: KnobTouchSurface
+        private var start: CGPoint = .zero
+        private var moved = false
+        private var lastTap: CFTimeInterval = 0
+
+        init(parent: KnobTouchSurface) { self.parent = parent }
+
+        @objc func handle(_ g: UILongPressGestureRecognizer) {
+            // Window coordinates: independent of any scaling of the panel.
+            let p = g.location(in: nil)
+            switch g.state {
+            case .began:
+                start = p
+                moved = false
+            case .changed:
+                let t = CGSize(width: p.x - start.x, height: p.y - start.y)
+                if !moved && abs(t.width) < 3 && abs(t.height) < 3 { return }
+                moved = true
+                parent.onChanged(t)
+            case .ended, .cancelled, .failed:
+                if moved {
+                    parent.onEnded()
+                } else if g.state == .ended {
+                    let now = CACurrentMediaTime()
+                    if now - lastTap < 0.3 {
+                        parent.onDoubleTap()
+                        lastTap = 0
+                    } else {
+                        lastTap = now
+                    }
+                }
+                moved = false
+            default:
+                break
+            }
+        }
     }
 }
 
@@ -219,9 +257,8 @@ struct StepSelector<Cell: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.system(size: 10, weight: .bold))
-                .kerning(0.6)
+            Text(label.lowercased())
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .foregroundColor(Theme.label)
             HStack(spacing: 3) {
                 ForEach(0..<count, id: \.self) { i in
@@ -231,11 +268,10 @@ struct StepSelector<Cell: View>: View {
                     } label: {
                         cell(i, selected)
                             .foregroundColor(selected ? Theme.ink : Theme.label)
-                            .frame(minWidth: cellWidth, minHeight: 32)
+                            .frame(minWidth: cellWidth, minHeight: 30)
                             .padding(.horizontal, 3)
-                            .background(RoundedRectangle(cornerRadius: 3)
+                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .fill(selected ? tint : Theme.cell))
-                            .shadow(color: selected ? tint.opacity(0.55) : .clear, radius: 4)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(PressableButtonStyle())
@@ -304,17 +340,17 @@ struct BigButton: View {
                 if let icon { Image(systemName: icon).font(.system(size: 13, weight: .bold)) }
                 Text(title).font(.system(size: 12, weight: .bold, design: .rounded)).lineLimit(1)
             }
-            .foregroundColor(active ? .white : Theme.label)
+            .foregroundColor(active ? Theme.ink : Theme.label)
             .padding(.horizontal, 12)
-            .frame(minWidth: 72, minHeight: 44)
-            .background(RoundedRectangle(cornerRadius: 8).fill(active ? Theme.accent : Theme.cell))
+            .frame(minWidth: 64, minHeight: 40)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(active ? Theme.accent : Theme.cell))
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
     }
 }
 
-/// Square icon button (≥ 44 pt touch target).
+/// Square icon button.
 struct StepButton: View {
     let symbol: String
     let label: String
@@ -325,8 +361,8 @@ struct StepButton: View {
             Image(systemName: symbol)
                 .font(.system(size: 16, weight: .bold))
                 .foregroundColor(Theme.label)
-                .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.cell))
+                .frame(width: 40, height: 40)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.cell))
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())

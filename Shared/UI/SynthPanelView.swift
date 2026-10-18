@@ -150,13 +150,13 @@ struct SynthPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             pageTabs
-            // No scroll view: it would steal vertical knob drags. Pages are
-            // shown at full size and only scaled down on very small screens.
-            FitToSpace {
-                pageContent
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+            // Scrolls only when a page does not fit. Knobs claim their touch
+            // on touch-down (UIKit), so vertical knob drags never scroll.
+            ViewThatFits(in: .vertical) {
+                paddedPage
+                ScrollView(.vertical, showsIndicators: false) { paddedPage }
             }
+            .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 
@@ -164,32 +164,35 @@ struct SynthPanelView: View {
         HStack(spacing: 4) {
             ForEach(PanelPage.allCases) { p in
                 let selected = p == page
+                let tint = Theme.stripes[(PanelPage.allCases.firstIndex(of: p) ?? 0) % Theme.stripes.count]
                 Button {
                     if !selected { pageRaw = p.rawValue }
                 } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: p.icon).font(.system(size: 13, weight: .semibold))
-                        Text(p.rawValue).font(.system(size: 10, weight: .bold, design: .rounded))
+                    HStack(spacing: 4) {
+                        Image(systemName: p.icon).font(.system(size: 11, weight: .semibold))
+                        Text(p.rawValue.lowercased())
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .lineLimit(1)
                     }
                     .foregroundColor(selected ? Theme.ink : Theme.label)
-                    .frame(maxWidth: .infinity, minHeight: 40)
-                    .background(RoundedRectangle(cornerRadius: 3)
-                        .fill(selected ? Theme.stripes[(PanelPage.allCases.firstIndex(of: p) ?? 0) % Theme.stripes.count] : Theme.cell))
-                    .overlay(alignment: .bottom) {
-                        Rectangle()
-                            .fill(Theme.stripes[(PanelPage.allCases.firstIndex(of: p) ?? 0) % Theme.stripes.count])
-                            .frame(height: selected ? 0 : 2)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
-                    .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity, minHeight: 32)
+                    .background(Capsule().fill(selected ? tint : Theme.cell))
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel(p.rawValue)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
+        .padding(.horizontal, 14)
+        .padding(.top, 6)
+    }
+
+    private var paddedPage: some View {
+        pageContent
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
     }
 
     @ViewBuilder private var pageContent: some View {
@@ -443,36 +446,6 @@ struct SynthPanelView: View {
     }
 }
 
-/// Shows its content at natural size, centred at the top, and scales it down
-/// only when the available space is too small.
-struct FitToSpace<Content: View>: View {
-    @ViewBuilder var content: Content
-    @State private var natural: CGSize = .zero
-
-    var body: some View {
-        GeometryReader { geo in
-            content
-                .fixedSize()
-                .background(GeometryReader { inner in
-                    Color.clear.preference(key: NaturalSizeKey.self, value: inner.size)
-                })
-                .scaleEffect(scale(in: geo.size), anchor: .top)
-                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
-        }
-        .onPreferenceChange(NaturalSizeKey.self) { natural = $0 }
-    }
-
-    private func scale(in space: CGSize) -> CGFloat {
-        guard natural.width > 0, natural.height > 0 else { return 1 }
-        return min(1, space.width / natural.width, space.height / natural.height)
-    }
-}
-
-private struct NaturalSizeKey: PreferenceKey {
-    static var defaultValue: CGSize = .zero
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
-}
-
 // MARK: - Play button
 
 /// Large single "play" pad with an assignable MIDI note.
@@ -502,33 +475,27 @@ struct PlayBar: View {
             BigButton(title: "HOLD", icon: model.padLatch ? "lock.fill" : "lock.open",
                       active: model.padLatch) { model.padLatch.toggle() }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Theme.panel)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(Theme.background)
     }
 
     private var pad: some View {
         let lit = model.padSounding || pressing
-        return HStack(spacing: 10) {
-            Image(systemName: lit ? "speaker.wave.3.fill" : "play.fill")
-                .font(.system(size: 18, weight: .bold))
-            VStack(alignment: .leading, spacing: 0) {
-                Text(model.padNoteName)
-                    .font(.system(size: 24, weight: .heavy, design: .rounded))
-                Text(model.padLatch ? (model.padSounding ? "TAP TO STOP" : "TAP TO HOLD") : "PLAY")
-                    .font(.system(size: 10, weight: .bold))
-                    .opacity(0.8)
-            }
+        return HStack(spacing: 8) {
+            Circle()
+                .fill(lit ? Theme.ink : Theme.red)
+                .frame(width: 9, height: 9)
+            Text(model.padNoteName)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+            Text(model.padLatch ? (model.padSounding ? "tap to stop" : "tap to hold") : "play")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .opacity(0.7)
         }
         .foregroundColor(lit ? Theme.ink : Theme.label)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Grey key with a red lamp stripe, lit red while playing.
-        .background(RoundedRectangle(cornerRadius: 4).fill(lit ? Theme.red : Theme.cell))
-        .overlay(alignment: .top) {
-            Rectangle().fill(Theme.red).frame(height: lit ? 0 : 3).padding(.horizontal, 10)
-        }
-        .overlay(RoundedRectangle(cornerRadius: 4).stroke(lit ? Theme.white : Theme.panelEdge, lineWidth: 2))
-        .shadow(color: lit ? Theme.red.opacity(0.6) : .clear, radius: 8)
+        // Flat rounded key, lit red while playing.
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(lit ? Theme.red : Theme.cell))
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
@@ -615,7 +582,7 @@ struct CCLearnBar: View {
             BigButton(title: "DONE", icon: "checkmark", active: true) { model.toggleCCLearn() }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(Theme.panel)
     }
 
@@ -656,12 +623,11 @@ struct SynthMainView<Toolbar: View, Accessory: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             toolbar
-            RetroStripe(height: 3)
             SynthPanelView(model: model)
                 .frame(maxHeight: .infinity)
             accessory
             BottomBar(learn: model.learn, model: model)
-                .frame(height: 76)
+                .frame(height: 54)
         }
         .overlay(alignment: .top) { StatusBanner(model: model) }
         .background(Theme.background.ignoresSafeArea())
