@@ -177,7 +177,7 @@ enum FactoryPresets {
               100, 127, 90, 100, 90, 100, 100, 0,  30, 2],
              extra: [.reverbMix: 70, .reverbSize: 110, .reverbDamp: 70, .delayMix: 30, .delayDivision: 9]),
 
-        make(.fxPerc, "ZAP",
+        make(.zap, "ZAP",
              [0, 0, 0,  1, 0, 0,  3, 0, 0,  2, 0,
               0, 110, 0, 0, 0,  90, 30, 0, 30, 60, 0,  116, 0,  64, 0,
               0, 127, 22, 0, 22, 0, 20, 0,  60, 2],
@@ -291,6 +291,57 @@ enum FactoryPresets {
              keyMode: 2, porta: 1, portaTime: 20,
              extra: [.lfoWave: 1, .lfoSync: 1, .lfoDivision: 4,
                      .delayMix: 40, .delayDivision: 6, .delayPingPong: 1, .reverbMix: 35]),
+
+        // MARK: Electro zaps (pitch-envelope sweeps, sync and resonance zaps)
+
+        make(.zap, "ZAP CLASSC",
+             [0, 0, 0,  1, 0, 0,  2, 0, 0,  2, 0,
+              0, 110, 0, 0, 0,  90, 20, 0, 20, 60, 0,  118, 0,  64, 0,
+              0, 127, 22, 0, 22, 0, 18, 0,  60, 2],
+             extra: [.delayMix: 25, .delayDivision: 2, .delayPingPong: 1]),
+
+        make(.zap, "LASER",
+             [0, 0, 0,  0, 1, 0,  3, 0, 0,  2, 0,
+              0, 127, 0, 0, 0,  70, 80, 0, 60, 60, 0,  116, 0,  64, 0,
+              0, 127, 30, 0, 30, 0, 24, 0,  60, 2],
+             extra: [.delayMix: 40, .delayDivision: 2, .delayFeedback: 50, .delayPingPong: 1, .reverbMix: 20]),
+
+        make(.zap, "PEW PEW",
+             [0, 0, 0,  2, 0, 0,  2, 0, 0,  3, 0,
+              0, 100, 0, 100, 0,  100, 10, 0, 0, 40, 0,  116, 0,  64, 0,
+              0, 127, 16, 0, 16, 0, 14, 0,  60, 2],
+             extra: [.delayMix: 45, .delayDivision: 2, .delayFeedback: 55, .delayPingPong: 1]),
+
+        make(.zap, "RISE ZAP",
+             [1, 0, 0,  1, 1, 0,  2, 0, 0,  2, 0,
+              0, 90, 0, 0, 0,  80, 40, 0, 30, 60, 0,  114, 0,  64, 0,
+              0, 127, 30, 0, 30, 0, 24, 0,  60, 2],
+             extra: [.delayMix: 30, .delayDivision: 5]),
+
+        make(.zap, "SYNC ZAP",
+             [0, 0, 0,  1, 0, 0,  1, 0, 0,  2, 0,
+              0, 30, 0, 0, 0,  100, 20, 0, 0, 40, 0,  116, 0,  64, 0,
+              0, 127, 28, 0, 28, 0, 22, 0,  60, 2],
+             extra: [.pulseSync: 1, .pulseDetune: 100, .pulseEnvMod: 127, .delayMix: 25, .delayDivision: 5]),
+
+        make(.zap, "NOISE ZAP",
+             [0, 0, 0,  0, 0, 0,  1, 0, 3,  2, 0,
+              0, 0, 0, 0, 0,  20, 115, 0, 127, 0, 0,  116, 0,  64, 0,
+              0, 127, 24, 0, 24, 0, 18, 0,  60, 2],
+             extra: [.reverbMix: 25]),
+
+        make(.zap, "RES ZAP",
+             [0, 0, 0,  0, 0, 0,  1, 0, 1,  1, 0,
+              0, 0, 0, 0, 0,  30, 127, 0, 127, 100, 0,  120, 0,  64, 0,
+              0, 127, 26, 0, 26, 0, 20, 0,  60, 2],
+             extra: [.delayMix: 20, .delayDivision: 2]),
+
+        make(.zap, "DUB ZAP",
+             [0, 0, 0,  1, 1, 0,  2, 0, 0,  2, 1,
+              0, 120, 0, 0, 0,  80, 50, 0, 40, 60, 0,  112, 0,  64, 0,
+              0, 127, 28, 0, 28, 0, 24, 0,  50, 2],
+             extra: [.delayMix: 60, .delayDivision: 6, .delayFeedback: 70, .delayTone: 60, .delayPingPong: 1,
+                     .reverbMix: 45, .reverbSize: 100]),
     ]
 
     private static func make(_ category: PresetCategory, _ name: String, _ tone: [Int],
