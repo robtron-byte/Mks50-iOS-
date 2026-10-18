@@ -150,13 +150,13 @@ struct SynthPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             pageTabs
-            // Scroll only on screens where a page does not fit, so knob
-            // drags never fight with a scroll view on normal devices.
-            ViewThatFits(in: .vertical) {
-                paddedPage
-                ScrollView(.vertical, showsIndicators: false) { paddedPage }
+            // No scroll view: it would steal vertical knob drags. Pages are
+            // shown at full size and only scaled down on very small screens.
+            FitToSpace {
+                pageContent
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
             }
-            .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 
@@ -192,13 +192,6 @@ struct SynthPanelView: View {
         .padding(.top, 8)
     }
 
-    private var paddedPage: some View {
-        pageContent
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-    }
-
     @ViewBuilder private var pageContent: some View {
         switch page {
         case .osc: oscPage
@@ -227,20 +220,27 @@ struct SynthPanelView: View {
         PanelSection(title: title, icon: icon, content: content)
     }
 
-    /// Side by side when there is room, stacked on narrow phones.
-    private func adaptive<A: View, B: View>(_ a: A, _ b: B) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 14) { a; b }
-            VStack(spacing: 14) { a; b }
-        }
+    /// Sections side by side, top aligned.
+    private func row<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(alignment: .top, spacing: 12) { content() }
+    }
+
+    /// One row of knobs with even spacing.
+    private func knobs<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(alignment: .top, spacing: 16) { content() }
+    }
+
+    /// Knob row on top, switches below – the same order on every page.
+    private func stack<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) { content() }
     }
 
     // MARK: Pages
 
     private var oscPage: some View {
-        adaptive(
+        row {
             group("WAVE", "waveform") {
-                VStack(alignment: .leading, spacing: 10) {
+                stack {
                     HStack(spacing: 14) {
                         selector(.dcoPulse)
                         selector(.dcoSaw)
@@ -250,63 +250,69 @@ struct SynthPanelView: View {
                         selector(.dcoSubLevel)
                     }
                 }
-            },
+            }
             group("DCO", "dial.medium") {
-                VStack(alignment: .leading, spacing: 10) {
+                stack {
+                    knobs {
+                        knob(.dcoPwDepth)
+                        knob(.dcoPwmRate)
+                    }
                     HStack(spacing: 14) {
                         selector(.dcoRange)
                         selector(.dcoNoiseLevel)
                     }
-                    HStack(spacing: 18) {
-                        knob(.dcoPwDepth)
-                        knob(.dcoPwmRate)
-                    }
                 }
-            })
+            }
+        }
     }
 
     private var modPage: some View {
-        adaptive(
+        row {
             group("LFO", "wave.3.right") {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .top, spacing: 18) {
+                stack {
+                    HStack(alignment: .top, spacing: 16) {
                         LFORateControl(sync: model.model(.lfoSync), model: model)
                         knob(.lfoDelay)
-                        VStack(alignment: .leading, spacing: 8) {
-                            selector(.lfoSync)
-                            selector(.lfoKeySync)
-                        }
+                        selector(.lfoSync, "SYNC")
+                        selector(.lfoKeySync)
                     }
                     selector(.lfoWave)
                 }
-            },
+            }
             group("DCO MOD", "waveform.path.ecg") {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 18) {
+                stack {
+                    knobs {
                         knob(.dcoLfoDepth)
                         knob(.dcoEnvDepth)
                         knob(.dcoAfterDepth)
                     }
                     selector(.dcoEnvMode)
                 }
-            })
+            }
+        }
     }
 
     private var filterPage: some View {
-        group("VCF", "line.3.horizontal.decrease") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 18) {
-                    knob(.vcfCutoff)
-                    knob(.vcfResonance)
-                    knob(.vcfEnvDepth)
-                    knob(.vcfKeyFollow)
-                    knob(.vcfLfoDepth)
-                    knob(.vcfAfterDepth)
+        row {
+            group("VCF", "line.3.horizontal.decrease") {
+                stack {
+                    knobs {
+                        knob(.vcfCutoff)
+                        knob(.vcfResonance)
+                        knob(.vcfEnvDepth)
+                        knob(.vcfKeyFollow)
+                    }
+                    HStack(alignment: .bottom, spacing: 16) {
+                        selector(.vcfEnvMode)
+                        knob(.vcfLfoDepth)
+                        knob(.vcfAfterDepth)
+                    }
                 }
-                HStack(alignment: .bottom, spacing: 24) {
-                    selector(.vcfEnvMode)
-                    selector(.hpfCutoff, "HPF")
-                    knob(.hpfFreq)
+            }
+            group("HPF", "line.3.horizontal.decrease.circle") {
+                stack {
+                    knob(.hpfFreq, "FREQ")
+                    selector(.hpfCutoff, "STEP")
                 }
             }
         }
@@ -314,95 +320,92 @@ struct SynthPanelView: View {
 
     private var envPage: some View {
         group("ENVELOPE", "chart.xyaxis.line") {
-            HStack(alignment: .center, spacing: 18) {
-                LiveEnvelopeGraph(model: model)
-                    .frame(width: 220, height: 120)
-                VStack(spacing: 10) {
-                    HStack(spacing: 14) {
+            HStack(alignment: .top, spacing: 18) {
+                stack {
+                    LiveEnvelopeGraph(model: model)
+                        .frame(width: 200, height: 110)
+                    selector(.envRetrigger)
+                }
+                stack {
+                    knobs {
                         knob(.envT1)
                         knob(.envT2)
                         knob(.envT3)
                         knob(.envT4)
                     }
-                    HStack(spacing: 14) {
+                    knobs {
                         knob(.envL1)
                         knob(.envL2)
                         knob(.envL3)
                         knob(.envKeyFollow)
                     }
-                    selector(.envRetrigger)
                 }
             }
         }
     }
 
     private var ampPage: some View {
-        HStack(alignment: .top, spacing: 14) {
-            group("VCA", "speaker.wave.2.fill") {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 18) {
-                        knob(.vcaLevel)
-                        knob(.vcaAfterDepth)
-                    }
-                    selector(.vcaEnvMode)
+        group("VCA", "speaker.wave.2.fill") {
+            stack {
+                knobs {
+                    knob(.vcaLevel)
+                    knob(.vcaAfterDepth)
+                    knob(.volume)
                 }
-            }
-            group("OUTPUT", "hifispeaker.fill") {
-                knob(.volume)
+                selector(.vcaEnvMode)
             }
         }
     }
 
     private var fxPage: some View {
-        adaptive(
+        row {
             group("DELAY", "repeat") {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 16) {
+                stack {
+                    knobs {
                         knob(.delayMix)
                         DelayTimeControl(sync: model.model(.delaySync), model: model)
                         knob(.delayFeedback)
                         knob(.delayTone)
                     }
-                    HStack(spacing: 14) {
-                        selector(.delaySync, "TEMPO SYNC")
+                    HStack(alignment: .bottom, spacing: 14) {
+                        selector(.delaySync, "SYNC")
                         selector(.delayPingPong)
+                        knob(.tempo)
                     }
                 }
-            },
-            HStack(alignment: .top, spacing: 14) {
-                group("REVERB", "building.columns") {
-                    HStack(spacing: 16) {
+            }
+            group("REVERB", "building.columns") {
+                stack {
+                    knobs {
                         knob(.reverbMix)
                         knob(.reverbSize)
-                        knob(.reverbDamp)
                     }
+                    knob(.reverbDamp)
                 }
-                group("CHORUS", "circle.hexagongrid") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        selector(.chorus, "CHORUS")
-                        HStack(spacing: 14) {
-                            knob(.chorusRate)
-                            knob(.tempo)
-                        }
-                    }
+            }
+            group("CHORUS", "circle.hexagongrid") {
+                stack {
+                    knob(.chorusRate)
+                    selector(.chorus, "ON")
                 }
-            })
+            }
+        }
     }
 
     private var patchPage: some View {
-        adaptive(
+        row {
             group("KEY", "pianokeys") {
-                VStack(alignment: .leading, spacing: 10) {
+                stack {
                     selector(.keyMode)
-                    HStack(alignment: .center, spacing: 14) {
+                    HStack(alignment: .top, spacing: 14) {
                         knob(.chordIndex, "CHORD")
                         ChordReadout(chordIndex: model.model(.chordIndex), model: model)
                     }
                 }
-            },
+            }
             group("PERFORM", "hand.point.up.left.fill") {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 18) {
+                stack {
+                    knobs {
                         knob(.portaTime)
                         knob(.benderRange)
                         knob(.modSensitivity)
@@ -410,14 +413,15 @@ struct SynthPanelView: View {
                     }
                     selector(.portaSwitch, "PORTAMENTO")
                 }
-            })
+            }
+        }
     }
 
     private var extraPage: some View {
-        HStack(alignment: .top, spacing: 14) {
+        row {
             group("PULSE", "square.split.diagonal") {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 18) {
+                stack {
+                    knobs {
                         knob(.pulseDetune)
                         knob(.pulseEnvMod)
                     }
@@ -425,18 +429,48 @@ struct SynthPanelView: View {
                 }
             }
             group("VOICES", "person.3.fill") {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 18) {
+                stack {
+                    knobs {
                         knob(.voiceDrift)
                         knob(.unisonDetune)
                     }
-                    Text("Unison: PATCH → KEY MODE → UNISON")
-                        .font(.system(size: 11))
+                    Text("Unison: PATCH › KEY › UNISON")
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(Theme.dimLabel)
                 }
             }
         }
     }
+}
+
+/// Shows its content at natural size, centred at the top, and scales it down
+/// only when the available space is too small.
+struct FitToSpace<Content: View>: View {
+    @ViewBuilder var content: Content
+    @State private var natural: CGSize = .zero
+
+    var body: some View {
+        GeometryReader { geo in
+            content
+                .fixedSize()
+                .background(GeometryReader { inner in
+                    Color.clear.preference(key: NaturalSizeKey.self, value: inner.size)
+                })
+                .scaleEffect(scale(in: geo.size), anchor: .top)
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+        }
+        .onPreferenceChange(NaturalSizeKey.self) { natural = $0 }
+    }
+
+    private func scale(in space: CGSize) -> CGFloat {
+        guard natural.width > 0, natural.height > 0 else { return 1 }
+        return min(1, space.width / natural.width, space.height / natural.height)
+    }
+}
+
+private struct NaturalSizeKey: PreferenceKey {
+    static var defaultValue: CGSize = .zero
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
 }
 
 // MARK: - Play button
