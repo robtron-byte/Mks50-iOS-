@@ -225,7 +225,7 @@ enum FactoryPresets {
              [0, 0, 2,  0, 1, 0,  0, 2, 0,  1, 0,
               0, 0, 0, 0, 0,  34, 92, 0, 70, 60, 0,  120, 0,  64, 0,
               0, 127, 30, 40, 30, 40, 12, 0,  60, 2],
-             keyMode: 2, porta: 1, portaTime: 10,
+             keyMode: 2, porta: 2, portaTime: 10,
              extra: [.seqOn: 1, .seqStyle: 1, .seqGate: 55,
                      .delayMix: 20, .delayDivision: 2, .reverbMix: 15,
                      .seqStep0: 45, .seqStep1: 0, .seqStep2: 13, .seqStep3: 25, .seqStep4: 0, .seqStep5: 13, .seqStep6: 46, .seqStep7: 0, .seqStep8: 13, .seqStep9: 0, .seqStep10: 25, .seqStep11: 43, .seqStep12: 13, .seqStep13: 0, .seqStep14: 84, .seqStep15: 13]),

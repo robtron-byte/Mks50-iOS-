@@ -437,7 +437,12 @@ final class SynthEngine {
     // MARK: Voice allocation
 
     private var keyShift: Int { pi(.keyShift) - 12 }
-    private var portamentoOn: Bool { pi(.portaSwitch) == 1 }
+    /// PORTA SW: 0 OFF, 1 ON (always glide), 2 AUTO (glide only between
+    /// overlapping, legato notes).
+    private var portaMode: Int { pi(.portaSwitch) }
+    /// Glide decision for the note event being handled right now.
+    private var glideThisNote = false
+    private var portamentoOn: Bool { glideThisNote }
 
     /// Chord slot (-1 = none) and unison flag of the current key mode.
     private var group: (slot: Int, unison: Bool) {
@@ -465,6 +470,7 @@ final class SynthEngine {
     /// CHORD mode: turning the CHORD knob (or learning a new chord) retunes
     /// the held chord immediately instead of waiting for the next key.
     private func syncChord() {
+        glideThisNote = portaMode != 0
         let (slot, unison) = group
         guard slot >= 0, !unison else {
             lastChordSignature = -1
@@ -519,6 +525,9 @@ final class SynthEngine {
         syncKeyMode()
         refreshEnvelopeSettings()
         recorder.noteTrigger = true
+        var legato = false
+        for i in 0..<SynthEngine.maxVoices where voices[i].gate { legato = true }
+        glideThisNote = portaMode == 1 || (portaMode == 2 && legato)
         if pi(.lfoKeySync) == 1 {
             var anyGate = false
             for i in 0..<SynthEngine.maxVoices where voices[i].gate { anyGate = true }
@@ -539,6 +548,8 @@ final class SynthEngine {
     private func noteOff(_ key: Int) {
         syncKeyMode()
         refreshEnvelopeSettings()
+        // Falling back to a still-held key is legato: AUTO glides too.
+        glideThisNote = portaMode != 0
         if pi(.keyMode) == 0 {
             for i in 0..<SynthEngine.maxVoices where voices[i].active && voices[i].gate && voices[i].key == key {
                 if sustainPedal { voices[i].sustained = true } else { releaseVoice(i) }
@@ -949,7 +960,7 @@ final class SynthEngine {
         b.dcoEnvSemis = powf(p(.dcoEnvDepth) / 127, 2) * 24
         b.pitchOffset = Float((pi(.dcoRange) - 1) * 12) + bend * p(.benderRange)
 
-        b.portaOn = portamentoOn
+        b.portaOn = portaMode != 0
         let portaSeconds = powf(p(.portaTime) / 127, 2) * 3
         b.portaCoef = portaSeconds < 0.001 ? 1 : 1 - expf(-fn / (portaSeconds * sr))
 

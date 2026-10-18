@@ -157,7 +157,7 @@ enum Param: Int, CaseIterable, Identifiable {
             return 3
         case .dcoSaw, .dcoSub:
             return 5
-        case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync,
+        case .chorus, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync,
              .envRetrigger, .arpOn, .arpHold, .seqOn:
             return 1
         case .seqStyle:
@@ -184,6 +184,8 @@ enum Param: Int, CaseIterable, Identifiable {
             return 12
         case .keyMode:
             return 3
+        case .portaSwitch:
+            return 2
         case .chordIndex:
             return 15
         case .midiChannel:
@@ -209,7 +211,7 @@ enum Param: Int, CaseIterable, Identifiable {
             return ["0", "1", "2", "3"]
         case .dcoSaw, .dcoSub:
             return ["0", "1", "2", "3", "4", "5"]
-        case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync:
+        case .chorus, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync:
             return ["OFF", "ON"]
         case .lfoWave:
             return LFOShape.names
@@ -219,6 +221,8 @@ enum Param: Int, CaseIterable, Identifiable {
             return DelayDivision.names
         case .keyMode:
             return ["POLY", "CHORD", "MONO", "UNISON"]
+        case .portaSwitch:
+            return ["OFF", "ON", "AUTO"]
         case .envRetrigger:
             return ["MULTI", "LEGATO"]
         case .arpOn, .arpHold, .seqOn:
