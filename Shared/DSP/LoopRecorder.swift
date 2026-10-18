@@ -120,15 +120,15 @@ final class LoopRecorder {
     func process(left inL: UnsafePointer<Float>, right inR: UnsafePointer<Float>, frames: Int,
                  beatStart: Double, beatsPerFrame: Double) {
         if !latched {
-            noteTrigger = false
-            guard state == .armed else { return }
-            guard os_unfair_lock_trylock(lock) else { return }
+            // Keep a note that started in this very buffer: it may be the
+            // one that should start an armed take (don't clear it before latching).
+            guard state == .armed, os_unfair_lock_trylock(lock) else { noteTrigger = false; return }
             if state == .armed && !cancelRequested {
                 latched = true
                 audioBusy = true
             }
             os_unfair_lock_unlock(lock)
-            if !latched { return }
+            if !latched { noteTrigger = false; return }
         }
 
         if cancelRequested {
