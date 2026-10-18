@@ -140,6 +140,13 @@ enum Param: Int, CaseIterable, Identifiable {
         Param(rawValue: Param.seqStep0.rawValue + index)!
     }
 
+    /// Arpeggiator / sequencer settings. While one of them runs, loading a
+    /// sound keeps them, so the pattern plays on with the new sound.
+    var isPerformance: Bool {
+        (Param.arpOn.rawValue...Param.arpHold.rawValue).contains(rawValue)
+            || (Param.seqOn.rawValue...Param.seqStep15.rawValue).contains(rawValue)
+    }
+
     /// Device settings are not stored in sounds / presets.
     var isDeviceSetting: Bool { self == .midiChannel || self == .tempo }
 

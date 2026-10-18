@@ -406,6 +406,45 @@ struct StepButton: View {
     }
 }
 
+/// Touch-down / touch-up area for the play pad, UIKit based like the knobs:
+/// it reacts on the first touch without delay, also near the screen edges
+/// and inside scroll views.
+struct PressSurface: UIViewRepresentable {
+    var onDown: () -> Void
+    var onUp: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let press = UILongPressGestureRecognizer(target: context.coordinator,
+                                                 action: #selector(Coordinator.handle(_:)))
+        press.minimumPressDuration = 0
+        press.allowableMovement = .greatestFiniteMagnitude
+        press.delaysTouchesBegan = false
+        view.addGestureRecognizer(press)
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        context.coordinator.parent = self
+    }
+
+    final class Coordinator: NSObject {
+        var parent: PressSurface
+        init(parent: PressSurface) { self.parent = parent }
+
+        @objc func handle(_ g: UILongPressGestureRecognizer) {
+            switch g.state {
+            case .began: parent.onDown()
+            case .ended, .cancelled, .failed: parent.onUp()
+            default: break
+            }
+        }
+    }
+}
+
 /// True for an iPhone held upright (narrow width, tall height).
 struct PortraitReader {
     static func isPortrait(_ h: UserInterfaceSizeClass?, _ v: UserInterfaceSizeClass?) -> Bool {

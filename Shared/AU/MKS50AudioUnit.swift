@@ -281,12 +281,17 @@ final class MKS50AudioUnit: AUAudioUnit {
         guard tone.tone.count == Param.toneParameterCount else { return }
         for p in Param.toneParams { setValue(p, tone.tone[p.rawValue]) }
         if includePatch {
+            // A running arp / sequencer keeps playing its pattern.
+            let keepPerformance = value(.arpOn) == 1 || value(.seqOn) == 1
+            func applies(_ p: Param) -> Bool {
+                !p.isDeviceSetting && !(keepPerformance && p.isPerformance)
+            }
             for (key, value) in tone.patch {
-                if let p = Param(rawValue: key), !p.isDeviceSetting { setValue(p, value) }
+                if let p = Param(rawValue: key), applies(p) { setValue(p, value) }
             }
             // Sounds saved before a parameter existed get its default.
             if !tone.patch.isEmpty {
-                for p in Param.patchParams where !p.isDeviceSetting && tone.patch[p.rawValue] == nil {
+                for p in Param.patchParams where applies(p) && tone.patch[p.rawValue] == nil {
                     setValue(p, p.defaultValue)
                 }
             }

@@ -11,6 +11,8 @@ struct MKS50App: App {
                 .preferredColorScheme(.dark)
                 .statusBarHidden()
                 .persistentSystemOverlays(.hidden)
+                // Touches near the screen edges go to the app first (play pad at the bottom).
+                .defersSystemGestures(on: .all)
         }
     }
 }

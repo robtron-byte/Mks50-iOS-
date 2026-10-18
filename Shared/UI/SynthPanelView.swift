@@ -489,9 +489,9 @@ struct SynthPanelView: View {
 /// Large single "play" pad with an assignable MIDI note.
 struct PlayBar: View {
     @ObservedObject var model: SynthViewModel
-    /// Resets automatically when the touch is cancelled (Control Center,
-    /// calls, backgrounding), so the pad can never get stuck.
-    @GestureState private var pressing = false
+    /// Finger on the pad (a cancelled touch – Control Center, calls – also
+    /// ends it, so the pad can never get stuck).
+    @State private var pressing = false
     @Environment(\.horizontalSizeClass) private var hSize
     @Environment(\.verticalSizeClass) private var vSize
 
@@ -571,13 +571,14 @@ struct PlayBar: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Flat key, lit MKS-50 blue while playing.
         .background(RoundedRectangle(cornerRadius: Theme.corner + 1).fill(lit ? Theme.blue : Theme.cell))
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .updating($pressing) { _, state, _ in state = true }
-        )
-        .onChangeCompat(of: pressing) { isDown in
-            if isDown { model.padTouchDown() } else { model.padTouchUp() }
+        .overlay {
+            PressSurface(onDown: {
+                pressing = true
+                model.padTouchDown()
+            }, onUp: {
+                pressing = false
+                model.padTouchUp()
+            })
         }
         .onDisappear { model.padTouchUp() }
         .accessibilityElement()
