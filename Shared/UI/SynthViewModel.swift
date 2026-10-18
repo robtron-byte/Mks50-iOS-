@@ -382,6 +382,24 @@ final class SynthViewModel: ObservableObject {
         refreshUserPresets()
     }
 
+    /// One-tap save under a generated name: the sound's name plus the next
+    /// free number ("SEQ KRA 01"), never overwriting an existing preset.
+    func quickSaveUserPreset() {
+        var base = toneName.trimmingCharacters(in: .whitespaces).uppercased()
+        if let range = base.range(of: #" \d{2}$"#, options: .regularExpression) {
+            base.removeSubrange(range)      // re-saving "BASS 01" gives "BASS 02"
+        }
+        if base.isEmpty { base = "MY SOUND" }
+        base = String(base.prefix(7)).trimmingCharacters(in: .whitespaces)
+        let taken = Set(audioUnit.userPresets.map(\.name))
+        guard let name = (1...99).lazy.map({ String(format: "%@ %02d", base, $0) })
+            .first(where: { !taken.contains($0) }) else {
+            flash("No free name for \"\(base)\"")
+            return
+        }
+        saveUserPreset(named: name)
+    }
+
     func deleteUserPreset(_ preset: AUAudioUnitPreset) {
         try? audioUnit.deleteUserPreset(preset)
         refreshUserPresets()

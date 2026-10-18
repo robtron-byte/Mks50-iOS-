@@ -415,32 +415,41 @@ struct PressSurface: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
+    func makeUIView(context: Context) -> TouchView {
+        let view = TouchView()
         view.backgroundColor = .clear
-        let press = UILongPressGestureRecognizer(target: context.coordinator,
-                                                 action: #selector(Coordinator.handle(_:)))
-        press.minimumPressDuration = 0
-        press.allowableMovement = .greatestFiniteMagnitude
-        press.delaysTouchesBegan = false
-        view.addGestureRecognizer(press)
+        view.isMultipleTouchEnabled = true
+        view.coordinator = context.coordinator
         return view
     }
 
-    func updateUIView(_ view: UIView, context: Context) {
+    func updateUIView(_ view: TouchView, context: Context) {
         context.coordinator.parent = self
     }
 
-    final class Coordinator: NSObject {
+    final class Coordinator {
         var parent: PressSurface
         init(parent: PressSurface) { self.parent = parent }
+    }
 
-        @objc func handle(_ g: UILongPressGestureRecognizer) {
-            switch g.state {
-            case .began: parent.onDown()
-            case .ended, .cancelled, .failed: parent.onUp()
-            default: break
-            }
+    /// Raw touches instead of a gesture recognizer: touchesBegan arrives as
+    /// soon as the finger lands, without waiting for gesture arbitration.
+    final class TouchView: UIView {
+        weak var coordinator: Coordinator?
+        private var touching = 0
+
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+            if touching == 0 { coordinator?.parent.onDown() }
+            touching += touches.count
+        }
+
+        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { lift(touches.count) }
+        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { lift(touches.count) }
+
+        private func lift(_ count: Int) {
+            guard touching > 0 else { return }
+            touching = max(0, touching - count)
+            if touching == 0 { coordinator?.parent.onUp() }
         }
     }
 }

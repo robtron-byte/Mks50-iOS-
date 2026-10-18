@@ -135,6 +135,83 @@ final class MKS50AudioUnit: AUAudioUnit {
 
     override var supportsUserPresets: Bool { true }
 
+    // MARK: User presets
+
+    /// In-process (the standalone app) the system's user preset store stays
+    /// empty, so the app keeps its own: one JSON file per preset in
+    /// Application Support. The AUv3 extension keeps the system store, so
+    /// presets saved in hosts are unaffected.
+    private static let usesOwnPresetStore = Bundle.main.bundleURL.pathExtension != "appex"
+
+    private struct StoredPreset: Codable {
+        var number: Int
+        var name: String
+        var tone: ToneData
+    }
+
+    private static var presetDirectory: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("UserPresets", isDirectory: true)
+    }
+
+    private static func presetFile(_ number: Int) -> URL? {
+        presetDirectory?.appendingPathComponent("preset\(-number).json")
+    }
+
+    private func storedPresets() -> [StoredPreset] {
+        guard let dir = MKS50AudioUnit.presetDirectory,
+              let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+        else { return [] }
+        return files.filter { $0.pathExtension == "json" }.compactMap {
+            guard let data = try? Data(contentsOf: $0) else { return nil }
+            return try? JSONDecoder().decode(StoredPreset.self, from: data)
+        }
+    }
+
+    override var userPresets: [AUAudioUnitPreset] {
+        guard MKS50AudioUnit.usesOwnPresetStore else { return super.userPresets }
+        return storedPresets()
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            .map { stored in
+                let preset = AUAudioUnitPreset()
+                preset.number = stored.number
+                preset.name = stored.name
+                return preset
+            }
+    }
+
+    override func saveUserPreset(_ userPreset: AUAudioUnitPreset) throws {
+        guard MKS50AudioUnit.usesOwnPresetStore else { return try super.saveUserPreset(userPreset) }
+        guard userPreset.number < 0, let dir = MKS50AudioUnit.presetDirectory,
+              let file = MKS50AudioUnit.presetFile(userPreset.number) else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(kAudioUnitErr_InvalidPropertyValue))
+        }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let stored = StoredPreset(number: userPreset.number, name: userPreset.name, tone: currentToneData)
+        willChangeValue(forKey: "userPresets")
+        defer { didChangeValue(forKey: "userPresets") }
+        try JSONEncoder().encode(stored).write(to: file, options: .atomic)
+    }
+
+    override func deleteUserPreset(_ userPreset: AUAudioUnitPreset) throws {
+        guard MKS50AudioUnit.usesOwnPresetStore else { return try super.deleteUserPreset(userPreset) }
+        guard let file = MKS50AudioUnit.presetFile(userPreset.number) else { return }
+        willChangeValue(forKey: "userPresets")
+        defer { didChangeValue(forKey: "userPresets") }
+        try FileManager.default.removeItem(at: file)
+    }
+
+    override func presetState(for userPreset: AUAudioUnitPreset) throws -> [String: Any] {
+        guard MKS50AudioUnit.usesOwnPresetStore else { return try super.presetState(for: userPreset) }
+        guard let file = MKS50AudioUnit.presetFile(userPreset.number) else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(kAudioUnitErr_InvalidPropertyValue))
+        }
+        let stored = try JSONDecoder().decode(StoredPreset.self, from: Data(contentsOf: file))
+        var state = fullState ?? [:]
+        state[MKS50AudioUnit.stateKey] = try JSONEncoder().encode(stored.tone)
+        return state
+    }
+
     override var currentPreset: AUAudioUnitPreset? {
         get { presetStorage }
         set {
@@ -418,7 +495,8 @@ final class MKS50AudioUnit: AUAudioUnit {
     ]
 
     private static let sequencerParams: [Param] =
-        [.seqOn, .seqStyle, .seqRate, .seqLength, .seqGate] + (0..<StepSequencer.maxSteps).map { Param.seqStep($0) }
+        [.seqOn, .seqStyle, .seqRate, .seqLength, .seqGate, .seqGateVar]
+            + (0..<StepSequencer.maxSteps).map { Param.seqStep($0) }
 
     static func makeParameterTree() -> AUParameterTree {
         let groups = sections.map { section -> AUParameterGroup in

@@ -55,8 +55,9 @@ struct StepSequencer {
     /// - Parameters:
     ///   - root: held key (-1: none held → stop)
     ///   - steps: the 16 step parameter values
+    ///   - gateVariation: 0...1, how far each step's gate departs from `gate`
     mutating func process(beat: Double, root: Int, rateIndex: Int, length: Int, gate: Double,
-                          steps: UnsafePointer<Float>) -> SeqEvents {
+                          gateVariation: Double = 0, steps: UnsafePointer<Float>) -> SeqEvents {
         var events = SeqEvents()
         let quarters = LFOShape.divisionQuarters[min(max(rateIndex, 0), LFOShape.divisionQuarters.count - 1)]
 
@@ -107,10 +108,32 @@ struct StepSequencer {
         }
         soundingKey = key
         // Tied steps hold until the next step; others stop after the gate.
-        let length = s.tie ? 1.0 : (s.accent ? min(1, gate + 0.15) : gate)
+        var stepGate = gate
+        if gateVariation > 0 {
+            let offset = StepSequencer.gateOffset(index: index, steps: steps)
+            stepGate = min(max(gate + gateVariation * 0.7 * offset, 0.05), 1)
+        }
+        let length = s.tie ? 1.0 : (s.accent ? min(1, stepGate + 0.15) : stepGate)
         gateOffBeat = s.tie ? .infinity : Double(step) * quarters + quarters * length
         if gateOffBeat <= beat { gateOffBeat = beat + quarters * length }
         return events
+    }
+
+    /// Gate offset -1...1 of one step for GATE VAR. Derived from the pattern
+    /// itself, so it repeats every pass (a groove, not jitter) and changes
+    /// with NEW / VARY. Downbeats lean long, off-beat 16ths short.
+    static func gateOffset(index: Int, steps: UnsafePointer<Float>) -> Double {
+        var h: UInt64 = 0xcbf2_9ce4_8422_2325
+        for i in 0..<maxSteps {
+            h = (h ^ UInt64(max(0, Int(steps[i].rounded())))) &* 0x100_0000_01b3
+        }
+        h = (h ^ UInt64(index + 1)) &* 0x100_0000_01b3
+        h ^= h >> 29
+        h = h &* 0xbf58_476d_1ce4_e5b9
+        h ^= h >> 32
+        let random = Double(h % 10_000) / 5_000 - 1
+        let bias: Double = index % 4 == 0 ? 0.35 : (index % 2 == 1 ? -0.25 : 0)
+        return min(max(random * 0.8 + bias, -1), 1)
     }
 
     /// Stops the pattern; returns the note to release (-1: none).

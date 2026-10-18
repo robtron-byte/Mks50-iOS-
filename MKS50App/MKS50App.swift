@@ -218,6 +218,7 @@ struct AppToolbar: View {
     /// Separate builder: a single ViewBuilder block may hold at most 10 views on iOS 16.
     private var trailingButtons: some View {
         HStack(spacing: 6) {
+            iconButton("square.and.arrow.down", "Quick save preset") { model.quickSaveUserPreset() }
             fileMenu
             iconButton(recorderVisible ? "record.circle.fill" : "record.circle", "Loop recorder", action: onRecorder)
                 .foregroundColor(recorderVisible ? Theme.accent : Theme.label)
@@ -230,7 +231,7 @@ struct AppToolbar: View {
     /// Save / import / export / send in one menu keeps the bar on one line on iPhone.
     private var fileMenu: some View {
         Menu {
-            Button(action: onSave) { Label("Save Preset", systemImage: "square.and.arrow.down") }
+            Button(action: onSave) { Label("Save Preset As…", systemImage: "square.and.arrow.down") }
             Button(action: onImport) { Label("Import SysEx", systemImage: "folder") }
             Button(action: onExport) { Label("Export SysEx", systemImage: "square.and.arrow.up") }
             Button(action: onSend) { Label("Send Tone to Hardware", systemImage: "paperplane") }
@@ -244,15 +245,8 @@ struct AppToolbar: View {
 
     private var presetMenu: some View {
         Menu {
-            Section("Factory") {
-                PresetCategoryMenus(model: model)
-            }
+            PresetCategoryMenus(model: model)
             if !model.userPresets.isEmpty {
-                Section("User") {
-                    ForEach(model.userPresets, id: \.number) { preset in
-                        Button(preset.name) { model.select(preset) }
-                    }
-                }
                 Menu("Delete User Preset") {
                     ForEach(model.userPresets, id: \.number) { preset in
                         Button(preset.name, role: .destructive) { model.deleteUserPreset(preset) }

@@ -115,6 +115,8 @@ final class SynthEngine {
     }
 
     var currentSampleRate: Double { Double(sampleRate) }
+    /// True while the loop recorder captures its tail (no new notes).
+    private var recorderTailGate = false
 
     @inline(__always) private var beatsPerFrame: Double {
         max(tempoBPM, 20) / 60 / Double(sampleRate)
@@ -522,6 +524,8 @@ final class SynthEngine {
     }
 
     private func noteOn(_ key: Int, velocity: Int) {
+        // Loop recorder tail: only the decay of the loop may ring on.
+        guard !recorderTailGate else { return }
         syncKeyMode()
         refreshEnvelopeSettings()
         recorder.noteTrigger = true
@@ -697,6 +701,7 @@ final class SynthEngine {
                                  rateIndex: pi(.seqRate),
                                  length: pi(.seqLength) + 1,
                                  gate: Arpeggiator.gateFraction(p(.seqGate)),
+                                 gateVariation: Double(p(.seqGateVar)) / 127,
                                  steps: UnsafePointer(params + Param.seqStep0.rawValue))
             if ev.legato {
                 if ev.on >= 0 {
@@ -1149,6 +1154,12 @@ final class SynthEngine {
             renderStartBeat = internalBeat
         }
         renderFrameOffset = 0
+        let tail = recorder.inTail
+        if tail && !recorderTailGate {
+            // Loop part done: release everything so the tail only rings out.
+            allNotesOff()
+        }
+        recorderTailGate = tail
         internalBeat = renderStartBeat + Double(frames) * bpf
         if internalBeat > 1_000_000 { internalBeat -= 1_000_000 }   // keep precision (multiple of 4 beats)
         cycleSamples += frames

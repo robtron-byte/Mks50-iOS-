@@ -177,6 +177,13 @@ final class LoopRecorder {
         }
     }
 
+    /// Audio thread: the loop part is complete and only the tail (effect /
+    /// release ringing) is being captured. New notes must not start now, or
+    /// they would be folded onto the loop start as a second layer.
+    var inTail: Bool {
+        state == .recording && tailFrames > 0 && framesWritten >= loopFrames
+    }
+
     var progress: Double {
         totalFrames > 0 ? Double(framesWritten) / Double(totalFrames) : 0
     }

@@ -64,7 +64,7 @@ final class AudioHost: ObservableObject {
         AUAudioUnit.registerSubclass(MKS50AudioUnit.self,
                                      as: MKS50AudioUnit.componentDescription,
                                      name: MKS50AudioUnit.componentName,
-                                     version: 0x0001_0000)
+                                     version: 0xFFFF_FFFF)
 
         AVAudioUnit.instantiate(with: MKS50AudioUnit.componentDescription, options: []) { [weak self] node, error in
             DispatchQueue.main.async {

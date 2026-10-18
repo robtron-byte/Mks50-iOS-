@@ -496,11 +496,16 @@ struct PlayBar: View {
     @Environment(\.verticalSizeClass) private var vSize
 
     var body: some View {
-        if PortraitReader.isPortrait(hSize, vSize) {
-            portraitBody
-        } else {
-            landscapeBody
+        Group {
+            if PortraitReader.isPortrait(hSize, vSize) {
+                portraitBody
+            } else {
+                landscapeBody
+            }
         }
+        // The pad sits at the bottom edge: without this, iOS holds touches
+        // there back until it has ruled out the home swipe.
+        .defersSystemGestures(on: .bottom)
     }
 
     /// Upright iPhone: pad with transpose arrows on top, switches below.
@@ -821,11 +826,21 @@ struct BrandMark: View {
     }
 }
 
-/// One submenu per category (with icon) listing its factory presets.
+/// One submenu per category (with icon) listing its factory presets, plus
+/// "My Presets" with the user's saved sounds.
 struct PresetCategoryMenus: View {
     let model: SynthViewModel
 
     var body: some View {
+        if !model.userPresets.isEmpty {
+            Menu {
+                ForEach(model.userPresets, id: \.number) { preset in
+                    Button(preset.name) { model.select(preset) }
+                }
+            } label: {
+                Label("My Presets (\(model.userPresets.count))", systemImage: "star.fill")
+            }
+        }
         ForEach(model.factoryPresetGroups) { group in
             Menu {
                 ForEach(group.presets, id: \.number) { preset in

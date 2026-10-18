@@ -40,6 +40,7 @@ struct SequencerPage: View {
     @ViewBuilder private var knobs: some View {
         ParamKnob(param: model.model(.seqRate), model: model)
         ParamKnob(param: model.model(.seqGate), model: model)
+        ParamKnob(param: model.model(.seqGateVar), model: model)
         ParamKnob(param: model.model(.seqLength), model: model)
     }
 

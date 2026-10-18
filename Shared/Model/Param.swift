@@ -119,6 +119,8 @@ enum Param: Int, CaseIterable, Identifiable {
     case seqStep13
     case seqStep14
     case seqStep15
+    /// Per-step gate variation (appended so the step addresses stay put).
+    case seqGateVar
 
     static let toneParameterCount = 36
     static let storageSize = 128
@@ -144,7 +146,7 @@ enum Param: Int, CaseIterable, Identifiable {
     /// sound keeps them, so the pattern plays on with the new sound.
     var isPerformance: Bool {
         (Param.arpOn.rawValue...Param.arpHold.rawValue).contains(rawValue)
-            || (Param.seqOn.rawValue...Param.seqStep15.rawValue).contains(rawValue)
+            || (Param.seqOn.rawValue...Param.seqGateVar.rawValue).contains(rawValue)
     }
 
     /// Device settings are not stored in sounds / presets.
@@ -288,7 +290,10 @@ enum Param: Int, CaseIterable, Identifiable {
         }
     }
 
-    var identifier: String { "p\(rawValue)_" + shortName.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "/", with: "") }
+    /// AU parameter identifiers may not contain "." (key paths), " " or "/".
+    var identifier: String {
+        "p\(rawValue)_" + shortName.filter { $0 != " " && $0 != "/" && $0 != "." }
+    }
 
     /// Name as printed in the MKS-50 owner's manual.
     var displayName: String {
@@ -370,6 +375,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .seqRate: return "Sequencer Rate"
         case .seqLength: return "Sequencer Steps"
         case .seqGate: return "Sequencer Gate"
+        case .seqGateVar: return "Sequencer Gate Variation"
         case .seqStep0, .seqStep1, .seqStep2, .seqStep3, .seqStep4, .seqStep5, .seqStep6, .seqStep7,
              .seqStep8, .seqStep9, .seqStep10, .seqStep11, .seqStep12, .seqStep13, .seqStep14, .seqStep15:
             return "Step \(rawValue - Param.seqStep0.rawValue + 1)"
@@ -448,6 +454,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .seqRate: return "RATE"
         case .seqLength: return "STEPS"
         case .seqGate: return "GATE"
+        case .seqGateVar: return "G.VAR"
         case .seqStep0, .seqStep1, .seqStep2, .seqStep3, .seqStep4, .seqStep5, .seqStep6, .seqStep7,
              .seqStep8, .seqStep9, .seqStep10, .seqStep11, .seqStep12, .seqStep13, .seqStep14, .seqStep15:
             return "STEP \(rawValue - Param.seqStep0.rawValue + 1)"
@@ -463,6 +470,9 @@ enum Param: Int, CaseIterable, Identifiable {
         }
         if self == .arpGate || self == .seqGate {
             return "\(Int(Arpeggiator.gateFraction(value) * 100)) %"
+        }
+        if self == .seqGateVar {
+            return "\(Int((value / 127 * 100).rounded())) %"
         }
         if seqStepIndex != nil {
             return SeqStep(raw: Int(value.rounded()))?.label ?? "REST"
