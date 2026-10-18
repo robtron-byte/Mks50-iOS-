@@ -86,6 +86,9 @@ final class SynthEngine {
     /// Bar-accurate loop recorder (fed with the final output).
     let recorder = LoopRecorder()
 
+    /// Last applied chord (slot + notes) in CHORD mode, -1: not in CHORD mode.
+    private var lastChordSignature = -1
+
     /// Tempo-synced arpeggiator; plays through the normal note path.
     private var arp = Arpeggiator()
     private var arpWasOn = false
@@ -441,6 +444,46 @@ final class SynthEngine {
         }
     }
 
+    /// CHORD mode: turning the CHORD knob (or learning a new chord) retunes
+    /// the held chord immediately instead of waiting for the next key.
+    private func syncChord() {
+        let (slot, unison) = group
+        guard slot >= 0, !unison else {
+            lastChordSignature = -1
+            return
+        }
+        let size = groupSize(slot, false)
+        var signature = slot &* 131 &+ size
+        for j in 0..<size { signature = signature &* 31 &+ groupOffset(slot, j) }
+        guard signature != lastChordSignature else { return }
+        let first = lastChordSignature == -1
+        lastChordSignature = signature
+        guard !first, keyStackCount > 0 else { return }
+
+        var velocity: Float = -1
+        for j in 0..<SynthEngine.maxVoices where voices[j].gate { velocity = voices[j].velocity }
+        guard velocity >= 0 else { return }
+
+        let key = keyStack[keyStackCount - 1]
+        let base = Float(key + keyShift)
+        for j in 0..<SynthEngine.maxVoices {
+            if j < size {
+                let note = key + keyShift + groupOffset(slot, j)
+                if voices[j].active && voices[j].gate {
+                    // Same envelope, new pitch (glides with portamento on).
+                    voices[j].note = note
+                    voices[j].targetPitch = Float(note)
+                    if !portamentoOn { voices[j].pitch = Float(note) }
+                } else {
+                    startVoice(j, key: key, note: note, velocity: velocity)
+                }
+            } else if voices[j].gate {
+                releaseVoice(j)
+            }
+        }
+        lastPitch = base
+    }
+
     /// Envelope base times / levels from the current parameters. Also called
     /// on every note event: while the engine is idle no control blocks run,
     /// and a note must never start with stale T1 / L1 values.
@@ -777,6 +820,7 @@ final class SynthEngine {
         let fn = Float(n)
 
         syncKeyMode()
+        syncChord()
 
         updateLFO(frames: n)
 
