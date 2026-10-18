@@ -195,13 +195,20 @@ final class SynthViewModel: ObservableObject {
     func setPadNote(_ note: Int) {
         let clamped = min(max(note, 0), 127)
         guard clamped != padNote else { return }
-        let wasSounding = padSounding
-        padStop()
+        let oldNote = padNote
+        // A held (finger on the pad) or latched note moves to the new pitch.
+        let keepSounding = padSounding && (padLatch || padTouching)
         padNote = clamped
         UserDefaults.standard.set(clamped, forKey: SynthViewModel.padNoteKey)
-        if wasSounding && padLatch {
+        guard padSounding else { return }
+        if keepSounding {
+            // New note first, then release the old one: played legato, so
+            // mono modes bind the notes (and portamento AUTO glides).
             audioUnit.sendMIDI(status(0x90), UInt8(padNote), 100)
-            padSounding = true
+            audioUnit.sendMIDI(status(0x80), UInt8(oldNote), 0)
+        } else {
+            audioUnit.sendMIDI(status(0x80), UInt8(oldNote), 0)
+            padSounding = false
         }
     }
 
