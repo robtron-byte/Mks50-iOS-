@@ -135,6 +135,10 @@ final class SynthViewModel: ObservableObject {
 
     func set(_ p: Param, _ value: Float) {
         let v = min(max(value, 0), Float(p.maxValue))
+        // Switching on an empty sequencer: start with a fresh pattern.
+        if p == .seqOn && v >= 0.5 && intValue(.seqOn) == 0 && sequencerSteps().allSatisfy({ $0 == 0 }) {
+            generateSequence()
+        }
         let m = model(p)
         if m.value != v { m.value = v }
         parameters[p.rawValue]?.value = v
@@ -277,21 +281,10 @@ final class SynthViewModel: ObservableObject {
         setSequencerSteps(SequenceGenerator.vary(sequencerSteps(), style: intValue(.seqStyle)))
     }
 
-    /// Tap on a step: rest ↔ note (root), long press: accent → tie → plain.
+    /// Tap on a step: rest ↔ note (root).
     func toggleStep(_ i: Int) {
         let p = Param.seqStep(i)
         set(p, SeqStep(raw: intValue(p)) == nil ? Float(SeqStep(note: 0).raw) : 0)
-    }
-
-    func cycleStepFlags(_ i: Int) {
-        let p = Param.seqStep(i)
-        guard var s = SeqStep(raw: intValue(p)) else { return }
-        switch (s.accent, s.tie) {
-        case (false, false): s.accent = true
-        case (true, false): s.accent = false; s.tie = true
-        default: s.accent = false; s.tie = false
-        }
-        set(p, Float(s.raw))
     }
 
     /// Step up/down in semitones.
