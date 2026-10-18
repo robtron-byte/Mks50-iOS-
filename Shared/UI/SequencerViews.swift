@@ -16,12 +16,12 @@ struct SequencerPage: View {
     private var settings: some View {
         PanelSection(title: "SEQ") {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 14) {
-                    ParamSelector(param: model.model(.seqOn), model: model, label: "SEQ")
-                    ParamKnob(param: model.model(.seqRate), model: model)
-                    ParamKnob(param: model.model(.seqGate), model: model)
-                    ParamKnob(param: model.model(.seqLength), model: model)
-                    ParamSelector(param: model.model(.arpHold), model: model, label: "HOLD")
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 14) { switches; knobs }
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 14) { switches }
+                        HStack(alignment: .top, spacing: 14) { knobs }
+                    }
                 }
                 ParamSelector(param: model.model(.seqStyle), model: model, inline: true)
                 HStack(spacing: 8) {
@@ -30,6 +30,17 @@ struct SequencerPage: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder private var switches: some View {
+        ParamSelector(param: model.model(.seqOn), model: model, label: "SEQ")
+        ParamSelector(param: model.model(.arpHold), model: model, label: "HOLD")
+    }
+
+    @ViewBuilder private var knobs: some View {
+        ParamKnob(param: model.model(.seqRate), model: model)
+        ParamKnob(param: model.model(.seqGate), model: model)
+        ParamKnob(param: model.model(.seqLength), model: model)
     }
 
     private var pattern: some View {

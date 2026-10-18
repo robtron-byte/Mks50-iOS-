@@ -7,23 +7,51 @@ struct RecorderStrip: View {
     let onShowRecordings: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            recordButton
-            barsSelector
-            startSelector
-            BigButton(title: "TAILS", icon: "arrow.triangle.2.circlepath",
-                      active: recorder.wrapTails) { recorder.wrapTails.toggle() }
-                .disabled(recorder.phase != .idle)
-            BPMControl(param: model.model(.tempo), model: model)
-                .disabled(recorder.phase != .idle)
-            Spacer(minLength: 0)
-            BigButton(title: "\(recorder.recordings.count)", icon: "waveform") { onShowRecordings() }
-                .accessibilityLabel("Recordings")
+        // One row in landscape, two rows on an upright iPhone.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                recordButton
+                barsSelector
+                startSelector
+                tailsButton
+                bpm
+                Spacer(minLength: 0)
+                listButton
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    recordButton
+                    barsSelector
+                    startSelector
+                }
+                HStack(spacing: 10) {
+                    tailsButton
+                    bpm
+                    Spacer(minLength: 0)
+                    listButton
+                }
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(Theme.panel)
         .overlay(alignment: .top) { Rectangle().fill(Theme.panelEdge).frame(height: 1) }
+    }
+
+    private var tailsButton: some View {
+        BigButton(title: "TAILS", icon: "arrow.triangle.2.circlepath",
+                  active: recorder.wrapTails) { recorder.wrapTails.toggle() }
+            .disabled(recorder.phase != .idle)
+    }
+
+    private var bpm: some View {
+        BPMControl(param: model.model(.tempo), model: model)
+            .disabled(recorder.phase != .idle)
+    }
+
+    private var listButton: some View {
+        BigButton(title: "\(recorder.recordings.count)", icon: "waveform") { onShowRecordings() }
+            .accessibilityLabel("Recordings")
     }
 
     private var recordButton: some View {
