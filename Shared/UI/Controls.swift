@@ -20,9 +20,9 @@ enum Theme {
     /// Text on a lit (coloured) button.
     static let ink = Color(red: 0.06, green: 0.065, blue: 0.07)
 
-    // Section colours (red / blue print of the Alpha Juno, grey caps).
+    // Section colours: MKS-50 blue, Roland red, grey caps, white print.
     static let red = Color(red: 0.86, green: 0.21, blue: 0.17)
-    static let blue = Color(red: 0.30, green: 0.60, blue: 0.86)
+    static let blue = Color(red: 0.20, green: 0.50, blue: 0.86)          // MKS-50 blue
     static let silver = Color(red: 0.72, green: 0.74, blue: 0.77)
     static let white = Color(red: 0.93, green: 0.94, blue: 0.95)
     static let stripes = [red, blue, silver, white]
@@ -30,12 +30,20 @@ enum Theme {
     /// Colour of a panel section, following the signal flow.
     static func sectionColor(_ title: String) -> Color {
         switch title {
-        case "WAVE", "DCO", "PULSE", "VCF", "HPF": return red
-        case "LFO", "DCO MOD", "DELAY", "REVERB", "CHORUS": return blue
+        case "WAVE", "DCO", "PULSE", "LFO", "DCO MOD", "DELAY", "REVERB", "CHORUS": return blue
+        case "VCF", "HPF": return red
         case "KEY", "PERFORM", "VOICES": return silver
         default: return white
         }
     }
+
+    /// Small monospaced type: the pixel-display feel of compact hardware.
+    static func pixel(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight, design: .monospaced)
+    }
+
+    /// Corner radius for cells, keys and cards: nearly square, pixel-like.
+    static let corner: CGFloat = 3
 }
 
 private struct SectionTintKey: EnvironmentKey {
@@ -72,10 +80,9 @@ struct PanelSection<Content: View>: View {
         let tint = Theme.sectionColor(title)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Circle().fill(tint).frame(width: 7, height: 7)
+                Rectangle().fill(tint).frame(width: 6, height: 6)
                 Text(title.lowercased())
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .kerning(0.4)
+                    .font(Theme.pixel(11, .bold))
                     .foregroundColor(Theme.dimLabel)
                     .lineLimit(1)
                     .fixedSize()
@@ -85,7 +92,7 @@ struct PanelSection<Content: View>: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.panel))
+        .background(RoundedRectangle(cornerRadius: Theme.corner + 1).fill(Theme.panel))
     }
 }
 
@@ -104,23 +111,26 @@ struct Knob: View {
     @State private var dragStart: Float?
     @Environment(\.sectionTint) private var tint
 
+    static let ledCount = 13
+
     private var fraction: Double { Double(value / maxValue) }
     private var valueText: String { display?(value) ?? "\(Int(value.rounded()))" }
 
     var body: some View {
         VStack(spacing: 3) {
             ZStack {
-                Circle()
-                    .trim(from: 0, to: 0.75)
-                    .stroke(Theme.cell, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .rotationEffect(.degrees(135))
-                Circle()
-                    .trim(from: 0, to: 0.75 * fraction)
-                    .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .rotationEffect(.degrees(135))
+                // Pixel LED ring: 13 square dots over 270°.
+                ForEach(0..<Knob.ledCount, id: \.self) { i in
+                    let lit = Double(i) <= fraction * Double(Knob.ledCount - 1) + 0.001 && fraction > 0
+                    Rectangle()
+                        .fill(lit ? tint : Theme.cell)
+                        .frame(width: 3, height: 3)
+                        .offset(y: -size / 2 + 1.5)
+                        .rotationEffect(.degrees(-135 + 270 * Double(i) / Double(Knob.ledCount - 1)))
+                }
                 Circle()
                     .fill(tint)
-                    .padding(7)
+                    .padding(8)
                     .shadow(color: .black.opacity(0.5), radius: 1.5, y: 1)
                 Capsule()
                     .fill(Theme.ink)
@@ -143,11 +153,11 @@ struct Knob: View {
             .overlay(alignment: .top) {
                 if dragStart != nil {
                     Text(valueText)
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .font(Theme.pixel(14, .bold))
                         .foregroundColor(Theme.ink)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(Capsule().fill(tint))
+                        .background(RoundedRectangle(cornerRadius: Theme.corner).fill(tint))
                         .fixedSize()
                         .offset(y: -26)
                         .allowsHitTesting(false)
@@ -165,12 +175,12 @@ struct Knob: View {
             }
 
             Text(label.lowercased())
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(Theme.pixel(10))
                 .foregroundColor(Theme.label)
                 .lineLimit(1)
                 .fixedSize()
             Text(valueText)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(Theme.pixel(10, .regular))
                 .foregroundColor(Theme.dimLabel)
                 .lineLimit(1)
                 .fixedSize()
@@ -250,47 +260,67 @@ struct StepSelector<Cell: View>: View {
     let label: String
     let count: Int
     @Binding var value: Float
-    var cellWidth: CGFloat = 34
+    var cellWidth: CGFloat = 30
     var accessibilityNames: [String] = []
+    /// Label left of the cells instead of above (saves height).
+    var inline = false
     @ViewBuilder let cell: (_ index: Int, _ selected: Bool) -> Cell
     @Environment(\.sectionTint) private var tint
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label.lowercased())
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundColor(Theme.label)
-            HStack(spacing: 3) {
-                ForEach(0..<count, id: \.self) { i in
-                    let selected = Int(value.rounded()) == i
-                    Button {
-                        if !selected { value = Float(i) }
-                    } label: {
-                        cell(i, selected)
-                            .foregroundColor(selected ? Theme.ink : Theme.label)
-                            .frame(minWidth: cellWidth, minHeight: 30)
-                            .padding(.horizontal, 3)
-                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(selected ? tint : Theme.cell))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PressableButtonStyle())
-                    .accessibilityLabel(accessibilityNames.indices.contains(i) ? accessibilityNames[i] : "\(i)")
-                    .accessibilityAddTraits(selected ? .isSelected : [])
+        Group {
+            if inline {
+                HStack(spacing: 8) {
+                    title.frame(width: 52, alignment: .leading)
+                    cells
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 3) {
+                    title
+                    cells
                 }
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
     }
+
+    private var title: some View {
+        Text(label.lowercased())
+            .font(Theme.pixel(10))
+            .foregroundColor(Theme.label)
+            .lineLimit(1)
+    }
+
+    private var cells: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<count, id: \.self) { i in
+                let selected = Int(value.rounded()) == i
+                Button {
+                    if !selected { value = Float(i) }
+                } label: {
+                    cell(i, selected)
+                        .foregroundColor(selected ? Theme.ink : Theme.label)
+                        .frame(minWidth: cellWidth, minHeight: 28)
+                        .padding(.horizontal, 2)
+                        .background(RoundedRectangle(cornerRadius: Theme.corner)
+                            .fill(selected ? tint : Theme.cell))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityLabel(accessibilityNames.indices.contains(i) ? accessibilityNames[i] : "\(i)")
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+    }
 }
 
 extension StepSelector where Cell == Text {
     /// Plain text cells.
-    init(label: String, options: [String], value: Binding<Float>, cellWidth: CGFloat = 34) {
+    init(label: String, options: [String], value: Binding<Float>, cellWidth: CGFloat = 30) {
         self.init(label: label, count: options.count, value: value, cellWidth: cellWidth,
                   accessibilityNames: options) { i, _ in
-            Text(options[i]).font(.system(size: 12, weight: .bold, design: .rounded))
+            Text(options[i]).font(Theme.pixel(11, .bold))
         }
     }
 }
@@ -338,12 +368,12 @@ struct BigButton: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 if let icon { Image(systemName: icon).font(.system(size: 13, weight: .bold)) }
-                Text(title).font(.system(size: 12, weight: .bold, design: .rounded)).lineLimit(1)
+                Text(title.lowercased()).font(Theme.pixel(12, .bold)).lineLimit(1)
             }
             .foregroundColor(active ? Theme.ink : Theme.label)
             .padding(.horizontal, 12)
             .frame(minWidth: 64, minHeight: 40)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(active ? Theme.accent : Theme.cell))
+            .background(RoundedRectangle(cornerRadius: Theme.corner).fill(active ? Theme.blue : Theme.cell))
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
@@ -362,7 +392,7 @@ struct StepButton: View {
                 .font(.system(size: 16, weight: .bold))
                 .foregroundColor(Theme.label)
                 .frame(width: 40, height: 40)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.cell))
+                .background(RoundedRectangle(cornerRadius: Theme.corner).fill(Theme.cell))
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())

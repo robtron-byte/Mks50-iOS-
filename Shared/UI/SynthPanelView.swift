@@ -52,13 +52,15 @@ struct ParamSelector: View {
     @ObservedObject var param: ParamModel
     let model: SynthViewModel
     var label: String? = nil
+    var inline = false
 
     var body: some View {
         let p = param.param
         StepSelector(label: label ?? p.shortName,
                      count: p.maxValue + 1,
                      value: model.binding(p),
-                     accessibilityNames: p.valueStrings ?? []) { i, _ in
+                     accessibilityNames: p.valueStrings ?? [],
+                     inline: inline) { i, _ in
             SelectorCell(param: p, index: i)
         }
         .modifier(CCLearnOverlay(learn: model.learn, model: model, param: p))
@@ -164,20 +166,20 @@ struct SynthPanelView: View {
         HStack(spacing: 4) {
             ForEach(PanelPage.allCases) { p in
                 let selected = p == page
-                let tint = Theme.stripes[(PanelPage.allCases.firstIndex(of: p) ?? 0) % Theme.stripes.count]
                 Button {
                     if !selected { pageRaw = p.rawValue }
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: p.icon).font(.system(size: 11, weight: .semibold))
                         Text(p.rawValue.lowercased())
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(Theme.pixel(11, .bold))
                             .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
-                    .foregroundColor(selected ? Theme.ink : Theme.label)
-                    .frame(maxWidth: .infinity, minHeight: 32)
-                    .background(Capsule().fill(selected ? tint : Theme.cell))
-                    .contentShape(Capsule())
+                    .foregroundColor(selected ? .white : Theme.label)
+                    .frame(maxWidth: .infinity, minHeight: 30)
+                    .background(RoundedRectangle(cornerRadius: Theme.corner).fill(selected ? Theme.blue : Theme.cell))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel(p.rawValue)
@@ -214,8 +216,8 @@ struct SynthPanelView: View {
         ParamKnob(param: model.model(p), model: model, label: label)
     }
 
-    private func selector(_ p: Param, _ label: String? = nil) -> ParamSelector {
-        ParamSelector(param: model.model(p), model: model, label: label)
+    private func selector(_ p: Param, _ label: String? = nil, inline: Bool = false) -> ParamSelector {
+        ParamSelector(param: model.model(p), model: model, label: label, inline: inline)
     }
 
     private func group<Content: View>(_ title: String, _ icon: String,
@@ -223,9 +225,14 @@ struct SynthPanelView: View {
         PanelSection(title: title, icon: icon, content: content)
     }
 
-    /// Sections side by side, top aligned.
+    /// Sections side by side when they fit the width, otherwise stacked
+    /// (never cut off at the screen edge).
     private func row<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        HStack(alignment: .top, spacing: 12) { content() }
+        let c = content()
+        return ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 10) { c }
+            VStack(alignment: .leading, spacing: 10) { c }
+        }
     }
 
     /// One row of knobs with even spacing.
@@ -243,15 +250,11 @@ struct SynthPanelView: View {
     private var oscPage: some View {
         row {
             group("WAVE", "waveform") {
-                stack {
-                    HStack(spacing: 14) {
-                        selector(.dcoPulse)
-                        selector(.dcoSaw)
-                    }
-                    HStack(spacing: 14) {
-                        selector(.dcoSub)
-                        selector(.dcoSubLevel)
-                    }
+                VStack(alignment: .leading, spacing: 6) {
+                    selector(.dcoPulse, inline: true)
+                    selector(.dcoSaw, inline: true)
+                    selector(.dcoSub, inline: true)
+                    selector(.dcoSubLevel, inline: true)
                 }
             }
             group("DCO", "dial.medium") {
@@ -260,10 +263,8 @@ struct SynthPanelView: View {
                         knob(.dcoPwDepth)
                         knob(.dcoPwmRate)
                     }
-                    HStack(spacing: 14) {
-                        selector(.dcoRange)
-                        selector(.dcoNoiseLevel)
-                    }
+                    selector(.dcoRange, inline: true)
+                    selector(.dcoNoiseLevel, inline: true)
                 }
             }
         }
@@ -483,19 +484,19 @@ struct PlayBar: View {
     private var pad: some View {
         let lit = model.padSounding || pressing
         return HStack(spacing: 8) {
-            Circle()
-                .fill(lit ? Theme.ink : Theme.red)
-                .frame(width: 9, height: 9)
+            Rectangle()
+                .fill(lit ? Theme.ink : Theme.blue)
+                .frame(width: 8, height: 8)
             Text(model.padNoteName)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(Theme.pixel(18, .bold))
             Text(model.padLatch ? (model.padSounding ? "tap to stop" : "tap to hold") : "play")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(Theme.pixel(11))
                 .opacity(0.7)
         }
         .foregroundColor(lit ? Theme.ink : Theme.label)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Flat rounded key, lit red while playing.
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(lit ? Theme.red : Theme.cell))
+        // Flat key, lit MKS-50 blue while playing.
+        .background(RoundedRectangle(cornerRadius: Theme.corner + 1).fill(lit ? Theme.blue : Theme.cell))
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
