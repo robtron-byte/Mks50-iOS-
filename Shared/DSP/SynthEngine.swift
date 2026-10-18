@@ -1257,7 +1257,7 @@ final class SynthEngine {
         delay.process(left: left, right: right, frames: frames,
                       mix: powf(p(.delayMix) / 127, 1.5),
                       seconds: currentDelaySeconds(),
-                      feedback: p(.delayFeedback) / 127 * 0.95,
+                      feedback: SynthEngine.delayFeedback(p(.delayFeedback)),
                       tone: p(.delayTone) / 127,
                       pingPong: pi(.delayPingPong) == 1)
         reverb.process(left: left, right: right, frames: frames,
@@ -1276,6 +1276,14 @@ final class SynthEngine {
     /// HPF FREQ knob: 1...127 → 20 Hz ... 4 kHz.
     static func hpfSweepHz(_ raw: Float) -> Float {
         20 * powf(200, raw / 127)
+    }
+
+    /// FEEDBACK knob: 0...127 → 0 ... 115 %. The lower half is unchanged
+    /// (0 ... 47 %, as before, so sounds keep their echoes); the upper half
+    /// spans 47 ... 115 % for dub build-ups and self-oscillation above 100 %.
+    static func delayFeedback(_ raw: Float) -> Float {
+        let x = max(0, min(raw, 127)) / 127
+        return x <= 0.5 ? x * 0.95 : 0.475 + (x - 0.5) * 2 * 0.675
     }
 
     /// Free delay time: 0...127 → 10 ms ... 1.5 s.

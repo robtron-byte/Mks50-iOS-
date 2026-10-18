@@ -56,7 +56,8 @@ final class StereoDelay {
 
     /// - Parameters:
     ///   - seconds: delay time
-    ///   - feedback: 0...0.95
+    ///   - feedback: 0...1.15; above 1 the loop self-oscillates (dub
+    ///     style) and is held by the soft clipper in the feedback path
     ///   - tone: 0...1 (dark ... bright)
     func process(left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>, frames: Int,
                  mix: Float, seconds: Float, feedback: Float, tone: Float, pingPong: Bool) {
@@ -71,7 +72,7 @@ final class StereoDelay {
         let target = clampf(seconds * sampleRate, 1, Float(size - 4))
         if delaySmoothed == 0 { delaySmoothed = target }
         let lowCoef = 1 - expf(-2 * Float.pi * (1200 + tone * tone * 14000) / sampleRate)
-        let fb = clampf(feedback, 0, 0.95)
+        let fb = clampf(feedback, 0, 1.15)
 
         for n in 0..<frames {
             // Smooth time changes (tape-like glide instead of clicks).
@@ -101,8 +102,9 @@ final class StereoDelay {
                 writeL = inL + wetL * fb
                 writeR = inR + wetR * fb
             }
-            bufferL[writeIndex] = softClip(writeL)
-            bufferR[writeIndex] = softClip(writeR)
+            // The clipper bounds a runaway loop at about ±0.8.
+            bufferL[writeIndex] = softClip(writeL * 1.25) * 0.8
+            bufferR[writeIndex] = softClip(writeR * 1.25) * 0.8
             writeIndex = (writeIndex + 1) & mask
 
             left[n] = inL + wetL * mixSmoothed

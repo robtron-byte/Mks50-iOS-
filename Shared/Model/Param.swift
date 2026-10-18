@@ -506,6 +506,9 @@ enum Param: Int, CaseIterable, Identifiable {
             let hz = 0.1 * powf(300, value / 127)
             return hz < 10 ? String(format: "%.2f Hz", hz) : String(format: "%.1f Hz", hz)
         }
+        if self == .delayFeedback {
+            return "\(Int((SynthEngine.delayFeedback(value) * 100).rounded())) %"
+        }
         if self == .delayTime {
             let ms = SynthEngine.delaySeconds(value) * 1000
             return ms < 1000 ? "\(Int(ms)) ms" : String(format: "%.2f s", ms / 1000)

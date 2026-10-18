@@ -41,7 +41,7 @@ struct ParamKnob: View {
 
     var body: some View {
         let p = param.param
-        let display: ((Float) -> String)? = (p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime || p == .lfoRate || p == .hpfFreq)
+        let display: ((Float) -> String)? = (p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime || p == .delayFeedback || p == .lfoRate || p == .hpfFreq)
             ? { value in p.string(for: value) } : nil
         Knob(label: label ?? p.shortName,
              value: model.binding(p),
