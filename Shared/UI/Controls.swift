@@ -223,8 +223,9 @@ struct KnobTouchSurface: UIViewRepresentable {
         init(parent: KnobTouchSurface) { self.parent = parent }
 
         @objc func handle(_ g: UILongPressGestureRecognizer) {
-            // Window coordinates: independent of any scaling of the panel.
-            let p = g.location(in: nil)
+            // The knob's own coordinates: always match what is on screen
+            // (window coordinates can be mirrored or rotated in landscape).
+            let p = g.location(in: g.view)
             switch g.state {
             case .began:
                 start = p
