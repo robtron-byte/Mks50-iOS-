@@ -410,6 +410,7 @@ final class SynthEngine {
         case 123:
             heldKeyFlags.update(repeating: 0, count: 128)
             allNotesOff()
+            arp.reset()
         default:
             break
         }
@@ -556,7 +557,8 @@ final class SynthEngine {
             releaseVoice(i)
         }
         keyStackCount = 0
-        arp.reset()
+        // Voices are gone; the held / latched arp keys stay (key mode switch).
+        arp.silence()
     }
 
     // MARK: Arpeggiator
@@ -583,13 +585,16 @@ final class SynthEngine {
             arp.reset()
             for k in 0..<128 where heldKeyFlags[k] != 0 { arp.add(k, velocity: 100) }
         } else {
-            arp.stop { key in noteOff(key) }
+            let key = arp.stop()
             arp.removeAll()
+            if key >= 0 { noteOff(key) }
         }
     }
 
     /// Called once per control block with the beat position of its first frame.
     private func arpTick(beat: Double) {
+        // Handle a key mode switch before the arp's note events.
+        syncKeyMode()
         let on = pi(.arpOn) == 1
         if on != arpWasOn { arpSwitched(on: on) }
         guard on else { return }
@@ -599,13 +604,16 @@ final class SynthEngine {
             for k in 0..<128 where heldKeyFlags[k] == 0 { arp.remove(k) }
         }
         arpHoldWasOn = hold
-        arp.process(beat: beat,
-                    rateIndex: pi(.arpRate),
-                    octaves: pi(.arpOctaves),
-                    mode: pi(.arpMode),
-                    gate: Arpeggiator.gateFraction(p(.arpGate)),
-                    noteOn: { key, velocity in noteOn(key, velocity: velocity) },
-                    noteOff: { key in noteOff(key) })
+        let events = arp.process(beat: beat,
+                                 rateIndex: pi(.arpRate),
+                                 octaves: pi(.arpOctaves),
+                                 mode: pi(.arpMode),
+                                 gate: Arpeggiator.gateFraction(p(.arpGate)))
+        if events.off >= 0 { noteOff(events.off) }
+        if events.on >= 0 {
+            noteOn(events.on, velocity: events.velocity)
+            arp.started(events.on)
+        }
     }
 
     // Mono, chord and unison modes share one "voice group" driven by a key

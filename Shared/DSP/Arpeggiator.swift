@@ -1,5 +1,14 @@
 import Foundation
 
+/// Note events of one arpeggiator step (-1: none). Returned instead of
+/// calling back into the engine, so the engine's note path (which may run
+/// `allNotesOff`) never touches `arp` while it is being mutated.
+struct ArpEvents {
+    var off = -1
+    var on = -1
+    var velocity = 0
+}
+
 /// Tempo-synced arpeggiator (audio thread, no allocation).
 ///
 /// Collects the held keys and, on every step of the beat clock, picks the
@@ -71,41 +80,55 @@ struct Arpeggiator {
         lastStep = .min
     }
 
-    /// Advances to `beat`. Calls `noteOff` / `noteOn` for the events due.
-    mutating func process(beat: Double, rateIndex: Int, octaves: Int, mode: Int, gate: Double,
-                          noteOn: (Int, Int) -> Void, noteOff: (Int) -> Void) {
+    /// Voices were released elsewhere (key mode switch): forget the sounding
+    /// note and restart on the next control block, keeping the held keys.
+    mutating func silence() {
+        soundingKey = -1
+        lastStep = .min
+    }
+
+    /// Advances to `beat` and returns the note events due (off before on).
+    mutating func process(beat: Double, rateIndex: Int, octaves: Int, mode: Int, gate: Double) -> ArpEvents {
+        var events = ArpEvents()
         let quarters = LFOShape.divisionQuarters[min(max(rateIndex, 0), LFOShape.divisionQuarters.count - 1)]
 
         if soundingKey >= 0 && (beat >= gateOffBeat || count == 0) {
-            noteOff(soundingKey)
+            events.off = soundingKey
             soundingKey = -1
         }
         guard count > 0 else {
             lastStep = .min
-            return
+            return events
         }
 
         let step = Int64((beat / quarters).rounded(.down))
-        guard step != lastStep else { return }
+        guard step != lastStep else { return events }
         // The first note plays immediately; later notes on the grid.
         lastStep = step
 
         if soundingKey >= 0 {
-            noteOff(soundingKey)
+            events.off = soundingKey
             soundingKey = -1
         }
         let (key, velocity) = nextNote(octaves: octaves, mode: mode)
-        noteOn(key, velocity)
-        soundingKey = key
+        events.on = key
+        events.velocity = velocity
         gateOffBeat = Double(step) * quarters + quarters * gate
         if gateOffBeat <= beat { gateOffBeat = beat + quarters * gate }
+        return events
     }
 
-    /// Stops the sounding note (arp switched off, all notes off).
-    mutating func stop(noteOff: (Int) -> Void) {
-        if soundingKey >= 0 { noteOff(soundingKey) }
+    /// Records the note the engine has just started for this step.
+    mutating func started(_ key: Int) {
+        soundingKey = key
+    }
+
+    /// Stops the pattern; returns the note to release (-1: none).
+    mutating func stop() -> Int {
+        let key = soundingKey
         soundingKey = -1
         lastStep = .min
+        return key
     }
 
     private mutating func nextNote(octaves: Int, mode: Int) -> (Int, Int) {
