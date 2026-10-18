@@ -390,7 +390,7 @@ final class MKS50AudioUnit: AUAudioUnit {
     static let sections: [(id: String, name: String, params: [Param])] = [
         ("dco", "DCO", [.dcoRange, .dcoPulse, .dcoSaw, .dcoSub, .dcoSubLevel, .dcoNoiseLevel,
                         .dcoEnvMode, .dcoLfoDepth, .dcoEnvDepth, .dcoAfterDepth, .dcoPwDepth, .dcoPwmRate]),
-        ("hpf", "HPF", [.hpfCutoff]),
+        ("hpf", "HPF", [.hpfCutoff, .hpfFreq]),
         ("vcf", "VCF", [.vcfEnvMode, .vcfCutoff, .vcfResonance, .vcfLfoDepth, .vcfEnvDepth,
                         .vcfKeyFollow, .vcfAfterDepth]),
         ("vca", "VCA", [.vcaEnvMode, .vcaLevel, .vcaAfterDepth]),

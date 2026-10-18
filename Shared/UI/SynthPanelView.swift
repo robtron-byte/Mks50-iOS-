@@ -37,7 +37,7 @@ struct ParamKnob: View {
 
     var body: some View {
         let p = param.param
-        let display: ((Float) -> String)? = (p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime || p == .lfoRate)
+        let display: ((Float) -> String)? = (p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime || p == .lfoRate || p == .hpfFreq)
             ? { value in p.string(for: value) } : nil
         Knob(label: label ?? p.shortName,
              value: model.binding(p),
@@ -297,9 +297,10 @@ struct SynthPanelView: View {
                     knob(.vcfLfoDepth)
                     knob(.vcfAfterDepth)
                 }
-                HStack(spacing: 24) {
+                HStack(alignment: .bottom, spacing: 24) {
                     selector(.vcfEnvMode)
                     selector(.hpfCutoff, "HPF")
+                    knob(.hpfFreq)
                 }
             }
         }

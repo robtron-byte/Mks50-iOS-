@@ -81,6 +81,9 @@ enum Param: Int, CaseIterable, Identifiable {
     case lfoDivision
     case lfoKeySync
 
+    // MARK: Continuous high-pass (addition to the 4-step hardware HPF)
+    case hpfFreq
+
     static let toneParameterCount = 36
     static let storageSize = 128
 
@@ -263,6 +266,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .lfoSync: return "LFO Tempo Sync"
         case .lfoDivision: return "LFO Sync Rate"
         case .lfoKeySync: return "LFO Key Sync"
+        case .hpfFreq: return "HPF Frequency"
         }
     }
 
@@ -325,11 +329,17 @@ enum Param: Int, CaseIterable, Identifiable {
         case .lfoSync: return "TEMPO SYNC"
         case .lfoDivision: return "NOTE"
         case .lfoKeySync: return "KEY SYNC"
+        case .hpfFreq: return "HPF FREQ"
         }
     }
 
     func string(for value: Float) -> String {
         if self == .tempo { return "\(Int(value.rounded()) + 40)" }
+        if self == .hpfFreq {
+            guard value >= 0.5 else { return "OFF" }
+            let hz = SynthEngine.hpfSweepHz(value)
+            return hz < 1000 ? "\(Int(hz)) Hz" : String(format: "%.1f kHz", hz / 1000)
+        }
         if self == .lfoRate {
             let hz = 0.1 * powf(300, value / 127)
             return hz < 10 ? String(format: "%.2f Hz", hz) : String(format: "%.1f Hz", hz)

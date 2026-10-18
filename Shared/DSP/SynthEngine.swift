@@ -35,6 +35,7 @@ struct Voice {
     var env = Envelope()
     var filter = LadderFilter()
     var hpf = BiquadState()
+    var hpfSweep = BiquadState()
 
     init(seed: UInt32) {
         dco = DCO(seed: seed)
@@ -107,6 +108,10 @@ final class SynthEngine {
     private var volumeSmoothed: Float = 0.6
     private var hpfCoefficients = BiquadCoefficients.bypass
     private var hpfMode = -1
+    /// Continuous high-pass (HPF FREQ knob), in addition to the 4 hardware steps.
+    private var hpfSweepCoefficients = BiquadCoefficients.bypass
+    private var hpfSweepSmoothed: Float = 0
+    private var hpfSweepActive = false
     private var dcXL: Float = 0, dcYL: Float = 0
     private var dcXR: Float = 0, dcYR: Float = 0
 
@@ -232,6 +237,7 @@ final class SynthEngine {
             voices[i].env.reset()
             voices[i].filter.reset()
             voices[i].hpf.reset()
+            voices[i].hpfSweep.reset()
             voices[i].gateAmp = 0
         }
         keyStackCount = 0
@@ -404,8 +410,22 @@ final class SynthEngine {
         }
     }
 
+    /// Envelope base times / levels from the current parameters. Also called
+    /// on every note event: while the engine is idle no control blocks run,
+    /// and a note must never start with stale T1 / L1 values.
+    private func refreshEnvelopeSettings() {
+        envSettings.t1 = SynthEngine.envelopeTime(p(.envT1))
+        envSettings.t2 = SynthEngine.envelopeTime(p(.envT2))
+        envSettings.t3 = SynthEngine.envelopeTime(p(.envT3))
+        envSettings.t4 = SynthEngine.envelopeTime(p(.envT4))
+        envSettings.l1 = p(.envL1) / 127
+        envSettings.l2 = p(.envL2) / 127
+        envSettings.l3 = p(.envL3) / 127
+    }
+
     private func noteOn(_ key: Int, velocity: Int) {
         syncKeyMode()
+        refreshEnvelopeSettings()
         if pi(.lfoKeySync) == 1 {
             var anyGate = false
             for i in 0..<SynthEngine.maxVoices where voices[i].gate { anyGate = true }
@@ -425,6 +445,7 @@ final class SynthEngine {
 
     private func noteOff(_ key: Int) {
         syncKeyMode()
+        refreshEnvelopeSettings()
         if pi(.keyMode) == 0 {
             for i in 0..<SynthEngine.maxVoices where voices[i].active && voices[i].gate && voices[i].key == key {
                 if sustainPedal { voices[i].sustained = true } else { releaseVoice(i) }
@@ -478,6 +499,7 @@ final class SynthEngine {
         if !wasActive {
             voices[i].filter.reset()
             voices[i].hpf.reset()
+            voices[i].hpfSweep.reset()
             voices[i].env.reset()
             voices[i].gateAmp = 0
         }
@@ -675,14 +697,7 @@ final class SynthEngine {
         dcoSettings.subLevel = Float(pi(.dcoSubLevel)) / 3 * 0.9
         dcoSettings.noiseLevel = Float(pi(.dcoNoiseLevel)) / 3 * 0.6
 
-        // Envelope base times / levels
-        envSettings.t1 = SynthEngine.envelopeTime(p(.envT1))
-        envSettings.t2 = SynthEngine.envelopeTime(p(.envT2))
-        envSettings.t3 = SynthEngine.envelopeTime(p(.envT3))
-        envSettings.t4 = SynthEngine.envelopeTime(p(.envT4))
-        envSettings.l1 = p(.envL1) / 127
-        envSettings.l2 = p(.envL2) / 127
-        envSettings.l3 = p(.envL3) / 127
+        refreshEnvelopeSettings()
 
         // Smoothed controls
         cutoffSmoothed += (p(.vcfCutoff) - cutoffSmoothed) * min(1, fn / (0.01 * sr))
@@ -690,6 +705,17 @@ final class SynthEngine {
         volumeSmoothed += (volumeTarget - volumeSmoothed) * min(1, fn / (0.02 * sr))
 
         // HPF (bass boost / flat / two high-pass settings)
+        // Continuous HPF: 0 = off, 1...127 → 20 Hz ... 4 kHz (12 dB/oct), smoothed.
+        let sweepTarget = p(.hpfFreq)
+        if sweepTarget < 0.5 && hpfSweepSmoothed < 0.5 {
+            hpfSweepActive = false
+            hpfSweepSmoothed = 0
+        } else {
+            hpfSweepSmoothed += (sweepTarget - hpfSweepSmoothed) * min(1, fn / (0.02 * sr))
+            hpfSweepActive = true
+            hpfSweepCoefficients = .highPass(freq: SynthEngine.hpfSweepHz(hpfSweepSmoothed), q: 0.707, sampleRate: sr)
+        }
+
         let hpf = pi(.hpfCutoff)
         if hpf != hpfMode {
             hpfMode = hpf
@@ -855,12 +881,15 @@ final class SynthEngine {
         let settings = dcoSettings
         let hpfC = hpfCoefficients
         let hpfActive = hpfMode != 1
+        let sweepActive = hpfSweepActive
+        let sweepC = hpfSweepCoefficients
 
         for k in 0..<n {
             let e = voices[i].env.next(es)
             voices[i].gateAmp += (gateTarget - voices[i].gateAmp) * gateCoef
             var s = voices[i].dco.tick(dt: dt, pulseRatio: ratio, sync: sync, settings) * 0.5
             if hpfActive { s = voices[i].hpf.process(s, hpfC) }
+            if sweepActive { s = voices[i].hpfSweep.process(s, sweepC) }
             s = voices[i].filter.process(s)
             s *= gateMode ? voices[i].gateAmp : e
             left[k] += s * gainL
@@ -983,6 +1012,11 @@ final class SynthEngine {
     }
 
     var maximumFrames: Int { bufferCapacity }
+
+    /// HPF FREQ knob: 1...127 → 20 Hz ... 4 kHz.
+    static func hpfSweepHz(_ raw: Float) -> Float {
+        20 * powf(200, raw / 127)
+    }
 
     /// Free delay time: 0...127 → 10 ms ... 1.5 s.
     static func delaySeconds(_ raw: Float) -> Float {
