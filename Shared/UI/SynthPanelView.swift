@@ -601,15 +601,18 @@ struct CCLearnToggle: View {
 // MARK: - Main view
 
 /// Panel + play bar. Shared by the app and the AUv3 UI.
-struct SynthMainView<Toolbar: View>: View {
+struct SynthMainView<Toolbar: View, Accessory: View>: View {
     let model: SynthViewModel
     @ViewBuilder var toolbar: Toolbar
+    /// Optional strip between the panel and the play bar (app: loop recorder).
+    @ViewBuilder var accessory: Accessory
 
     var body: some View {
         VStack(spacing: 0) {
             toolbar
             SynthPanelView(model: model)
                 .frame(maxHeight: .infinity)
+            accessory
             BottomBar(learn: model.learn, model: model)
                 .frame(height: 76)
         }
@@ -617,6 +620,12 @@ struct SynthMainView<Toolbar: View>: View {
         .background(Theme.background.ignoresSafeArea())
         .onAppear { model.setPolling(true) }
         .onDisappear { model.setPolling(false) }
+    }
+}
+
+extension SynthMainView where Accessory == EmptyView {
+    init(model: SynthViewModel, @ViewBuilder toolbar: () -> Toolbar) {
+        self.init(model: model, toolbar: toolbar, accessory: { EmptyView() })
     }
 }
 

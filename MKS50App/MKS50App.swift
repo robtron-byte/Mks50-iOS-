@@ -72,6 +72,10 @@ struct SysExDocument: FileDocument {
 struct AppMainView: View {
     let model: SynthViewModel
     @ObservedObject var midi: MIDIManager
+    @StateObject private var recorder: RecorderModel
+
+    @AppStorage("showRecorder") private var showRecorder = false
+    @State private var showRecordings = false
 
     @State private var showSettings = false
     @State private var showImporter = false
@@ -80,10 +84,23 @@ struct AppMainView: View {
     @State private var saveName = ""
     @State private var exportDocument = SysExDocument(data: Data())
 
+    init(model: SynthViewModel, midi: MIDIManager) {
+        self.model = model
+        self.midi = midi
+        _recorder = StateObject(wrappedValue: RecorderModel(audioUnit: model.audioUnit, synth: model))
+    }
+
     private var sysexChannel: Int { max(0, model.intValue(.midiChannel) - 1) }
 
     var body: some View {
-        SynthMainView(model: model) { toolbar }
+        SynthMainView(model: model) { toolbar } accessory: {
+            if showRecorder {
+                RecorderStrip(recorder: recorder, model: model) { showRecordings = true }
+            }
+        }
+            .sheet(isPresented: $showRecordings) {
+                RecordingsSheet(recorder: recorder)
+            }
             .sheet(isPresented: $showSettings) {
                 SettingsView(model: model, midi: midi)
             }
@@ -126,7 +143,9 @@ struct AppMainView: View {
                        midi.sendSysEx([UInt8](model.exportSysEx(channel: sysexChannel)))
                        model.flash("Tone sent to MIDI out")
                    },
-                   onSettings: { showSettings = true })
+                   onSettings: { showSettings = true },
+                   recorderVisible: showRecorder,
+                   onRecorder: { showRecorder.toggle() })
     }
 }
 
@@ -140,6 +159,8 @@ struct AppToolbar: View {
     let onExport: () -> Void
     let onSend: () -> Void
     let onSettings: () -> Void
+    let recorderVisible: Bool
+    let onRecorder: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -175,6 +196,8 @@ struct AppToolbar: View {
             iconButton("folder", "Import SysEx", action: onImport)
             iconButton("square.and.arrow.up", "Export SysEx", action: onExport)
             iconButton("paperplane", "Send tone to hardware", action: onSend)
+            iconButton(recorderVisible ? "record.circle.fill" : "record.circle", "Loop recorder", action: onRecorder)
+                .foregroundColor(recorderVisible ? Theme.accent : Theme.label)
             CCLearnToggle(learn: model.learn, model: model)
             iconButton("exclamationmark.octagon", "All notes off") { model.panic() }
             iconButton("gearshape", "Settings", action: onSettings)

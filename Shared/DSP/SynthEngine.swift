@@ -75,12 +75,28 @@ final class SynthEngine {
     var hostBeatPosition: Double = -1
     /// Samples rendered since the start of the current render cycle.
     private var cycleSamples = 0
+    /// Free-running beat clock (used when there is no host transport, e.g. in
+    /// the standalone app): drives tempo-synced LFOs and the loop recorder.
+    private var internalBeat: Double = 0
+    /// Beat position at the first frame of the current `render` call.
+    private var renderStartBeat: Double = 0
+    /// Frames rendered so far within the current `render` call.
+    private var renderFrameOffset = 0
+
+    /// Bar-accurate loop recorder (fed with the final output).
+    let recorder = LoopRecorder()
 
     /// Call once per render cycle, before rendering.
     func beginRenderCycle(tempo: Double, beatPosition: Double) {
         hostTempo = tempo
         hostBeatPosition = beatPosition
         cycleSamples = 0
+    }
+
+    var currentSampleRate: Double { Double(sampleRate) }
+
+    @inline(__always) private var beatsPerFrame: Double {
+        max(tempoBPM, 20) / 60 / Double(sampleRate)
     }
 
     // Performance controllers
@@ -426,6 +442,7 @@ final class SynthEngine {
     private func noteOn(_ key: Int, velocity: Int) {
         syncKeyMode()
         refreshEnvelopeSettings()
+        recorder.noteTrigger = true
         if pi(.lfoKeySync) == 1 {
             var anyGate = false
             for i in 0..<SynthEngine.maxVoices where voices[i].gate { anyGate = true }
@@ -778,8 +795,10 @@ final class SynthEngine {
             let index = min(max(pi(.lfoDivision), 0), LFOShape.divisionQuarters.count - 1)
             let quarters = LFOShape.divisionQuarters[index]
             let tempo = max(tempoBPM, 20)
-            if hostBeatPosition >= 0 && hostTempo > 0 {
-                let beat = hostBeatPosition + Double(cycleSamples) / Double(sr) * tempo / 60
+            if pi(.lfoKeySync) == 0 {
+                // Locked to the beat clock (host song position or the internal
+                // clock), so synced LFOs line up with bars and loop recordings.
+                let beat = renderStartBeat + Double(renderFrameOffset) * beatsPerFrame
                 let cycles = beat / quarters
                 let newPhase = Float(cycles - floor(cycles))
                 wrapped = newPhase < lfoPhase
@@ -795,7 +814,7 @@ final class SynthEngine {
             lfoPhase -= floorf(lfoPhase)
             wrapped = true
         }
-        cycleSamples += n
+        renderFrameOffset += n
 
         let shape = pi(.lfoWave)
         switch shape {
@@ -921,6 +940,22 @@ final class SynthEngine {
     ///   is computed at all, so an idle instance costs almost no CPU.
     @discardableResult
     func render(frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>) -> Bool {
+        // Beat clock: host song position inside a DAW, else the internal clock.
+        let bpf = beatsPerFrame
+        if hostBeatPosition >= 0 && hostTempo > 0 {
+            renderStartBeat = hostBeatPosition + Double(cycleSamples) * bpf
+        } else {
+            renderStartBeat = internalBeat
+        }
+        renderFrameOffset = 0
+        internalBeat = renderStartBeat + Double(frames) * bpf
+        if internalBeat > 1_000_000 { internalBeat -= 1_000_000 }   // keep precision (multiple of 4 beats)
+        cycleSamples += frames
+        defer {
+            recorder.process(left: left, right: right, frames: frames,
+                             beatStart: renderStartBeat, beatsPerFrame: bpf)
+        }
+
         var anyActive = false
         for i in 0..<SynthEngine.maxVoices where voices[i].active { anyActive = true }
 
