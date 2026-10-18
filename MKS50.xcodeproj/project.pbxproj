@@ -300,11 +300,14 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = P8G5Z5Q2WP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/App-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "MKS-50";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Bluetooth is used to connect wireless MIDI keyboards and controllers.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -331,11 +334,14 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = P8G5Z5Q2WP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/App-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "MKS-50";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Bluetooth is used to connect wireless MIDI keyboards and controllers.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -361,6 +367,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = P8G5Z5Q2WP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/AU-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "MKS50 Synth";
@@ -386,6 +393,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = P8G5Z5Q2WP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/AU-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "MKS50 Synth";
