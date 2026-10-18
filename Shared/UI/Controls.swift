@@ -1,20 +1,67 @@
 import SwiftUI
 
-/// Colours inspired by the Alpha Juno-2 / MKS-50: charcoal panel, white
-/// silk-screen print, Roland-red accents and a yellow-green backlit LCD.
+/// Retro Roland look (Alpha Juno / TAL-Pha, with the TR-808 colour stripes of
+/// early electro): matte black panel, cream silk-screen print, red / orange /
+/// yellow / cream section colours and an amber-green backlit LCD.
 enum Theme {
-    static let background = Color(red: 0.07, green: 0.07, blue: 0.08)
-    static let panel = Color(red: 0.13, green: 0.13, blue: 0.14)
-    static let panelEdge = Color(red: 0.24, green: 0.24, blue: 0.26)
-    static let accent = Color(red: 0.91, green: 0.27, blue: 0.18)        // Roland red
-    static let accentSoft = Color(red: 0.91, green: 0.27, blue: 0.18).opacity(0.22)
-    static let label = Color(white: 0.88)
-    static let dimLabel = Color(white: 0.55)
-    static let knobBody = Color(red: 0.21, green: 0.21, blue: 0.22)
-    static let cell = Color(red: 0.18, green: 0.18, blue: 0.19)
-    static let led = Color(red: 1.0, green: 0.2, blue: 0.12)
-    static let display = Color(red: 0.62, green: 0.70, blue: 0.36)       // backlit LCD
-    static let displayText = Color(red: 0.10, green: 0.13, blue: 0.06)
+    static let background = Color(red: 0.055, green: 0.052, blue: 0.05)
+    static let panel = Color(red: 0.115, green: 0.11, blue: 0.105)
+    static let panelEdge = Color(red: 0.25, green: 0.235, blue: 0.22)
+    static let accent = Color(red: 0.89, green: 0.25, blue: 0.16)        // Roland red
+    static let accentSoft = Color(red: 0.89, green: 0.25, blue: 0.16).opacity(0.22)
+    static let label = Color(red: 0.93, green: 0.90, blue: 0.83)         // cream silk-screen
+    static let dimLabel = Color(red: 0.60, green: 0.57, blue: 0.52)
+    static let knobBody = Color(red: 0.17, green: 0.165, blue: 0.16)
+    static let cell = Color(red: 0.17, green: 0.162, blue: 0.155)
+    static let led = Color(red: 1.0, green: 0.22, blue: 0.1)
+    static let display = Color(red: 0.70, green: 0.74, blue: 0.36)       // backlit LCD
+    static let displayText = Color(red: 0.09, green: 0.11, blue: 0.04)
+    /// Text on a lit (coloured) button.
+    static let ink = Color(red: 0.07, green: 0.06, blue: 0.05)
+
+    // TR-808 style stripe colours.
+    static let red = Color(red: 0.89, green: 0.25, blue: 0.16)
+    static let orange = Color(red: 0.95, green: 0.50, blue: 0.13)
+    static let yellow = Color(red: 0.96, green: 0.77, blue: 0.22)
+    static let cream = Color(red: 0.91, green: 0.87, blue: 0.76)
+    static let stripes = [red, orange, yellow, cream]
+
+    /// Colour of a panel section, following the signal flow.
+    static func sectionColor(_ title: String) -> Color {
+        switch title {
+        case "WAVE", "DCO", "PULSE", "KEY", "PERFORM", "VOICES": return red
+        case "LFO", "DCO MOD", "DELAY", "REVERB", "CHORUS": return orange
+        case "VCF", "HPF": return yellow
+        default: return cream
+        }
+    }
+}
+
+private struct SectionTintKey: EnvironmentKey {
+    static let defaultValue = Theme.accent
+}
+
+extension EnvironmentValues {
+    /// Colour of the enclosing panel section; knobs and buttons light up in it.
+    var sectionTint: Color {
+        get { self[SectionTintKey.self] }
+        set { self[SectionTintKey.self] = newValue }
+    }
+}
+
+/// The four-colour stripe of the 808 era, used as a decorative rule.
+struct RetroStripe: View {
+    var height: CGFloat = 3
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<Theme.stripes.count, id: \.self) { i in
+                Rectangle().fill(Theme.stripes[i])
+            }
+        }
+        .frame(height: height)
+        .accessibilityHidden(true)
+    }
 }
 
 /// Instant visual feedback on touch-down (the default `.plain` style gives
@@ -35,21 +82,31 @@ struct PanelSection<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
+        let tint = Theme.sectionColor(title)
         VStack(alignment: .leading, spacing: 8) {
+            // Roland-style header: title on a coloured band.
             HStack(spacing: 5) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                 }
                 Text(title)
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .font(.system(size: 11, weight: .heavy))
+                    .kerning(1.2)
+                    .lineLimit(1)
+                    .fixedSize()
             }
-            .foregroundColor(Theme.accent)
+            .foregroundColor(Theme.ink)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Rectangle().fill(tint))
             content
+                .environment(\.sectionTint, tint)
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.panelEdge, lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 4).fill(Theme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.panelEdge, lineWidth: 1))
     }
 }
 
@@ -64,6 +121,7 @@ struct Knob: View {
     var display: ((Float) -> String)? = nil
 
     @State private var dragStart: Float?
+    @Environment(\.sectionTint) private var tint
 
     private var fraction: Double { Double(value / maxValue) }
     private var valueText: String { display?(value) ?? "\(Int(value.rounded()))" }
@@ -71,7 +129,8 @@ struct Knob: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(label)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 10, weight: .bold))
+                .kerning(0.6)
                 .foregroundColor(Theme.label)
                 .lineLimit(1)
                 .fixedSize()
@@ -82,15 +141,19 @@ struct Knob: View {
                     .rotationEffect(.degrees(135))
                 Circle()
                     .trim(from: 0, to: 0.75 * fraction)
-                    .stroke(Theme.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .stroke(tint, style: StrokeStyle(lineWidth: 4, lineCap: .butt))
                     .rotationEffect(.degrees(135))
+                // Black Roland knob with a ribbed skirt and a flat cap.
                 Circle()
-                    .fill(LinearGradient(colors: [Color(white: 0.34), Theme.knobBody],
-                                         startPoint: .top, endPoint: .bottom))
+                    .fill(Color(white: 0.05))
                     .padding(6)
-                    .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
+                    .shadow(color: .black.opacity(0.7), radius: 2, y: 1.5)
+                Circle()
+                    .fill(LinearGradient(colors: [Color(white: 0.24), Theme.knobBody],
+                                         startPoint: .top, endPoint: .bottom))
+                    .padding(10)
                 Capsule()
-                    .fill(Color.white)
+                    .fill(Theme.label)
                     .frame(width: 2.5, height: size * 0.22)
                     .offset(y: -size * 0.22)
                     .rotationEffect(.degrees(-135 + 270 * fraction))
@@ -113,10 +176,10 @@ struct Knob: View {
                 if dragStart != nil {
                     Text(valueText)
                         .font(.system(size: 15, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
+                        .foregroundColor(Theme.ink)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Capsule().fill(Theme.accent))
+                        .background(Capsule().fill(tint))
                         .fixedSize()
                         .offset(y: -30)
                         .allowsHitTesting(false)
@@ -152,11 +215,13 @@ struct StepSelector<Cell: View>: View {
     var cellWidth: CGFloat = 34
     var accessibilityNames: [String] = []
     @ViewBuilder let cell: (_ index: Int, _ selected: Bool) -> Cell
+    @Environment(\.sectionTint) private var tint
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 10, weight: .bold))
+                .kerning(0.6)
                 .foregroundColor(Theme.label)
             HStack(spacing: 3) {
                 ForEach(0..<count, id: \.self) { i in
@@ -165,11 +230,12 @@ struct StepSelector<Cell: View>: View {
                         if !selected { value = Float(i) }
                     } label: {
                         cell(i, selected)
-                            .foregroundColor(selected ? .white : Theme.label)
+                            .foregroundColor(selected ? Theme.ink : Theme.label)
                             .frame(minWidth: cellWidth, minHeight: 32)
                             .padding(.horizontal, 3)
-                            .background(RoundedRectangle(cornerRadius: 5)
-                                .fill(selected ? Theme.accent : Theme.cell))
+                            .background(RoundedRectangle(cornerRadius: 3)
+                                .fill(selected ? tint : Theme.cell))
+                            .shadow(color: selected ? tint.opacity(0.55) : .clear, radius: 4)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(PressableButtonStyle())

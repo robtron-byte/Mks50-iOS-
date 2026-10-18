@@ -171,10 +171,16 @@ struct SynthPanelView: View {
                         Image(systemName: p.icon).font(.system(size: 13, weight: .semibold))
                         Text(p.rawValue).font(.system(size: 10, weight: .bold, design: .rounded))
                     }
-                    .foregroundColor(selected ? .white : Theme.label)
+                    .foregroundColor(selected ? Theme.ink : Theme.label)
                     .frame(maxWidth: .infinity, minHeight: 40)
-                    .background(RoundedRectangle(cornerRadius: 7)
-                        .fill(selected ? Theme.accent : Theme.cell))
+                    .background(RoundedRectangle(cornerRadius: 3)
+                        .fill(selected ? Theme.stripes[(PanelPage.allCases.firstIndex(of: p) ?? 0) % Theme.stripes.count] : Theme.cell))
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(Theme.stripes[(PanelPage.allCases.firstIndex(of: p) ?? 0) % Theme.stripes.count])
+                            .frame(height: selected ? 0 : 2)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PressableButtonStyle())
@@ -480,10 +486,15 @@ struct PlayBar: View {
                     .opacity(0.8)
             }
         }
-        .foregroundColor(lit ? .white : Theme.label)
+        .foregroundColor(lit ? Theme.ink : Theme.label)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(RoundedRectangle(cornerRadius: 12).fill(lit ? Theme.accent : Theme.cell))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(lit ? Theme.accent : Theme.panelEdge, lineWidth: 2))
+        // TR-808 step key: dark key with an orange lamp stripe, lit when playing.
+        .background(RoundedRectangle(cornerRadius: 4).fill(lit ? Theme.orange : Theme.cell))
+        .overlay(alignment: .top) {
+            Rectangle().fill(Theme.orange).frame(height: lit ? 0 : 3).padding(.horizontal, 10)
+        }
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(lit ? Theme.yellow : Theme.panelEdge, lineWidth: 2))
+        .shadow(color: lit ? Theme.orange.opacity(0.6) : .clear, radius: 8)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
@@ -611,6 +622,7 @@ struct SynthMainView<Toolbar: View, Accessory: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             toolbar
+            RetroStripe(height: 3)
             SynthPanelView(model: model)
                 .frame(maxHeight: .infinity)
             accessory
