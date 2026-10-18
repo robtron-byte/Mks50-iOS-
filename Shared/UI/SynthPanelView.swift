@@ -676,8 +676,11 @@ struct ToneDisplay: View {
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
                     .background(RoundedRectangle(cornerRadius: 3).fill(Theme.displayText.opacity(0.85)))
+                    .lineLimit(1)
+                    .fixedSize()
             }
             Text(number)
+                .lineLimit(1)
                 .foregroundColor(Theme.displayText.opacity(0.65))
             Text(name.isEmpty ? "----------" : name.uppercased())
                 .foregroundColor(Theme.displayText)
@@ -706,6 +709,8 @@ struct BrandMark: View {
                 .font(.system(size: 15, weight: .black, design: .rounded))
                 .foregroundColor(Theme.label)
         }
+        .lineLimit(1)
+        .fixedSize()
         .accessibilityLabel("MKS-50")
     }
 }

@@ -175,7 +175,7 @@ struct AppToolbar: View {
         .font(.system(size: 16, weight: .semibold))
         .foregroundColor(Theme.label)
         .padding(.horizontal, 14)
-        .padding(.vertical, 4)
+        .frame(height: 48)
         .background(Theme.panel)
     }
 
@@ -192,16 +192,28 @@ struct AppToolbar: View {
     /// Separate builder: a single ViewBuilder block may hold at most 10 views on iOS 16.
     private var trailingButtons: some View {
         HStack(spacing: 6) {
-            iconButton("square.and.arrow.down", "Save preset", action: onSave)
-            iconButton("folder", "Import SysEx", action: onImport)
-            iconButton("square.and.arrow.up", "Export SysEx", action: onExport)
-            iconButton("paperplane", "Send tone to hardware", action: onSend)
+            fileMenu
             iconButton(recorderVisible ? "record.circle.fill" : "record.circle", "Loop recorder", action: onRecorder)
                 .foregroundColor(recorderVisible ? Theme.accent : Theme.label)
             CCLearnToggle(learn: model.learn, model: model)
             iconButton("exclamationmark.octagon", "All notes off") { model.panic() }
             iconButton("gearshape", "Settings", action: onSettings)
         }
+    }
+
+    /// Save / import / export / send in one menu keeps the bar on one line on iPhone.
+    private var fileMenu: some View {
+        Menu {
+            Button(action: onSave) { Label("Save Preset", systemImage: "square.and.arrow.down") }
+            Button(action: onImport) { Label("Import SysEx", systemImage: "folder") }
+            Button(action: onExport) { Label("Export SysEx", systemImage: "square.and.arrow.up") }
+            Button(action: onSend) { Label("Send Tone to Hardware", systemImage: "paperplane") }
+        } label: {
+            Image(systemName: "square.and.arrow.down.on.square")
+                .frame(minWidth: 36, minHeight: 36)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Preset and SysEx")
     }
 
     private var presetMenu: some View {
