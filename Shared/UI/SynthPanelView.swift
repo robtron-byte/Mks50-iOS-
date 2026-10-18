@@ -37,7 +37,7 @@ struct ParamKnob: View {
 
     var body: some View {
         let p = param.param
-        let display: ((Float) -> String)? = (p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime)
+        let display: ((Float) -> String)? = (p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime || p == .lfoRate)
             ? { value in p.string(for: value) } : nil
         Knob(label: label ?? p.shortName,
              value: model.binding(p),
@@ -105,6 +105,20 @@ struct ChordReadout: View {
                 .padding(.vertical, 4)
                 .background(RoundedRectangle(cornerRadius: 4).fill(Theme.display))
             BigButton(title: "LEARN CHORD", icon: "music.note.list") { model.learnChord() }
+        }
+    }
+}
+
+/// LFO rate, or the note value when the LFO is tempo-synced.
+struct LFORateControl: View {
+    @ObservedObject var sync: ParamModel
+    let model: SynthViewModel
+
+    var body: some View {
+        if sync.value >= 0.5 {
+            ParamKnob(param: model.model(.lfoDivision), model: model)
+        } else {
+            ParamKnob(param: model.model(.lfoRate), model: model)
         }
     }
 }
@@ -246,13 +260,20 @@ struct SynthPanelView: View {
     }
 
     private var modPage: some View {
-        HStack(alignment: .top, spacing: 14) {
+        adaptive(
             group("LFO", "wave.3.right") {
-                HStack(spacing: 18) {
-                    knob(.lfoRate)
-                    knob(.lfoDelay)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 18) {
+                        LFORateControl(sync: model.model(.lfoSync), model: model)
+                        knob(.lfoDelay)
+                        VStack(alignment: .leading, spacing: 8) {
+                            selector(.lfoSync)
+                            selector(.lfoKeySync)
+                        }
+                    }
+                    selector(.lfoWave)
                 }
-            }
+            },
             group("DCO MOD", "waveform.path.ecg") {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 18) {
@@ -262,8 +283,7 @@ struct SynthPanelView: View {
                     }
                     selector(.dcoEnvMode)
                 }
-            }
-        }
+            })
     }
 
     private var filterPage: some View {

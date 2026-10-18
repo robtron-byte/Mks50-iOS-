@@ -111,6 +111,49 @@ struct HPFIcon: View {
     }
 }
 
+/// LFO waveform icon (two cycles).
+struct LFOIcon: View {
+    let shape: Int
+
+    var body: some View {
+        Canvas { ctx, size in
+            let w = size.width, h = size.height
+            var path = Path()
+            func y(_ v: Float) -> CGFloat { h * 0.5 - CGFloat(v) * (h * 0.5 - 1) }
+            switch shape {
+            case 5, 6:
+                // Sample & hold steps / smooth random curve with fixed "random" values.
+                let values: [Float] = [0.2, -0.7, 0.9, -0.2, 0.5, -0.9]
+                let step = w / CGFloat(values.count)
+                path.move(to: CGPoint(x: 0, y: y(values[0])))
+                for (i, v) in values.enumerated() {
+                    let x0 = CGFloat(i) * step
+                    if shape == 5 {
+                        path.addLine(to: CGPoint(x: x0, y: y(v)))
+                        path.addLine(to: CGPoint(x: x0 + step, y: y(v)))
+                    } else {
+                        let prev = i == 0 ? v : values[i - 1]
+                        path.addCurve(to: CGPoint(x: x0 + step, y: y(v)),
+                                      control1: CGPoint(x: x0 + step * 0.5, y: y(prev)),
+                                      control2: CGPoint(x: x0 + step * 0.5, y: y(v)))
+                    }
+                }
+            default:
+                let steps = 64
+                for i in 0...steps {
+                    let p = Float(i) / Float(steps) * 2
+                    let v = LFOShape.value(shape, phase: p - floorf(p))
+                    let pt = CGPoint(x: CGFloat(i) / CGFloat(steps) * w, y: y(v))
+                    if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+                }
+            }
+            ctx.stroke(path, with: .foreground, style: StrokeStyle(lineWidth: 1.6, lineJoin: .round))
+        }
+        .frame(width: 26, height: 14)
+        .accessibilityHidden(true)
+    }
+}
+
 /// Picks the right icon (or text) for one selector cell of a parameter.
 struct SelectorCell: View {
     let param: Param
@@ -138,13 +181,15 @@ struct SelectorCell: View {
             EnvModeIcon(inverted: false, dynamics: index >= 2, gate: index == 1 || index == 3)
         case .hpfCutoff:
             HPFIcon(mode: index)
+        case .lfoWave:
+            LFOIcon(shape: index)
         case .keyMode:
             VStack(spacing: 1) {
                 Image(systemName: ["pianokeys", "music.note.list", "1.circle", "square.stack.3d.up"][min(index, 3)])
                     .font(.system(size: 12, weight: .semibold))
                 Text(param.valueStrings?[index] ?? "").font(.system(size: 8, weight: .bold))
             }
-        case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong:
+        case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync:
             HStack(spacing: 4) {
                 Circle().frame(width: 6, height: 6).opacity(index == 1 ? 1 : 0.3)
                 Text(index == 1 ? "ON" : "OFF").font(.system(size: 11, weight: .bold, design: .rounded))

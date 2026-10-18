@@ -199,13 +199,14 @@ final class MKS50AudioUnit: AUAudioUnit {
 
             engine.drainMIDIQueue()
 
-            // Host tempo for the synced delay (0 = no host transport).
+            // Host tempo / song position for synced delay and LFO.
             var tempo: Double = 0
+            var beat: Double = 0
             if let musicalContext = context.musicalContext,
-               musicalContext(&tempo, nil, nil, nil, nil, nil), tempo > 0 {
-                engine.hostTempo = tempo
+               musicalContext(&tempo, nil, nil, &beat, nil, nil), tempo > 0 {
+                engine.beginRenderCycle(tempo: tempo, beatPosition: beat)
             } else {
-                engine.hostTempo = 0
+                engine.beginRenderCycle(tempo: 0, beatPosition: -1)
             }
 
             // Sample-accurate event handling: render up to each event, apply it.
@@ -393,7 +394,7 @@ final class MKS50AudioUnit: AUAudioUnit {
         ("vcf", "VCF", [.vcfEnvMode, .vcfCutoff, .vcfResonance, .vcfLfoDepth, .vcfEnvDepth,
                         .vcfKeyFollow, .vcfAfterDepth]),
         ("vca", "VCA", [.vcaEnvMode, .vcaLevel, .vcaAfterDepth]),
-        ("lfo", "LFO", [.lfoRate, .lfoDelay]),
+        ("lfo", "LFO", [.lfoRate, .lfoDelay, .lfoWave, .lfoSync, .lfoDivision, .lfoKeySync]),
         ("env", "ENV", [.envT1, .envL1, .envT2, .envL2, .envT3, .envL3, .envT4, .envKeyFollow]),
         ("chorus", "Chorus", [.chorus, .chorusRate]),
         ("control", "Control", [.benderRange, .keyMode, .chordIndex, .portaSwitch, .portaTime,

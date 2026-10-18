@@ -14,7 +14,7 @@ Ein nativer iOS-Software-Synthesizer, der die Architektur des **Roland MKS-50** 
 | **VCF** | Resonanter 24-dB-Tiefpass (IR3109-Stil, Zero-Delay-Feedback), selbstoszillierend, Env/LFO/Key-Follow/Aftertouch-Modulation |
 | **VCA** | ENV- oder GATE-Modus, jeweils mit/ohne Velocity („Dynamics“) |
 | **ENV** | Alpha-Juno-Hüllkurve mit 4 Zeiten und 3 Pegeln (T1/L1, T2/L2, T3/L3, T4) plus Key-Follow; Env-Modi normal/invertiert, mit/ohne Dynamics für DCO und VCF |
-| **LFO** | Rate und Delay (Einblendung pro Tastenanschlag) |
+| **LFO** | Rate und Delay (Einblendung pro Tastenanschlag). Wellenformen: **Dreieck** (wie das Original, Standard), Sinus, Säge auf/ab, Rechteck, Sample & Hold, weicher Zufall. **Tempo-Sync** mit Notenwerten von 1/32 bis 4 Takte (im Plugin phasenstarr zur Song-Position des Hosts, in der App zum BPM-Regler) und **Key-Sync** (LFO startet bei neuem Tastenanschlag von vorn) |
 | **Chorus** | Juno-artiger Stereo-BBD-Chorus mit Rate-Regler |
 | **Patch** | Key-Modi **Poly / Chord / Mono**, 16 Chord-Memory-Speicher (per „LEARN CHORD“ vom angeschlossenen MIDI-Keyboard), Portamento, Bender-Range, Mod-Sensitivity, Key Shift, Volume |
 | **Stimmen** | 6 Stimmen (wie das Original), Voice Stealing, Sustain-Pedal |
@@ -53,7 +53,7 @@ Jede Optimierung wurde gegen die vorherige Referenz geprüft (Python-Port, Sampl
 ## Authentizität – was nachgebildet ist
 
 - **DCO:** digitale Chop-Logik des Alpha Juno (siehe oben), phasenstarre Teilerkette, bandbegrenzt.
-- **LFO:** nur Dreieck, wie beim Original. Delay blendet pro Tastenanschlag ein.
+- **LFO:** Standard ist das Dreieck des Originals, frei laufend. Weitere Wellenformen, Tempo- und Key-Sync sind Erweiterungen im Stil moderner Emulationen.
 - **Chorus:** MN3009/MN3101-BBD-Modell: Mono-Einspeisung, gegenphasiges Dreieck-LFO links/rechts, zweipolige Anti-Alias- und Rekonstruktionsfilter (~8 kHz), sanfte Eimerketten-Sättigung, leises BBD-Rauschen (~−84 dBFS).
 - **VCF:** 4-Pol-OTA-Kaskade (IR3109-Stil) mit Resonanz bis zur Selbstoszillation und Bass-Ausgleich.
 - **Stimmstabilität:** Das Original hat DCOs und ist stimmstabil. *Voice Drift* steht deshalb standardmäßig niedrig (8) und kann für „Vintage“ erhöht werden.

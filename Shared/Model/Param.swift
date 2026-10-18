@@ -75,6 +75,12 @@ enum Param: Int, CaseIterable, Identifiable {
     case reverbDamp
     case tempo
 
+    // MARK: LFO extensions (the hardware LFO is triangle-only and free-running)
+    case lfoWave
+    case lfoSync
+    case lfoDivision
+    case lfoKeySync
+
     static let toneParameterCount = 36
     static let storageSize = 128
 
@@ -95,8 +101,12 @@ enum Param: Int, CaseIterable, Identifiable {
             return 3
         case .dcoSaw, .dcoSub:
             return 5
-        case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong:
+        case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync:
             return 1
+        case .lfoWave:
+            return LFOShape.names.count - 1
+        case .lfoDivision:
+            return LFOShape.divisionNames.count - 1
         case .delayDivision:
             return DelayDivision.names.count - 1
         case .tempo:
@@ -130,8 +140,12 @@ enum Param: Int, CaseIterable, Identifiable {
             return ["0", "1", "2", "3"]
         case .dcoSaw, .dcoSub:
             return ["0", "1", "2", "3", "4", "5"]
-        case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong:
+        case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync:
             return ["OFF", "ON"]
+        case .lfoWave:
+            return LFOShape.names
+        case .lfoDivision:
+            return LFOShape.divisionNames
         case .delayDivision:
             return DelayDivision.names
         case .keyMode:
@@ -175,6 +189,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .reverbSize: return 60
         case .reverbDamp: return 50
         case .tempo: return 80
+        case .lfoDivision: return 8      // 1/4
         default: return 0
         }
     }
@@ -244,6 +259,10 @@ enum Param: Int, CaseIterable, Identifiable {
         case .reverbSize: return "Reverb Size"
         case .reverbDamp: return "Reverb Damping"
         case .tempo: return "Tempo"
+        case .lfoWave: return "LFO Waveform"
+        case .lfoSync: return "LFO Tempo Sync"
+        case .lfoDivision: return "LFO Sync Rate"
+        case .lfoKeySync: return "LFO Key Sync"
         }
     }
 
@@ -302,11 +321,19 @@ enum Param: Int, CaseIterable, Identifiable {
         case .reverbSize: return "SIZE"
         case .reverbDamp: return "DAMP"
         case .tempo: return "BPM"
+        case .lfoWave: return "WAVE"
+        case .lfoSync: return "TEMPO SYNC"
+        case .lfoDivision: return "NOTE"
+        case .lfoKeySync: return "KEY SYNC"
         }
     }
 
     func string(for value: Float) -> String {
         if self == .tempo { return "\(Int(value.rounded()) + 40)" }
+        if self == .lfoRate {
+            let hz = 0.1 * powf(300, value / 127)
+            return hz < 10 ? String(format: "%.2f Hz", hz) : String(format: "%.1f Hz", hz)
+        }
         if self == .delayTime {
             let ms = SynthEngine.delaySeconds(value) * 1000
             return ms < 1000 ? "\(Int(ms)) ms" : String(format: "%.2f s", ms / 1000)

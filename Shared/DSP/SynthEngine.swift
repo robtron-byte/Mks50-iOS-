@@ -69,6 +69,18 @@ final class SynthEngine {
 
     /// Tempo reported by the AU host (BPM), 0 = none (use the TEMPO parameter).
     var hostTempo: Double = 0
+    /// Host beat position at the start of the current render cycle, -1 = none.
+    /// Lets a tempo-synced LFO lock its phase to the song.
+    var hostBeatPosition: Double = -1
+    /// Samples rendered since the start of the current render cycle.
+    private var cycleSamples = 0
+
+    /// Call once per render cycle, before rendering.
+    func beginRenderCycle(tempo: Double, beatPosition: Double) {
+        hostTempo = tempo
+        hostBeatPosition = beatPosition
+        cycleSamples = 0
+    }
 
     // Performance controllers
     private var bend: Float = 0
@@ -79,6 +91,10 @@ final class SynthEngine {
     // Global modulation state
     private var lfoPhase: Float = 0
     private var lfoValue: Float = 0
+    private var lfoRandom = XorShift32(seed: 0x51F1_5EED)
+    private var lfoHeld: Float = 0          // sample & hold value
+    private var lfoFrom: Float = 0          // smooth random: segment start
+    private var lfoTo: Float = 0            // smooth random: segment end
     private var pwmPhase: Float = 0
     private var noteCounter: UInt64 = 0
     private var lastPitch: Float = 60
@@ -201,6 +217,7 @@ final class SynthEngine {
             voices[i].env.sampleRate = self.sampleRate
         }
         hpfMode = -1
+        _ = LFOShape.divisionQuarters.count   // initialise static table off the audio thread
         chorus.prepare(sampleRate: self.sampleRate)
         delay.prepare(sampleRate: self.sampleRate)
         reverb.prepare(sampleRate: self.sampleRate)
@@ -389,6 +406,15 @@ final class SynthEngine {
 
     private func noteOn(_ key: Int, velocity: Int) {
         syncKeyMode()
+        if pi(.lfoKeySync) == 1 {
+            var anyGate = false
+            for i in 0..<SynthEngine.maxVoices where voices[i].gate { anyGate = true }
+            if !anyGate {
+                lfoPhase = 0
+                lfoHeld = lfoRandom.next()
+                lfoFrom = lfoTo
+            }
+        }
         let vel = Float(velocity) / 127
         if pi(.keyMode) == 0 {
             polyNoteOn(key, vel)
@@ -630,11 +656,7 @@ final class SynthEngine {
 
         syncKeyMode()
 
-        // LFO: triangle only, like the Alpha Juno / MKS-50.
-        let lfoHz = 0.1 * powf(300, p(.lfoRate) / 127)
-        lfoPhase += lfoHz * fn / sr
-        if lfoPhase >= 1 { lfoPhase -= floorf(lfoPhase) }
-        lfoValue = 4 * abs(lfoPhase - 0.5) - 1
+        updateLFO(frames: n)
 
         // PW / PWM: PWM rate 0 = manual pulse width set by the depth control.
         let pwDepth = p(.dcoPwDepth) / 127
@@ -717,6 +739,53 @@ final class SynthEngine {
         b.amp = p(.vcaLevel) / 127 * (1 + aftertouch * p(.vcaAfterDepth) / 127)
         b.gateCoef = 1 - expf(-1 / (0.002 * sr))
         block = b
+    }
+
+    /// LFO: free-running rate, or tempo-synced to a note value. Inside a DAW
+    /// with transport the synced phase is locked to the song position.
+    private func updateLFO(frames n: Int) {
+        let sr = sampleRate
+        let fn = Float(n)
+        var wrapped = false
+
+        if pi(.lfoSync) == 1 {
+            let index = min(max(pi(.lfoDivision), 0), LFOShape.divisionQuarters.count - 1)
+            let quarters = LFOShape.divisionQuarters[index]
+            let tempo = max(tempoBPM, 20)
+            if hostBeatPosition >= 0 && hostTempo > 0 {
+                let beat = hostBeatPosition + Double(cycleSamples) / Double(sr) * tempo / 60
+                let cycles = beat / quarters
+                let newPhase = Float(cycles - floor(cycles))
+                wrapped = newPhase < lfoPhase
+                lfoPhase = newPhase
+            } else {
+                lfoPhase += Float(tempo / 60 / quarters) * fn / sr
+            }
+        } else {
+            let lfoHz = 0.1 * powf(300, p(.lfoRate) / 127)
+            lfoPhase += lfoHz * fn / sr
+        }
+        if lfoPhase >= 1 {
+            lfoPhase -= floorf(lfoPhase)
+            wrapped = true
+        }
+        cycleSamples += n
+
+        let shape = pi(.lfoWave)
+        switch shape {
+        case 5:     // sample & hold: new random value every cycle
+            if wrapped { lfoHeld = lfoRandom.next() }
+            lfoValue = lfoHeld
+        case 6:     // smooth random: cosine glide to a new random target each cycle
+            if wrapped {
+                lfoFrom = lfoTo
+                lfoTo = lfoRandom.next()
+            }
+            let t = 0.5 - 0.5 * cosf(Float.pi * lfoPhase)
+            lfoValue = lfoFrom + (lfoTo - lfoFrom) * t
+        default:
+            lfoValue = LFOShape.value(shape, phase: lfoPhase)
+        }
     }
 
     private func renderVoice(_ i: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>, frames n: Int) {
