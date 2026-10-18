@@ -166,8 +166,25 @@ struct SynthPanelView: View {
         }
     }
 
-    private var pageTabs: some View {
-        HStack(spacing: 4) {
+    @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.verticalSizeClass) private var vSize
+
+    @ViewBuilder private var pageTabs: some View {
+        if PortraitReader.isPortrait(hSize, vSize) {
+            // Two rows of five on an upright iPhone.
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4) {
+                tabButtons
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 6)
+        } else {
+            HStack(spacing: 4) { tabButtons }
+                .padding(.horizontal, 14)
+                .padding(.top, 6)
+        }
+    }
+
+    private var tabButtons: some View {
             ForEach(PanelPage.allCases) { p in
                 let selected = p == page
                 Button {
@@ -189,9 +206,6 @@ struct SynthPanelView: View {
                 .accessibilityLabel(p.rawValue)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, 6)
     }
 
     private var paddedPage: some View {
@@ -330,26 +344,28 @@ struct SynthPanelView: View {
 
     private var envPage: some View {
         group("ENVELOPE", "chart.xyaxis.line") {
-            HStack(alignment: .top, spacing: 18) {
-                stack {
-                    LiveEnvelopeGraph(model: model)
-                        .frame(width: 200, height: 110)
-                    selector(.envRetrigger)
+            let graph = stack {
+                LiveEnvelopeGraph(model: model)
+                    .frame(width: 200, height: 110)
+                selector(.envRetrigger)
+            }
+            let controls = stack {
+                knobs {
+                    knob(.envT1)
+                    knob(.envT2)
+                    knob(.envT3)
+                    knob(.envT4)
                 }
-                stack {
-                    knobs {
-                        knob(.envT1)
-                        knob(.envT2)
-                        knob(.envT3)
-                        knob(.envT4)
-                    }
-                    knobs {
-                        knob(.envL1)
-                        knob(.envL2)
-                        knob(.envL3)
-                        knob(.envKeyFollow)
-                    }
+                knobs {
+                    knob(.envL1)
+                    knob(.envL2)
+                    knob(.envL3)
+                    knob(.envKeyFollow)
                 }
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 18) { graph; controls }
+                VStack(alignment: .leading, spacing: 12) { graph; controls }
             }
         }
     }
@@ -476,8 +492,42 @@ struct PlayBar: View {
     /// Resets automatically when the touch is cancelled (Control Center,
     /// calls, backgrounding), so the pad can never get stuck.
     @GestureState private var pressing = false
+    @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.verticalSizeClass) private var vSize
 
     var body: some View {
+        if PortraitReader.isPortrait(hSize, vSize) {
+            portraitBody
+        } else {
+            landscapeBody
+        }
+    }
+
+    /// Upright iPhone: pad with transpose arrows on top, switches below.
+    private var portraitBody: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                StepButton(symbol: "chevron.left.2", label: "Octave down") { model.transposePad(-12) }
+                StepButton(symbol: "chevron.left", label: "Semitone down") { model.transposePad(-1) }
+                pad
+                StepButton(symbol: "chevron.right", label: "Semitone up") { model.transposePad(1) }
+                StepButton(symbol: "chevron.right.2", label: "Octave up") { model.transposePad(12) }
+            }
+            HStack(spacing: 6) {
+                BigButton(title: model.isLearningPadNote ? "KEY…" : "LEARN",
+                          icon: "pianokeys", active: model.isLearningPadNote) { model.toggleLearnPadNote() }
+                BigButton(title: "HOLD", icon: model.padLatch ? "lock.fill" : "lock.open",
+                          active: model.padLatch) { model.padLatch.toggle() }
+                ParamToggle(param: model.model(.arpOn), model: model, title: "ARP", icon: "arrow.up.arrow.down")
+                ParamToggle(param: model.model(.seqOn), model: model, title: "SEQ", icon: "square.grid.4x3.fill")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Theme.background)
+    }
+
+    private var landscapeBody: some View {
         HStack(spacing: 10) {
             BigButton(title: model.isLearningPadNote ? "PLAY A KEY…" : "LEARN",
                       icon: "pianokeys", active: model.isLearningPadNote) { model.toggleLearnPadNote() }
@@ -660,6 +710,8 @@ struct SynthMainView<Toolbar: View, Accessory: View>: View {
     @ViewBuilder var toolbar: Toolbar
     /// Optional strip between the panel and the play bar (app: loop recorder).
     @ViewBuilder var accessory: Accessory
+    @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.verticalSizeClass) private var vSize
 
     var body: some View {
         VStack(spacing: 0) {
@@ -668,7 +720,7 @@ struct SynthMainView<Toolbar: View, Accessory: View>: View {
                 .frame(maxHeight: .infinity)
             accessory
             BottomBar(learn: model.learn, model: model)
-                .frame(height: 54)
+                .frame(height: PortraitReader.isPortrait(hSize, vSize) ? 108 : 54)
         }
         .overlay(alignment: .top) { StatusBanner(model: model) }
         .background(Theme.background.ignoresSafeArea())

@@ -406,6 +406,13 @@ struct StepButton: View {
     }
 }
 
+/// True for an iPhone held upright (narrow width, tall height).
+struct PortraitReader {
+    static func isPortrait(_ h: UserInterfaceSizeClass?, _ v: UserInterfaceSizeClass?) -> Bool {
+        h == .compact && v == .regular
+    }
+}
+
 extension View {
     /// `onChange` without deprecation warnings on iOS 17+ that still runs on iOS 16.
     @ViewBuilder

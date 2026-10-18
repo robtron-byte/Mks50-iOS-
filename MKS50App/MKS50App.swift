@@ -161,21 +161,45 @@ struct AppToolbar: View {
     let onSettings: () -> Void
     let recorderVisible: Bool
     let onRecorder: () -> Void
+    @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.verticalSizeClass) private var vSize
 
     var body: some View {
-        HStack(spacing: 8) {
-            BrandMark()
-            StepButton(symbol: "chevron.left", label: "Previous preset") { model.stepFactoryPreset(-1) }
-            presetMenu
-            StepButton(symbol: "chevron.right", label: "Next preset") { model.stepFactoryPreset(1) }
-            MIDIActivityLED(lastActivity: midi.lastActivity)
-            Spacer()
-            trailingButtons
+        Group {
+            if PortraitReader.isPortrait(hSize, vSize) {
+                // Upright iPhone: buttons on top, preset display below.
+                VStack(spacing: 6) {
+                    HStack(spacing: 8) {
+                        BrandMark()
+                        MIDIActivityLED(lastActivity: midi.lastActivity)
+                        Spacer()
+                        trailingButtons
+                    }
+                    .frame(height: 40)
+                    HStack(spacing: 8) {
+                        StepButton(symbol: "chevron.left", label: "Previous preset") { model.stepFactoryPreset(-1) }
+                        presetMenu.frame(maxWidth: .infinity)
+                        StepButton(symbol: "chevron.right", label: "Next preset") { model.stepFactoryPreset(1) }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+            } else {
+                HStack(spacing: 8) {
+                    BrandMark()
+                    StepButton(symbol: "chevron.left", label: "Previous preset") { model.stepFactoryPreset(-1) }
+                    presetMenu
+                    StepButton(symbol: "chevron.right", label: "Next preset") { model.stepFactoryPreset(1) }
+                    MIDIActivityLED(lastActivity: midi.lastActivity)
+                    Spacer()
+                    trailingButtons
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 48)
+            }
         }
         .font(.system(size: 16, weight: .semibold))
         .foregroundColor(Theme.label)
-        .padding(.horizontal, 14)
-        .frame(height: 48)
         .background(Theme.panel)
     }
 
