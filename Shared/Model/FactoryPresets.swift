@@ -342,6 +342,57 @@ enum FactoryPresets {
               0, 127, 28, 0, 28, 0, 24, 0,  50, 2],
              extra: [.delayMix: 60, .delayDivision: 6, .delayFeedback: 70, .delayTone: 60, .delayPingPong: 1,
                      .reverbMix: 45, .reverbSize: 100]),
+
+        // MARK: JX-8P style strings (saw + detuned PWM pulse, chorus) for electro
+
+        make(.stringsBrass, "JX STRINGS",
+             [0, 0, 0,  2, 1, 0,  1, 0, 0,  2, 1,
+              6, 0, 8, 56, 36,  72, 10, 0, 16, 50, 12,  106, 10,  70, 60,
+              62, 127, 70, 118, 70, 115, 72, 0,  40, 2],
+             extra: [.pulseDetune: 65, .voiceDrift: 30, .reverbMix: 40, .reverbSize: 90]),
+
+        make(.stringsBrass, "JX ENSEMBL",
+             [0, 0, 0,  2, 2, 0,  1, 0, 0,  2, 1,
+              8, 0, 0, 64, 44,  76, 8, 0, 10, 40, 0,  104, 0,  72, 50,
+              70, 127, 70, 120, 70, 118, 80, 0,  96, 2],
+             extra: [.pulseDetune: 65, .voiceDrift: 55, .reverbMix: 45]),
+
+        make(.stringsBrass, "STR STAB",
+             [0, 0, 2,  2, 1, 0,  1, 0, 0,  2, 1,
+              0, 0, 0, 50, 30,  55, 20, 0, 50, 50, 0,  112, 0,  64, 0,
+              0, 127, 40, 40, 50, 30, 40, 0,  50, 2],
+             extra: [.pulseDetune: 65, .delayMix: 30, .delayDivision: 6, .delayPingPong: 1, .reverbMix: 30]),
+
+        make(.stringsBrass, "DARK STR",
+             [0, 0, 0,  2, 5, 0,  1, 1, 0,  1, 1,
+              0, 0, 0, 70, 24,  40, 22, 0, 20, 30, 0,  108, 0,  64, 0,
+              84, 127, 80, 110, 80, 110, 90, 0,  32, 2],
+             extra: [.pulseDetune: 65, .reverbMix: 60, .reverbSize: 110, .reverbDamp: 70]),
+
+        make(.stringsBrass, "SWEEP STR",
+             [0, 0, 0,  2, 1, 0,  1, 0, 0,  2, 1,
+              0, 0, 0, 56, 34,  50, 30, 60, 10, 40, 0,  106, 0,  64, 0,
+              70, 127, 70, 118, 70, 118, 80, 0,  44, 2],
+             extra: [.lfoWave: 0, .lfoSync: 1, .lfoDivision: 13, .pulseDetune: 65, .reverbMix: 45]),
+
+        make(.stringsBrass, "BRIGHT STR",
+             [0, 0, 0,  2, 1, 0,  2, 0, 0,  3, 1,
+              6, 0, 0, 50, 40,  95, 14, 0, 10, 60, 0,  100, 0,  70, 60,
+              50, 127, 60, 115, 60, 112, 64, 0,  60, 2],
+             extra: [.pulseDetune: 65, .delayMix: 25, .delayDivision: 8, .delayPingPong: 1, .reverbMix: 35]),
+
+        make(.stringsBrass, "STR CHORD",
+             [0, 0, 0,  2, 1, 0,  1, 0, 0,  2, 1,
+              0, 0, 0, 56, 36,  62, 14, 0, 30, 40, 0,  108, 0,  64, 0,
+              30, 127, 60, 110, 60, 100, 60, 0,  44, 2],
+             keyMode: 1, chord: 8,
+             extra: [.pulseDetune: 65, .reverbMix: 45, .delayMix: 20, .delayDivision: 6]),
+
+        make(.stringsBrass, "SLOW STR",
+             [0, 0, 0,  2, 1, 0,  1, 0, 0,  2, 1,
+              8, 0, 0, 60, 30,  64, 10, 0, 12, 40, 0,  104, 0,  64, 80,
+              104, 127, 90, 120, 90, 118, 104, 0,  40, 2],
+             extra: [.pulseDetune: 65, .voiceDrift: 35, .reverbMix: 70, .reverbSize: 120]),
     ]
 
     private static func make(_ category: PresetCategory, _ name: String, _ tone: [Int],
