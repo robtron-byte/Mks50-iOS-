@@ -14,3 +14,4 @@ xcuserdata/
 .DS_Store
 Config/Signing.local.xcconfig
 build.log
+.claude/worktrees/
