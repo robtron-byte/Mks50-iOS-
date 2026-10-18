@@ -84,6 +84,11 @@ enum Param: Int, CaseIterable, Identifiable {
     // MARK: Continuous high-pass (addition to the 4-step hardware HPF)
     case hpfFreq
 
+    // MARK: Envelope trigger in MONO / UNISON / CHORD
+    /// MULTI restarts the envelope on every new note (sequences), LEGATO only
+    /// when no key was held (bound notes glide without a new attack).
+    case envRetrigger
+
     static let toneParameterCount = 36
     static let storageSize = 128
 
@@ -104,7 +109,8 @@ enum Param: Int, CaseIterable, Identifiable {
             return 3
         case .dcoSaw, .dcoSub:
             return 5
-        case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync:
+        case .chorus, .portaSwitch, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync,
+             .envRetrigger:
             return 1
         case .lfoWave:
             return LFOShape.names.count - 1
@@ -153,6 +159,8 @@ enum Param: Int, CaseIterable, Identifiable {
             return DelayDivision.names
         case .keyMode:
             return ["POLY", "CHORD", "MONO", "UNISON"]
+        case .envRetrigger:
+            return ["MULTI", "LEGATO"]
         case .chordIndex:
             return ChordMemory.defaultNames
         case .midiChannel:
@@ -267,6 +275,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .lfoDivision: return "LFO Sync Rate"
         case .lfoKeySync: return "LFO Key Sync"
         case .hpfFreq: return "HPF Frequency"
+        case .envRetrigger: return "Envelope Trigger"
         }
     }
 
@@ -330,6 +339,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .lfoDivision: return "NOTE"
         case .lfoKeySync: return "KEY SYNC"
         case .hpfFreq: return "HPF FREQ"
+        case .envRetrigger: return "TRIGGER"
         }
     }
 

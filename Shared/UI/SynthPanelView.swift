@@ -324,6 +324,7 @@ struct SynthPanelView: View {
                         knob(.envL3)
                         knob(.envKeyFollow)
                     }
+                    selector(.envRetrigger)
                 }
             }
         }

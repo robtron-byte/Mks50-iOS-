@@ -581,6 +581,7 @@ final class SynthEngine {
         let count = groupSize(slot, unison)
         var legato = false
         for j in 0..<count where voices[j].active && voices[j].gate { legato = true }
+        let retrigger = pi(.envRetrigger) == 0
 
         for j in 0..<SynthEngine.maxVoices {
             if j < count {
@@ -588,11 +589,21 @@ final class SynthEngine {
                 voices[j].isUnison = unison
                 voices[j].unisonSpread = unison ? (Float(j) - Float(count - 1) / 2) / (Float(count - 1) / 2) : 0
                 if legato && voices[j].active && voices[j].gate {
-                    voices[j].key = key
-                    voices[j].note = note
-                    voices[j].targetPitch = Float(note)
-                    voices[j].sustained = false
-                    if !portamentoOn { voices[j].pitch = Float(note) }
+                    if retrigger {
+                        // New attack on every note (overlapping sequencer
+                        // notes), but keep gliding from the current pitch.
+                        let pitch = voices[j].pitch
+                        let fade = voices[j].lfoFade
+                        startVoice(j, key: key, note: note, velocity: vel)
+                        if portamentoOn { voices[j].pitch = pitch }
+                        voices[j].lfoFade = fade
+                    } else {
+                        voices[j].key = key
+                        voices[j].note = note
+                        voices[j].targetPitch = Float(note)
+                        voices[j].sustained = false
+                        if !portamentoOn { voices[j].pitch = Float(note) }
+                    }
                 } else {
                     let glideFrom = lastPitch
                     startVoice(j, key: key, note: note, velocity: vel)
