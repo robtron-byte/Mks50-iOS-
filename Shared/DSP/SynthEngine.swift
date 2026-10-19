@@ -123,7 +123,7 @@ final class SynthEngine {
     private var recorderTailGate = false
 
     @inline(__always) private var beatsPerFrame: Double {
-        let rate = clockSyncEnabled && hostTempo <= 0 ? (clockRunning ? clockRate : 0) : 1
+        let rate = followingClock ? (clockRunning ? clockRate : 0) : 1
         return max(tempoBPM, 20) / 60 / Double(sampleRate) * rate
     }
 
@@ -141,6 +141,23 @@ final class SynthEngine {
     /// Speed of the beat clock relative to the tempo: gently pulled towards
     /// the tick position (phase lock). Audio thread only.
     private var clockRate: Double = 1
+    /// Frames since the last clock tick; past `clockTimeoutFrames` the
+    /// source counts as gone. Audio thread only.
+    private var framesSinceClockTick = Int.max / 2
+    /// Stop received: wait for Start / Continue or a new key instead of
+    /// running free when the source then stops sending clock.
+    private var clockStoppedBySource = false
+
+    /// Clock sync is on and no host, but no clock arrives (nothing
+    /// connected, or the source went quiet for half a second): the beat
+    /// clock runs free on the last measured tempo, or the TEMPO setting.
+    var clockFreeRunning: Bool {
+        clockSyncEnabled && hostTempo <= 0 && !clockStoppedBySource
+            && framesSinceClockTick > Int(sampleRate / 2)
+    }
+
+    /// Beat clock follows the incoming MIDI clock.
+    private var followingClock: Bool { clockSyncEnabled && hostTempo <= 0 && !clockFreeRunning }
 
     /// Effective BPM for display.
     var displayTempo: Double { tempoBPM }
@@ -149,6 +166,13 @@ final class SynthEngine {
         guard clockSyncEnabled, hostTempo <= 0 else { return }
         switch status {
         case 0xF8:  // timing clock
+            let wasFree = clockFreeRunning
+            framesSinceClockTick = 0
+            if wasFree {
+                // Clock (re)appeared while running free: wait for Start.
+                clockRunning = false
+                stopPatterns()
+            }
             guard clockRunning else { return }
             // Position of this tick: the first tick after Start is beat 0.
             let target = Double(clockTicks) / 24
@@ -167,11 +191,16 @@ final class SynthEngine {
             internalBeat = 0
             clockRunning = true
             clockRate = 1
+            clockStoppedBySource = false
+            framesSinceClockTick = 0
         case 0xFB:  // continue
             clockRunning = true
             clockRate = 1
+            clockStoppedBySource = false
+            framesSinceClockTick = 0
         case 0xFC:  // stop
             clockRunning = false
+            clockStoppedBySource = true
             stopPatterns()
         case 0xF2:  // song position (sixteenths)
             let sixteenths = d2 << 7 | d1
@@ -191,7 +220,7 @@ final class SynthEngine {
     }
 
     /// Clock sync on, but the clock source is stopped: arp / sequencer wait.
-    private var transportHalted: Bool { clockSyncEnabled && hostTempo <= 0 && !clockRunning }
+    private var transportHalted: Bool { followingClock && !clockRunning }
 
     // Performance controllers
     private var bend: Float = 0
@@ -437,6 +466,9 @@ final class SynthEngine {
         switch status & 0xF0 {
         case 0x90 where d2 > 0:
             heldKeyFlags[d1] = 1
+            // After a Stop from a source that then went quiet, a new key
+            // starts the patterns on the internal clock again.
+            clockStoppedBySource = false
             if collectorOn {
                 arpKeyDown(d1, velocity: d2)
             } else {
@@ -1276,6 +1308,7 @@ final class SynthEngine {
         }
         recorderTailGate = tail
         internalBeat = renderStartBeat + Double(frames) * bpf
+        if framesSinceClockTick < Int.max / 2 { framesSinceClockTick += frames }
         if internalBeat > 1_000_000 {
             internalBeat -= 1_000_000                       // keep precision (multiple of 4 beats)
             clockTicks -= 24_000_000
@@ -1471,11 +1504,11 @@ final class SynthEngine {
     private var delayTempo: Double = 120
 
     private func currentDelaySeconds() -> Float {
-        let followingClock = clockSyncEnabled && hostTempo <= 0 && clockTempo > 0
+        let onClock = followingClock && clockTempo > 0
         // Following MIDI clock the delay is always tempo-synced (note value).
-        guard pi(.delaySync) == 1 || followingClock else { return SynthEngine.delaySeconds(p(.delayTime)) }
+        guard pi(.delaySync) == 1 || onClock else { return SynthEngine.delaySeconds(p(.delayTime)) }
         let tempo = max(tempoBPM, 20)
-        if followingClock {
+        if onClock {
             if abs(tempo - delayTempo) / delayTempo > 0.003 { delayTempo = (tempo * 10).rounded() / 10 }
         } else {
             delayTempo = tempo

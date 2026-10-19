@@ -130,13 +130,15 @@ private struct BPMControl: View {
                 // Following MIDI clock: show the measured tempo and transport.
                 TimelineView(.periodic(from: .now, by: 0.25)) { _ in
                     let engine = model.audioUnit.engine
+                    // No clock arriving: runs free on the last measured tempo.
+                    let free = engine.clockFreeRunning
                     VStack(spacing: 0) {
-                        Text(engine.clockTempo > 0 ? String(format: "%.1f", engine.clockTempo) : "--")
+                        Text(String(format: "%.1f", engine.displayTempo))
                             .font(.system(size: 16, weight: .bold, design: .monospaced))
                             .foregroundColor(Theme.readout)
-                        Text(engine.clockRunning ? "ext ▶" : "ext ■")
+                        Text(free ? "int ▶" : (engine.clockRunning ? "ext ▶" : "ext ■"))
                             .font(Theme.pixel(9, .regular))
-                            .foregroundColor(engine.clockRunning ? Theme.readout : Theme.dimLabel)
+                            .foregroundColor(free || engine.clockRunning ? Theme.readout : Theme.dimLabel)
                     }
                     .frame(minWidth: 52)
                 }
