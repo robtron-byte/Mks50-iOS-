@@ -141,6 +141,9 @@ enum Param: Int, CaseIterable, Identifiable {
     case reverbDecay
     /// Reverb line modulation (lush, chorused tail).
     case reverbMod
+    /// Reverb algorithm: SPACE (huge, modulated), ROOM (early reflections),
+    /// PLATE (dense, bright).
+    case reverbType
 
     static let toneParameterCount = 36
     static let storageSize = 192
@@ -186,6 +189,8 @@ enum Param: Int, CaseIterable, Identifiable {
             return SequenceGenerator.styleNames.count - 1
         case .distMode:
             return AcidDistortion.modeNames.count - 1
+        case .reverbType:
+            return Reverb.typeNames.count - 1
         case .seqRate:
             return LFOShape.divisionNames.count - 1
         case .seqLength:
@@ -251,6 +256,8 @@ enum Param: Int, CaseIterable, Identifiable {
             return ["MULTI", "LEGATO"]
         case .envSnap:
             return ["ORIG", "SNAP"]
+        case .reverbType:
+            return Reverb.typeNames
         case .arpOn, .arpHold, .seqOn:
             return ["OFF", "ON"]
         case .seqStyle:
@@ -399,6 +406,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .envRetrigger: return "Envelope Trigger"
         case .envSnap: return "Envelope Snap"
         case .delayMod: return "Delay Modulation"
+        case .reverbType: return "Reverb Type"
         case .reverbDecay: return "Reverb Decay"
         case .reverbMod: return "Reverb Modulation"
         case .arpOn: return "Arpeggiator"
@@ -487,6 +495,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .envRetrigger: return "TRIGGER"
         case .envSnap: return "SPEED"
         case .delayMod: return "MOD"
+        case .reverbType: return "TYPE"
         case .reverbDecay: return "DECAY"
         case .reverbMod: return "MOD"
         case .arpOn: return "ARP"

@@ -1388,7 +1388,8 @@ final class SynthEngine {
                        size: p(.reverbSize) / 127,
                        decay: p(.reverbDecay),
                        damp: p(.reverbDamp) / 127,
-                       modulation: p(.reverbMod) / 127)
+                       modulation: p(.reverbMod) / 127,
+                       type: pi(.reverbType))
 
         for n in 0..<frames {
             left[n] = SynthEngine.limit(left[n])

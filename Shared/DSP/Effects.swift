@@ -178,7 +178,12 @@ final class Reverb {
     private static let baseLengths: [Float] = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617] // @44.1k
     private static let diffuserLengths: [Float] = [142, 107, 379, 277]
     private static let diffuserCapacity = 1 << 12
-    private static let preDelayCapacity = 1 << 13
+    private static let preDelayCapacity = 1 << 14
+    /// Early reflections for ROOM (ms at full size, per side) and their gains.
+    private static let erTimesL: [Float] = [4.3, 8.9, 13.1, 19.7, 27.3, 36.1]
+    private static let erTimesR: [Float] = [5.9, 10.7, 15.8, 22.4, 31.2, 39.7]
+    private static let erGains: [Float] = [0.84, -0.71, 0.6, -0.5, 0.41, -0.33]
+    static let typeNames = ["SPACE", "ROOM", "PLATE"]
 
     /// DECAY 0...127 → RT60 in seconds (0.15 ... 60).
     static func decaySeconds(_ raw: Float) -> Float {
@@ -200,6 +205,9 @@ final class Reverb {
     private var sampleRate: Float = 44100
     private var mixSmoothed: Float = 0
     private var sizeSmoothed: Float = -1
+    private var erTapsL = SIMD8<Int>(repeating: 1)
+    private var erTapsR = SIMD8<Int>(repeating: 1)
+    private var erGainVector = SIMD8<Float>(repeating: 0)
     private var isClear = true
 
     init() {
@@ -222,6 +230,7 @@ final class Reverb {
         self.sampleRate = sampleRate
         // Initialise static tables here, never lazily on the audio thread.
         _ = Reverb.baseLengths.count + Reverb.diffuserLengths.count
+        _ = Reverb.erTimesL.count + Reverb.erTimesR.count + Reverb.erGains.count + Reverb.typeNames.count
         _ = DelayDivision.quarters.count
         // Slow, unrelated LFO rates (0.23 ... 0.97 Hz).
         let rates: [Float] = [0.23, 0.31, 0.37, 0.47, 0.53, 0.67, 0.79, 0.97]
@@ -245,8 +254,11 @@ final class Reverb {
     ///   - decay: DECAY parameter 0...127 (RT60 0.15 ... 60 s)
     ///   - damp: 0...1 (bright ... dark)
     ///   - modulation: 0...1
+    ///   - type: 0 SPACE (huge, modulated, Black Hole style), 1 ROOM (realistic
+    ///     room with early reflections, in the spirit of the TC VSS3 "source /
+    ///     room" approach), 2 PLATE (instantly dense, bright plate)
     func process(left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>, frames: Int,
-                 mix: Float, size: Float, decay: Float, damp: Float, modulation: Float) {
+                 mix: Float, size: Float, decay: Float, damp: Float, modulation: Float, type: Int = 0) {
         if mix < 0.0005 && mixSmoothed < 0.0005 {
             reset()
             return
@@ -258,7 +270,16 @@ final class Reverb {
         if sizeSmoothed < 0 { sizeSmoothed = size }
         sizeSmoothed += (size - sizeSmoothed) * min(1, Float(frames) / (0.05 * sr))
         let sz = sizeSmoothed
-        let lengthScale = sr / 44100 * (0.18 + 2.6 * sz * sz)
+        let kind = min(max(type, 0), 2)
+        // Room size of the tail per type: SPACE grows to a cavern, ROOM to a
+        // large hall, PLATE stays plate-sized.
+        let roomScale: Float
+        switch kind {
+        case 1: roomScale = 0.2 + 0.9 * sz
+        case 2: roomScale = 0.3 + 0.45 * sz
+        default: roomScale = 0.18 + 2.6 * sz * sz
+        }
+        let lengthScale = sr / 44100 * roomScale
         let t60 = Reverb.decaySeconds(decay)
         let maxLength = Float(Reverb.lineCapacity - 64)
         var gains = SIMD8<Float>(repeating: 0)
@@ -271,10 +292,29 @@ final class Reverb {
             diffuserSizes[i] = max(1, min(Reverb.diffuserCapacity - 1, Int(Reverb.diffuserLengths[i] * diffScale)))
         }
         // Denser, smoother build-up in big spaces.
-        let diffusion: Float = 0.55 + 0.17 * sz
-        let preSamples = min(Reverb.preDelayCapacity - 1, max(1, Int(sz * sz * 0.06 * sr)))
-        let dampCoef = 1 - expf(-2 * Float.pi * (16000 - damp * 14500) / sr)
-        let modDepth = modulation * (1.5 + 14 * sz) * sr / 44100
+        // Diffusion: plates build up instantly, rooms keep their reflections.
+        let diffusion: Float
+        let preSeconds: Float
+        let dampTop: Float
+        let modScale: Float
+        switch kind {
+        case 1: diffusion = 0.5; preSeconds = 0.012 * sz; dampTop = 12000; modScale = 0.3
+        case 2: diffusion = 0.75; preSeconds = 0.002; dampTop = 18000; modScale = 0.5
+        default: diffusion = 0.55 + 0.17 * sz; preSeconds = sz * sz * 0.06; dampTop = 16000; modScale = 1
+        }
+        let preSamples = min(Reverb.preDelayCapacity / 2, max(1, Int(preSeconds * sr)))
+        let dampCoef = 1 - expf(-2 * Float.pi * min(dampTop - damp * (dampTop - 1500), sr * 0.45) / sr)
+        let modDepth = modulation * modScale * (1.5 + 14 * sz) * sr / 44100
+        // Early reflections (ROOM only), scaled with the size.
+        let erLevel: Float = kind == 1 ? 0.75 : 0
+        if kind == 1 {
+            let scale = (0.25 + 0.75 * sz) * sr / 1000
+            for k in 0..<6 {
+                erTapsL[k] = min(Reverb.preDelayCapacity - 1, max(1, Int(Reverb.erTimesL[k] * scale)) + preSamples)
+                erTapsR[k] = min(Reverb.preDelayCapacity - 1, max(1, Int(Reverb.erTimesR[k] * scale)) + preSamples)
+                erGainVector[k] = Reverb.erGains[k]
+            }
+        }
         let lineCap = Reverb.lineCapacity
         let lineMask = lineCap - 1
         let diffCap = Reverb.diffuserCapacity
@@ -289,6 +329,16 @@ final class Reverb {
             // Pre-delay.
             preDelay[preWrite] = 0.5 * (inL + inR)
             var x = preDelay[(preWrite - preSamples) & preMask]
+            var erL: Float = 0
+            var erR: Float = 0
+            if erLevel > 0 {
+                for k in 0..<6 {
+                    erL += erGainVector[k] * preDelay[(preWrite - erTapsL[k]) & preMask]
+                    erR += erGainVector[k] * preDelay[(preWrite - erTapsR[k]) & preMask]
+                }
+                // The tail starts after the first reflections, fed by them.
+                x = 0.6 * x + 0.25 * (erL + erR)
+            }
             preWrite = (preWrite + 1) & preMask
 
             // Input diffusion (Schroeder all-passes in series).
@@ -328,8 +378,8 @@ final class Reverb {
             lineWrite = (lineWrite + 1) & lineMask
             diffuserWrite = (diffuserWrite + 1) & diffMask
 
-            let wetL = 0.4 * (y[0] - y[2] + y[4] - y[6] + 0.5 * y[1])
-            let wetR = 0.4 * (y[1] - y[3] + y[5] - y[7] + 0.5 * y[0])
+            let wetL = 0.4 * (y[0] - y[2] + y[4] - y[6] + 0.5 * y[1]) + erL * erLevel
+            let wetR = 0.4 * (y[1] - y[3] + y[5] - y[7] + 0.5 * y[0]) + erR * erLevel
             left[n] = inL + wetL * mixSmoothed
             right[n] = inR + wetR * mixSmoothed
         }

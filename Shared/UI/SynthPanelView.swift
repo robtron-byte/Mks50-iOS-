@@ -481,6 +481,7 @@ struct SynthPanelView: View {
                         knob(.reverbDamp)
                         knob(.reverbMod)
                     }
+                    selector(.reverbType)
                 }
             }
             group("CHORUS", "circle.hexagongrid") {
