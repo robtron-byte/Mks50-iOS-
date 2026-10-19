@@ -64,7 +64,7 @@ extension ParamKnob {
             }
         }
         if p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime || p == .delayFeedback
-            || p == .lfoRate || p == .hpfFreq {
+            || p == .lfoRate || p == .hpfFreq || p == .reverbDecay {
             return { value in p.string(for: value) }
         }
         return nil
@@ -461,6 +461,7 @@ struct SynthPanelView: View {
                         encoderSlot(DelayTimeControl(sync: model.model(.delaySync), model: model))
                         knob(.delayFeedback)
                         knob(.delayTone)
+                        knob(.delayMod)
                     }
                     HStack(alignment: .bottom, spacing: 14) {
                         selector(.delaySync, "SYNC")
@@ -474,8 +475,12 @@ struct SynthPanelView: View {
                     knobs {
                         knob(.reverbMix)
                         knob(.reverbSize)
+                        knob(.reverbDecay)
                     }
-                    knob(.reverbDamp)
+                    knobs {
+                        knob(.reverbDamp)
+                        knob(.reverbMod)
+                    }
                 }
             }
             group("CHORUS", "circle.hexagongrid") {

@@ -1,8 +1,11 @@
 import Foundation
 
-/// Tempo-syncable stereo delay with ping-pong, in the spirit of the TAL-Pha FX
-/// section. The feedback path is band-limited (tone low-pass + 150 Hz high-pass)
-/// and softly saturated, so long feedback stays musical instead of muddy.
+/// Organic stereo delay in the spirit of the Erica Synths Echolocator:
+/// 0.5 ms ... 2 s (tempo-syncable), saturating feedback loop with tone
+/// low-pass and rumble high-pass, tape/BBD-like movement (slow wow, fast
+/// flutter and random drift), a slightly longer right channel for width,
+/// and pitch-bending glides when the time is changed. Below about 4 ms the
+/// loop turns into a comb / flanger / Karplus-style resonator.
 final class StereoDelay {
     private let size = 1 << 18          // 262 144 samples ≈ 5.4 s at 48 kHz
     private let mask: Int
@@ -16,6 +19,13 @@ final class StereoDelay {
     private var highCoef: Float = 0.02
     private var mixSmoothed: Float = 0
     private var isClear = true
+    // Movement: wow (slow), flutter (fast), drift (smoothed noise).
+    private var wowPhase: Float = 0
+    private var flutterPhase: Float = 0.37
+    private var drift: Float = 0
+    private var driftTarget: Float = 0
+    private var driftCounter = 0
+    private var noise = XorShift32(seed: 0xEC40_1A70)
 
     init() {
         mask = size - 1
@@ -32,7 +42,7 @@ final class StereoDelay {
 
     func prepare(sampleRate: Float) {
         self.sampleRate = sampleRate
-        highCoef = 1 - expf(-2 * Float.pi * 150 / sampleRate)
+        highCoef = 1 - expf(-2 * Float.pi * 60 / sampleRate)
         reset()
     }
 
@@ -45,22 +55,37 @@ final class StereoDelay {
         isClear = true
     }
 
+    /// 4-point Hermite interpolation: clean at very short times and while
+    /// the time is modulated.
     @inline(__always) private func read(_ buffer: UnsafeMutablePointer<Float>, _ delay: Float) -> Float {
         let pos = Float(writeIndex) - delay
         let i = Int(floorf(pos))
-        let frac = pos - Float(i)
-        let a = buffer[i & mask]
-        let b = buffer[(i + 1) & mask]
-        return a + (b - a) * frac
+        let t = pos - Float(i)
+        let xm1 = buffer[(i - 1) & mask]
+        let x0 = buffer[i & mask]
+        let x1 = buffer[(i + 1) & mask]
+        let x2 = buffer[(i + 2) & mask]
+        let c1 = 0.5 * (x1 - xm1)
+        let c2 = xm1 - 2.5 * x0 + 2 * x1 - 0.5 * x2
+        let c3 = 0.5 * (x2 - xm1) + 1.5 * (x0 - x1)
+        return ((c3 * t + c2) * t + c1) * t + x0
+    }
+
+    /// Cheap sine for the movement LFOs (phase 0..<1).
+    @inline(__always) private static func sine(_ phase: Float) -> Float {
+        let x = phase < 0.5 ? phase * 4 - 1 : 3 - phase * 4      // triangle -1...1
+        return x * (1.5 - 0.5 * x * x)                           // soft-shaped
     }
 
     /// - Parameters:
-    ///   - seconds: delay time
+    ///   - seconds: delay time (0.0005 ... about 5)
     ///   - feedback: 0...1.15; above 1 the loop self-oscillates (dub
     ///     style) and is held by the soft clipper in the feedback path
     ///   - tone: 0...1 (dark ... bright)
+    ///   - modulation: 0...1 wow / flutter / drift depth
     func process(left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>, frames: Int,
-                 mix: Float, seconds: Float, feedback: Float, tone: Float, pingPong: Bool) {
+                 mix: Float, seconds: Float, feedback: Float, tone: Float, pingPong: Bool,
+                 modulation: Float) {
         // Fully off: no work at all; the buffer is cleared once so old echoes
         // never reappear when the delay is switched on again.
         if mix < 0.0005 && mixSmoothed < 0.0005 {
@@ -69,20 +94,46 @@ final class StereoDelay {
         }
         isClear = false
 
-        let target = clampf(seconds * sampleRate, 1, Float(size - 4))
+        let target = clampf(seconds * sampleRate, 2, Float(size) * 0.45)
         if delaySmoothed == 0 { delaySmoothed = target }
-        let lowCoef = 1 - expf(-2 * Float.pi * (1200 + tone * tone * 14000) / sampleRate)
+        let lowCoef = 1 - expf(-2 * Float.pi * (900 + tone * tone * 15000) / sampleRate)
         let fb = clampf(feedback, 0, 1.15)
+        let m = clampf(modulation, 0, 1)
+        let wowInc = 0.55 / sampleRate
+        let flutterInc = 6.3 / sampleRate
+        // Relative depth (pitch wobble on long echoes) plus a small absolute
+        // depth in samples so very short delays flange / chorus.
+        let relDepth = m * m * 0.004
+        let absDepth = m * 0.0006 * sampleRate
+        // Saturation grows with feedback: repeats get warmer, not louder.
+        let drive: Float = 1.1 + 0.4 * fb
 
         for n in 0..<frames {
-            // Smooth time changes (tape-like glide instead of clicks).
-            delaySmoothed += (target - delaySmoothed) * 0.0005
+            // Time changes glide (repitching like tape / BBD).
+            delaySmoothed += (target - delaySmoothed) * 0.0004
             mixSmoothed += (mix - mixSmoothed) * 0.002
+
+            wowPhase += wowInc
+            if wowPhase >= 1 { wowPhase -= 1 }
+            flutterPhase += flutterInc
+            if flutterPhase >= 1 { flutterPhase -= 1 }
+            driftCounter -= 1
+            if driftCounter <= 0 {
+                driftCounter = 2048
+                driftTarget = noise.next()
+            }
+            drift += (driftTarget - drift) * 0.0003
+
+            let movement = 0.7 * StereoDelay.sine(wowPhase) + 0.12 * StereoDelay.sine(flutterPhase) + 0.5 * drift
+            let offset = movement * (delaySmoothed * relDepth + absDepth)
+            let dL = max(2, delaySmoothed + offset)
+            // Right side a little longer (and moving the other way) for width.
+            let dR = max(2, delaySmoothed * 1.012 - offset)
 
             let inL = left[n]
             let inR = right[n]
-            var wetL = read(bufferL, delaySmoothed)
-            var wetR = read(bufferR, delaySmoothed)
+            var wetL = read(bufferL, dL)
+            var wetR = read(bufferR, dR)
 
             // Feedback filtering: tone low-pass, then remove rumble.
             lowL += (wetL - lowL) * lowCoef
@@ -102,9 +153,9 @@ final class StereoDelay {
                 writeL = inL + wetL * fb
                 writeR = inR + wetR * fb
             }
-            // The clipper bounds a runaway loop at about ±0.8.
-            bufferL[writeIndex] = softClip(writeL * 1.25) * 0.8
-            bufferR[writeIndex] = softClip(writeR * 1.25) * 0.8
+            // Warm saturation; bounds a runaway loop at about ±0.8.
+            bufferL[writeIndex] = softClip(writeL * drive) * (0.8 / drive * 1.25)
+            bufferR[writeIndex] = softClip(writeR * drive) * (0.8 / drive * 1.25)
             writeIndex = (writeIndex + 1) & mask
 
             left[n] = inL + wetL * mixSmoothed
@@ -113,27 +164,40 @@ final class StereoDelay {
     }
 }
 
-/// Compact stereo reverb: 4 input diffusers + 8-line feedback delay network
-/// with a Householder matrix (O(N) mixing), per-line damping and slight
-/// delay-line modulation. Smooth plate/hall character at low CPU cost.
+/// Large modulated stereo reverb in the spirit of the Eventide Black Hole,
+/// that also does short rooms: input pre-delay, 4 diffusers and an 8-line
+/// feedback delay network with a Householder matrix (O(N) mixing). SIZE sets
+/// the space (small room ... huge hall, with pre-delay), DECAY the time
+/// (0.15 s ... 60 s), every line is slowly modulated (MOD) for the lush,
+/// chorused tail, DAMP darkens it.
 final class Reverb {
     private static let lineCount = 8
-    private static let lineCapacity = 1 << 14
+    private static let lineCapacity = 1 << 15
     private static let baseLengths: [Float] = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617] // @44.1k
     private static let diffuserLengths: [Float] = [142, 107, 379, 277]
-    private static let diffuserCapacity = 1 << 11
+    private static let diffuserCapacity = 1 << 12
+    private static let preDelayCapacity = 1 << 13
+
+    /// DECAY 0...127 → RT60 in seconds (0.15 ... 60).
+    static func decaySeconds(_ raw: Float) -> Float {
+        0.15 * powf(400, min(max(raw, 0), 127) / 127)
+    }
 
     private let lines: UnsafeMutablePointer<Float>
     private let diffusers: UnsafeMutablePointer<Float>
+    private let preDelay: UnsafeMutablePointer<Float>
     private var lineWrite = 0
     private var diffuserWrite = 0
+    private var preWrite = 0
     // Fixed-size SIMD storage: no heap / copy-on-write checks on the audio thread.
     private var lengths = SIMD8<Float>(repeating: 1000)
     private var diffuserSizes = SIMD4<Int>(repeating: 100)
     private var damping = SIMD8<Float>(repeating: 0)
+    private var lfoPhases = SIMD8<Float>(0.0, 0.13, 0.29, 0.41, 0.57, 0.66, 0.78, 0.9)
+    private var lfoIncrements = SIMD8<Float>(repeating: 0)
     private var sampleRate: Float = 44100
-    private var lfoPhase: Float = 0
     private var mixSmoothed: Float = 0
+    private var sizeSmoothed: Float = -1
     private var isClear = true
 
     init() {
@@ -141,23 +205,25 @@ final class Reverb {
         lines.initialize(repeating: 0, count: Reverb.lineCount * Reverb.lineCapacity)
         diffusers = .allocate(capacity: 4 * Reverb.diffuserCapacity)
         diffusers.initialize(repeating: 0, count: 4 * Reverb.diffuserCapacity)
+        preDelay = .allocate(capacity: Reverb.preDelayCapacity)
+        preDelay.initialize(repeating: 0, count: Reverb.preDelayCapacity)
     }
 
     deinit {
         lines.deallocate()
         diffusers.deallocate()
+        preDelay.deallocate()
     }
 
     /// Not real-time: called from prepare.
     func prepare(sampleRate: Float) {
         self.sampleRate = sampleRate
         // Initialise static tables here, never lazily on the audio thread.
-        _ = Reverb.baseLengths.count
+        _ = Reverb.baseLengths.count + Reverb.diffuserLengths.count
         _ = DelayDivision.quarters.count
-        let scale = sampleRate / 44100
-        for i in 0..<4 {
-            diffuserSizes[i] = min(Reverb.diffuserCapacity - 1, Int(Reverb.diffuserLengths[i] * scale))
-        }
+        // Slow, unrelated LFO rates (0.23 ... 0.97 Hz).
+        let rates: [Float] = [0.23, 0.31, 0.37, 0.47, 0.53, 0.67, 0.79, 0.97]
+        for i in 0..<Reverb.lineCount { lfoIncrements[i] = rates[i] / sampleRate }
         isClear = false
         reset()
     }
@@ -166,16 +232,19 @@ final class Reverb {
         guard !isClear else { return }
         lines.update(repeating: 0, count: Reverb.lineCount * Reverb.lineCapacity)
         diffusers.update(repeating: 0, count: 4 * Reverb.diffuserCapacity)
+        preDelay.update(repeating: 0, count: Reverb.preDelayCapacity)
         damping = SIMD8<Float>(repeating: 0)
         mixSmoothed = 0
         isClear = true
     }
 
     /// - Parameters:
-    ///   - size: 0...1 (room size and decay time 0.3 ... 8 s)
+    ///   - size: 0...1 (small room ... huge space; also pre-delay 0 ... 60 ms)
+    ///   - decay: DECAY parameter 0...127 (RT60 0.15 ... 60 s)
     ///   - damp: 0...1 (bright ... dark)
+    ///   - modulation: 0...1
     func process(left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>, frames: Int,
-                 mix: Float, size: Float, damp: Float) {
+                 mix: Float, size: Float, decay: Float, damp: Float, modulation: Float) {
         if mix < 0.0005 && mixSmoothed < 0.0005 {
             reset()
             return
@@ -183,54 +252,68 @@ final class Reverb {
         isClear = false
 
         let sr = sampleRate
-        let lengthScale = sr / 44100 * (0.55 + 0.75 * size)
-        let t60 = 0.3 * powf(26, size)
-        let maxLength = Float(Reverb.lineCapacity - 8)
+        // Size changes are smoothed per block (no zipper on the line lengths).
+        if sizeSmoothed < 0 { sizeSmoothed = size }
+        sizeSmoothed += (size - sizeSmoothed) * min(1, Float(frames) / (0.05 * sr))
+        let sz = sizeSmoothed
+        let lengthScale = sr / 44100 * (0.18 + 2.6 * sz * sz)
+        let t60 = Reverb.decaySeconds(decay)
+        let maxLength = Float(Reverb.lineCapacity - 64)
         var gains = SIMD8<Float>(repeating: 0)
         for i in 0..<Reverb.lineCount {
             lengths[i] = min(maxLength, Reverb.baseLengths[i] * lengthScale)
             gains[i] = powf(10, -3 * lengths[i] / (t60 * sr))
         }
+        let diffScale = sr / 44100 * (0.35 + 1.4 * sz)
+        for i in 0..<4 {
+            diffuserSizes[i] = max(1, min(Reverb.diffuserCapacity - 1, Int(Reverb.diffuserLengths[i] * diffScale)))
+        }
+        // Denser, smoother build-up in big spaces.
+        let diffusion: Float = 0.55 + 0.17 * sz
+        let preSamples = min(Reverb.preDelayCapacity - 1, max(1, Int(sz * sz * 0.06 * sr)))
         let dampCoef = 1 - expf(-2 * Float.pi * (16000 - damp * 14500) / sr)
-        let lfoInc = 0.7 / sr
+        let modDepth = modulation * (1.5 + 14 * sz) * sr / 44100
         let lineCap = Reverb.lineCapacity
         let lineMask = lineCap - 1
         let diffCap = Reverb.diffuserCapacity
         let diffMask = diffCap - 1
+        let preMask = Reverb.preDelayCapacity - 1
 
         for n in 0..<frames {
             mixSmoothed += (mix - mixSmoothed) * 0.002
             let inL = left[n]
             let inR = right[n]
 
+            // Pre-delay.
+            preDelay[preWrite] = 0.5 * (inL + inR)
+            var x = preDelay[(preWrite - preSamples) & preMask]
+            preWrite = (preWrite + 1) & preMask
+
             // Input diffusion (Schroeder all-passes in series).
-            var x = 0.5 * (inL + inR)
             for d in 0..<4 {
                 let base = diffusers + d * diffCap
                 let delayed = base[(diffuserWrite - diffuserSizes[d]) & diffMask]
-                let v = x + 0.6 * delayed
+                let v = x + diffusion * delayed
                 base[diffuserWrite & diffMask] = v
-                x = delayed - 0.6 * v
+                x = delayed - diffusion * v
             }
 
-            // Read the FDN lines (two of them slightly modulated).
-            lfoPhase += lfoInc
-            if lfoPhase >= 1 { lfoPhase -= 1 }
-            let mod = sinf(2 * Float.pi * lfoPhase) * 6
+            // Every line slowly modulated (triangle LFOs, cheap).
+            lfoPhases += lfoIncrements
+            for i in 0..<Reverb.lineCount where lfoPhases[i] >= 1 { lfoPhases[i] -= 1 }
             var y = SIMD8<Float>(repeating: 0)
             for i in 0..<Reverb.lineCount {
-                var len = lengths[i]
-                if i == 1 { len += mod } else if i == 6 { len -= mod }
-                let pos = Float(lineWrite) - len
+                let p = lfoPhases[i]
+                let tri = p < 0.5 ? 4 * p - 1 : 3 - 4 * p
+                let pos = Float(lineWrite) - (lengths[i] + modDepth * tri)
                 let k = Int(floorf(pos))
                 let frac = pos - Float(k)
                 let base = lines + i * lineCap
                 let a = base[k & lineMask]
                 let b = base[(k + 1) & lineMask]
-                var v = a + (b - a) * frac
+                let v = a + (b - a) * frac
                 damping[i] += (v - damping[i]) * dampCoef
-                v = damping[i]
-                y[i] = v
+                y[i] = damping[i]
             }
 
             // Householder feedback matrix: x_i - 2/N * sum(x).

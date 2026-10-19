@@ -1381,11 +1381,14 @@ final class SynthEngine {
                       seconds: currentDelaySeconds(),
                       feedback: SynthEngine.delayFeedback(p(.delayFeedback)),
                       tone: p(.delayTone) / 127,
-                      pingPong: pi(.delayPingPong) == 1)
+                      pingPong: pi(.delayPingPong) == 1,
+                      modulation: p(.delayMod) / 127)
         reverb.process(left: left, right: right, frames: frames,
                        mix: powf(p(.reverbMix) / 127, 1.5),
                        size: p(.reverbSize) / 127,
-                       damp: p(.reverbDamp) / 127)
+                       decay: p(.reverbDecay),
+                       damp: p(.reverbDamp) / 127,
+                       modulation: p(.reverbMod) / 127)
 
         for n in 0..<frames {
             left[n] = SynthEngine.limit(left[n])
@@ -1409,8 +1412,10 @@ final class SynthEngine {
     }
 
     /// Free delay time: 0...127 → 10 ms ... 1.5 s.
+    /// Free delay time: 0.5 ms ... 2 s, exponential (below about 4 ms the
+    /// delay becomes a comb / flanger / Karplus-style resonator).
     static func delaySeconds(_ raw: Float) -> Float {
-        0.01 * powf(150, raw / 127)
+        0.0005 * powf(4000, raw / 127)
     }
 
     /// Effective tempo: host tempo inside a DAW, else the TEMPO parameter.

@@ -134,6 +134,14 @@ enum Param: Int, CaseIterable, Identifiable {
     /// punchier plucks; ORIG keeps the measured Juno-2 times.
     case envSnap
 
+    // MARK: Organic delay / large reverb extensions
+    /// Delay wow, flutter and drift (tape / BBD-like movement).
+    case delayMod
+    /// Reverb decay time, independent of SIZE (0.15 s ... 60 s).
+    case reverbDecay
+    /// Reverb line modulation (lush, chorused tail).
+    case reverbMod
+
     static let toneParameterCount = 36
     static let storageSize = 192
 
@@ -308,6 +316,9 @@ enum Param: Int, CaseIterable, Identifiable {
         case .distTone: return 80
         case .distLevel: return 64
         case .distMix: return 127
+        case .delayMod: return 30
+        case .reverbDecay: return 60
+        case .reverbMod: return 40
         default: return 0
         }
     }
@@ -387,6 +398,9 @@ enum Param: Int, CaseIterable, Identifiable {
         case .hpfFreq: return "HPF Frequency"
         case .envRetrigger: return "Envelope Trigger"
         case .envSnap: return "Envelope Snap"
+        case .delayMod: return "Delay Modulation"
+        case .reverbDecay: return "Reverb Decay"
+        case .reverbMod: return "Reverb Modulation"
         case .arpOn: return "Arpeggiator"
         case .arpMode: return "Arp Mode"
         case .arpRate: return "Arp Rate"
@@ -472,6 +486,9 @@ enum Param: Int, CaseIterable, Identifiable {
         case .hpfFreq: return "HPF FREQ"
         case .envRetrigger: return "TRIGGER"
         case .envSnap: return "SPEED"
+        case .delayMod: return "MOD"
+        case .reverbDecay: return "DECAY"
+        case .reverbMod: return "MOD"
         case .arpOn: return "ARP"
         case .arpMode: return "MODE"
         case .arpRate: return "RATE"
@@ -527,7 +544,12 @@ enum Param: Int, CaseIterable, Identifiable {
         }
         if self == .delayTime {
             let ms = SynthEngine.delaySeconds(value) * 1000
+            if ms < 10 { return String(format: "%.1f ms", ms) }
             return ms < 1000 ? "\(Int(ms)) ms" : String(format: "%.2f s", ms / 1000)
+        }
+        if self == .reverbDecay {
+            let s = Reverb.decaySeconds(value)
+            return s < 10 ? String(format: "%.1f s", s) : "\(Int(s)) s"
         }
         if self == .pulseDetune {
             let semis = (value - 64) / 64 * 12

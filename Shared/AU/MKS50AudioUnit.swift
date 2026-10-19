@@ -489,7 +489,8 @@ final class MKS50AudioUnit: AUAudioUnit {
                                 .modSensitivity, .volume, .keyShift, .midiChannel]),
         ("extra", "Extra", [.pulseDetune, .pulseSync, .pulseEnvMod, .voiceDrift, .unisonDetune]),
         ("fx", "Effects", [.distMode, .distDrive, .distTone, .distLevel, .distMix, .delayMix, .delayTime, .delayFeedback, .delaySync, .delayDivision, .delayTone,
-                           .delayPingPong, .reverbMix, .reverbSize, .reverbDamp, .tempo]),
+                           .delayPingPong, .delayMod, .reverbMix, .reverbSize, .reverbDecay, .reverbDamp,
+                           .reverbMod, .tempo]),
         ("arp", "Arpeggiator", [.arpOn, .arpMode, .arpRate, .arpOctaves, .arpGate, .arpHold]),
         ("seq", "Sequencer", sequencerParams),
     ]
