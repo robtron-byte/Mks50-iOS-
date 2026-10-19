@@ -129,8 +129,13 @@ enum Param: Int, CaseIterable, Identifiable {
     case distLevel
     case distMix
 
+    // MARK: Faster envelope minimum (deviation from the hardware)
+    /// SNAP lowers the shortest envelope times (about 4 ms → 1 ms attack) for
+    /// punchier plucks; ORIG keeps the measured Juno-2 times.
+    case envSnap
+
     static let toneParameterCount = 36
-    static let storageSize = 128
+    static let storageSize = 192
 
     static var toneParams: [Param] { allCases.filter { $0.isTone } }
     static var patchParams: [Param] { allCases.filter { !$0.isTone } }
@@ -167,7 +172,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .dcoSaw, .dcoSub:
             return 5
         case .chorus, .pulseSync, .delaySync, .delayPingPong, .lfoSync, .lfoKeySync,
-             .envRetrigger, .arpOn, .arpHold, .seqOn:
+             .envRetrigger, .arpOn, .arpHold, .seqOn, .envSnap:
             return 1
         case .seqStyle:
             return SequenceGenerator.styleNames.count - 1
@@ -236,6 +241,8 @@ enum Param: Int, CaseIterable, Identifiable {
             return ["OFF", "ON", "AUTO"]
         case .envRetrigger:
             return ["MULTI", "LEGATO"]
+        case .envSnap:
+            return ["ORIG", "SNAP"]
         case .arpOn, .arpHold, .seqOn:
             return ["OFF", "ON"]
         case .seqStyle:
@@ -379,6 +386,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .lfoKeySync: return "LFO Key Sync"
         case .hpfFreq: return "HPF Frequency"
         case .envRetrigger: return "Envelope Trigger"
+        case .envSnap: return "Envelope Snap"
         case .arpOn: return "Arpeggiator"
         case .arpMode: return "Arp Mode"
         case .arpRate: return "Arp Rate"
@@ -463,6 +471,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .lfoKeySync: return "KEY SYNC"
         case .hpfFreq: return "HPF FREQ"
         case .envRetrigger: return "TRIGGER"
+        case .envSnap: return "SPEED"
         case .arpOn: return "ARP"
         case .arpMode: return "MODE"
         case .arpRate: return "RATE"

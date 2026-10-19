@@ -41,9 +41,20 @@ struct ParamKnob: View {
 
     var body: some View {
         let p = param.param
-        let display: ((Float) -> String)? = (p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime || p == .delayFeedback || p == .lfoRate || p == .hpfFreq
-            || p == .envT1 || p == .envT2 || p == .envT3 || p == .envT4)
-            ? { value in p.string(for: value) } : nil
+        let segment: Int? = [Param.envT1: 1, .envT2: 2, .envT3: 3, .envT4: 4][p]
+        let display: ((Float) -> String)?
+        if let segment {
+            // Envelope times in ms / s, including the SNAP setting.
+            display = { value in
+                EnvelopeGraph.timeLabel(SynthEngine.envelopeTime(value, segment: segment,
+                                                                  snap: model.intValue(.envSnap) == 1))
+            }
+        } else if p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime || p == .delayFeedback
+                    || p == .lfoRate || p == .hpfFreq {
+            display = { value in p.string(for: value) }
+        } else {
+            display = nil
+        }
         Knob(label: label ?? p.shortName,
              value: model.binding(p),
              maxValue: Float(p.maxValue),
@@ -82,10 +93,12 @@ struct LiveEnvelopeGraph: View {
     @ObservedObject var l3: ParamModel
     @ObservedObject var t4: ParamModel
 
+    @ObservedObject var snap: ParamModel
     private let engine: SynthEngine
 
     init(model: SynthViewModel) {
         engine = model.audioUnit.engine
+        snap = model.model(.envSnap)
         t1 = model.model(.envT1); l1 = model.model(.envL1)
         t2 = model.model(.envT2); l2 = model.model(.envL2)
         t3 = model.model(.envT3); l3 = model.model(.envL3)
@@ -93,11 +106,12 @@ struct LiveEnvelopeGraph: View {
     }
 
     var body: some View {
+        let fast = snap.value >= 0.5
         let settings = EnvelopeSettings(
-            t1: SynthEngine.envelopeTime(t1.value, segment: 1), l1: l1.value / 127,
-            t2: SynthEngine.envelopeTime(t2.value, segment: 2), l2: l2.value / 127,
-            t3: SynthEngine.envelopeTime(t3.value, segment: 3), l3: l3.value / 127,
-            t4: SynthEngine.envelopeTime(t4.value, segment: 4))
+            t1: SynthEngine.envelopeTime(t1.value, segment: 1, snap: fast), l1: l1.value / 127,
+            t2: SynthEngine.envelopeTime(t2.value, segment: 2, snap: fast), l2: l2.value / 127,
+            t3: SynthEngine.envelopeTime(t3.value, segment: 3, snap: fast), l3: l3.value / 127,
+            t4: SynthEngine.envelopeTime(t4.value, segment: 4, snap: fast))
         // Redraws at 30 fps for the playhead (only while the ENV page is shown).
         TimelineView(.periodic(from: .now, by: 1.0 / 30)) { _ in
             EnvelopeGraph(envelope: settings,
@@ -381,7 +395,10 @@ struct SynthPanelView: View {
             let graph = stack {
                 LiveEnvelopeGraph(model: model)
                     .frame(minWidth: 240, maxWidth: .infinity, minHeight: 124, maxHeight: 124)
-                selector(.envRetrigger)
+                HStack(spacing: 12) {
+                    selector(.envRetrigger)
+                    selector(.envSnap)
+                }
             }
             let controls = stack {
                 knobs {

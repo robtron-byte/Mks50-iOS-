@@ -44,12 +44,18 @@ enum HardwareCurves {
 
     /// Envelope segment time in seconds. T1 / T2 follow 0.354 s · 2^((v − 64) / 10)
     /// (4 ms ... 27 s), T3 and T4 their own measured tables.
-    @inline(__always) static func envelopeSeconds(_ raw: Float, segment: Int) -> Float {
+    /// - Parameter snap: SNAP mode shortens the lowest settings (values below
+    ///   24 down to a quarter at 0, e.g. T1 4.2 ms → 1 ms); above 24 the
+    ///   times are unchanged.
+    @inline(__always) static func envelopeSeconds(_ raw: Float, segment: Int, snap: Bool = false) -> Float {
+        let seconds: Float
         switch segment {
-        case 3: return expInterp(envT3, raw)
-        case 4: return expInterp(envT4, raw)
-        default: return 0.354 * exp2f((min(max(raw, 0), 127) - 64) / 10)
+        case 3: seconds = expInterp(envT3, raw)
+        case 4: seconds = expInterp(envT4, raw)
+        default: seconds = 0.354 * exp2f((min(max(raw, 0), 127) - 64) / 10)
         }
+        guard snap else { return seconds }
+        return seconds * (0.25 + 0.75 * min(max(raw, 0), 24) / 24)
     }
 
     /// LFO rate, about 0.02 Hz ... 65 Hz.

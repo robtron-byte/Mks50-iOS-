@@ -518,10 +518,11 @@ final class SynthEngine {
     /// on every note event: while the engine is idle no control blocks run,
     /// and a note must never start with stale T1 / L1 values.
     private func refreshEnvelopeSettings() {
-        envSettings.t1 = SynthEngine.envelopeTime(p(.envT1), segment: 1)
-        envSettings.t2 = SynthEngine.envelopeTime(p(.envT2), segment: 2)
-        envSettings.t3 = SynthEngine.envelopeTime(p(.envT3), segment: 3)
-        envSettings.t4 = SynthEngine.envelopeTime(p(.envT4), segment: 4)
+        let snap = pi(.envSnap) == 1
+        envSettings.t1 = SynthEngine.envelopeTime(p(.envT1), segment: 1, snap: snap)
+        envSettings.t2 = SynthEngine.envelopeTime(p(.envT2), segment: 2, snap: snap)
+        envSettings.t3 = SynthEngine.envelopeTime(p(.envT3), segment: 3, snap: snap)
+        envSettings.t4 = SynthEngine.envelopeTime(p(.envT4), segment: 4, snap: snap)
         envSettings.l1 = p(.envL1) / 127
         envSettings.l2 = p(.envL2) / 127
         envSettings.l3 = p(.envL3) / 127
@@ -866,8 +867,8 @@ final class SynthEngine {
     /// 0...127 → 1 ms ... 12 s, exponential.
     /// Envelope segment time in seconds (segment 1...4 = T1...T4), after the
     /// Juno-2 measurements in `HardwareCurves`.
-    @inline(__always) static func envelopeTime(_ raw: Float, segment: Int) -> Float {
-        HardwareCurves.envelopeSeconds(raw, segment: segment)
+    @inline(__always) static func envelopeTime(_ raw: Float, segment: Int, snap: Bool = false) -> Float {
+        HardwareCurves.envelopeSeconds(raw, segment: segment, snap: snap)
     }
 
     private func envelopeSettings(forPitch pitch: Float, voice i: Int) -> EnvelopeSettings {
