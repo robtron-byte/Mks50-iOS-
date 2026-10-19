@@ -1411,7 +1411,6 @@ final class SynthEngine {
         return x <= 0.5 ? x * 0.95 : 0.475 + (x - 0.5) * 2 * 0.675
     }
 
-    /// Free delay time: 0...127 → 10 ms ... 1.5 s.
     /// Free delay time: 0.5 ms ... 2 s, exponential (below about 4 ms the
     /// delay becomes a comb / flanger / Karplus-style resonator).
     static func delaySeconds(_ raw: Float) -> Float {

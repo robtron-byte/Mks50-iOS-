@@ -30,6 +30,8 @@ final class SynthViewModel: ObservableObject {
     /// Per-parameter observables, indexed by `Param.rawValue`.
     private let paramModels: [ParamModel?]
     let learn = CCLearnState()
+    /// Sequencer pattern slots for live triggering.
+    lazy var patternBank = PatternBank(model: self)
     @Published private(set) var toneName: String = ""
     @Published private(set) var userPresets: [AUAudioUnitPreset] = []
     @Published var statusMessage: String?

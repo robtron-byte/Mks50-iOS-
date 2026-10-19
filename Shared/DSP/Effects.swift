@@ -94,7 +94,9 @@ final class StereoDelay {
         }
         isClear = false
 
-        let target = clampf(seconds * sampleRate, 2, Float(size) * 0.45)
+        // Upper bound leaves room for the right channel's +1.2 % and the
+        // modulation offset (2 s still fits at 96 kHz).
+        let target = clampf(seconds * sampleRate, 2, Float(size) * 0.95)
         if delaySmoothed == 0 { delaySmoothed = target }
         let lowCoef = 1 - expf(-2 * Float.pi * (900 + tone * tone * 15000) / sampleRate)
         let fb = clampf(feedback, 0, 1.15)

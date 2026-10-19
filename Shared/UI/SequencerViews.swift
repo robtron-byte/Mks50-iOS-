@@ -7,9 +7,12 @@ struct SequencerPage: View {
     @State private var editMode: Float = 0      // 0 note, 1 accent, 2 tie
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 10) { settings; pattern }
-            VStack(alignment: .leading, spacing: 10) { settings; pattern }
+        VStack(alignment: .leading, spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 10) { settings; pattern }
+                VStack(alignment: .leading, spacing: 10) { settings; pattern }
+            }
+            PatternBankView(bank: model.patternBank)
         }
     }
 
