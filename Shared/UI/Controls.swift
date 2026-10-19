@@ -407,42 +407,133 @@ extension StepSelector where Cell == Text {
     }
 }
 
-/// Graph of the 4-segment envelope (LCD style).
+/// Graph of the 4-segment envelope (display style), drawn with the engine's
+/// real segment shapes: linear attack (T1), exponential T2 / T3 / release.
+///
+/// The time axis is compressed (square root of the real time) so a 4 ms
+/// attack and a 30 s decay are both readable; every segment is labelled
+/// with its real duration. The sustain plateau has a fixed width. An
+/// optional playhead shows where the newest sounding voice is.
 struct EnvelopeGraph: View {
     let envelope: EnvelopeSettings
+    /// Stage 1...5 (T1, T2, T3, sustain, release) and progress 0...1; nil / 0 = idle.
+    var playhead: (stage: Int, progress: Float)? = nil
+
+    static func timeLabel(_ seconds: Float) -> String {
+        if seconds < 0.0995 { return String(format: "%.0f ms", max(seconds * 1000, 1)) }
+        if seconds < 0.9995 { return String(format: "%.0f ms", seconds * 1000) }
+        if seconds < 9.95 { return String(format: "%.2f s", seconds) }
+        return String(format: "%.1f s", seconds)
+    }
+
+    /// Same curve as `Envelope.next`: (1 - e^(-4.5 p)) / (1 - e^(-4.5)).
+    private static func shape(_ p: CGFloat, linear: Bool) -> CGFloat {
+        linear ? p : (1 - exp(-4.5 * p)) / (1 - exp(-4.5))
+    }
 
     var body: some View {
         Canvas { ctx, size in
-            // Log-ish time axis so short and long segments are both visible.
-            func w(_ t: Float) -> CGFloat { CGFloat(log10(1 + t * 1000) / 4.1) }
-            let segments = [w(envelope.t1), w(envelope.t2), w(envelope.t3), 0.35, w(envelope.t4)]
-            let total = segments.reduce(0, +)
-            let scale = size.width / max(total, 0.001)
-            let h = size.height - 8
-            func y(_ level: Float) -> CGFloat { 4 + h * (1 - CGFloat(level)) }
+            let labelHeight: CGFloat = 13
+            let top: CGFloat = 4
+            let h = size.height - labelHeight - top - 2
+            func y(_ level: Float) -> CGFloat { top + h * (1 - CGFloat(min(max(level, 0), 1))) }
 
-            var x: CGFloat = 0
+            // Segment widths: sqrt(time), with a minimum so a label fits.
+            let times = [envelope.t1, envelope.t2, envelope.t3, envelope.t4]
+            let raw = times.map { CGFloat(sqrtf(max($0, 0.001))) }
+            let sustainShare: CGFloat = 0.16
+            let usable = size.width * (1 - sustainShare)
+            let minWidth: CGFloat = min(30, usable / 4)
+            var widths = raw.map { $0 / max(raw.reduce(0, +), 0.0001) * usable }
+            // Lift too-narrow segments to the minimum, take it from the others.
+            for _ in 0..<3 {
+                let deficit = widths.reduce(0) { $0 + max(0, minWidth - $1) }
+                let surplusTotal = widths.reduce(0) { $0 + max(0, $1 - minWidth) }
+                guard deficit > 0.5, surplusTotal > 0 else { break }
+                widths = widths.map { w in
+                    w < minWidth ? minWidth : w - (w - minWidth) / surplusTotal * deficit
+                }
+            }
+            let sustainWidth = size.width * sustainShare
+            let xs: [CGFloat] = {
+                var x: CGFloat = 0
+                var out = [x]
+                for w in [widths[0], widths[1], widths[2], sustainWidth, widths[3]] {
+                    x += w
+                    out.append(x)
+                }
+                return out
+            }()
+
+            // Grid: levels in quarters, segment boundaries.
+            for k in 1..<4 {
+                let gy = top + h * CGFloat(k) / 4
+                ctx.stroke(Path { $0.move(to: CGPoint(x: 0, y: gy)); $0.addLine(to: CGPoint(x: size.width, y: gy)) },
+                           with: .color(Theme.hairline.opacity(0.6)), lineWidth: 0.5)
+            }
+            for x in xs.dropFirst().dropLast() {
+                ctx.stroke(Path { $0.move(to: CGPoint(x: x, y: top)); $0.addLine(to: CGPoint(x: x, y: top + h)) },
+                           with: .color(Theme.hairline.opacity(0.8)),
+                           style: StrokeStyle(lineWidth: 0.5, dash: [2, 2]))
+            }
+
+            // Curve with the real segment shapes.
+            let levels: [(from: Float, to: Float, linear: Bool)] = [
+                (0, envelope.l1, true), (envelope.l1, envelope.l2, false),
+                (envelope.l2, envelope.l3, false), (envelope.l3, envelope.l3, true),
+                (envelope.l3, 0, false)]
             var path = Path()
             path.move(to: CGPoint(x: 0, y: y(0)))
-            x += segments[0] * scale; path.addLine(to: CGPoint(x: x, y: y(envelope.l1)))
-            x += segments[1] * scale; path.addLine(to: CGPoint(x: x, y: y(envelope.l2)))
-            x += segments[2] * scale; path.addLine(to: CGPoint(x: x, y: y(envelope.l3)))
-            x += segments[3] * scale; path.addLine(to: CGPoint(x: x, y: y(envelope.l3)))
-            x += segments[4] * scale; path.addLine(to: CGPoint(x: x, y: y(0)))
-
+            for (k, seg) in levels.enumerated() {
+                let steps = 24
+                for n in 1...steps {
+                    let p = CGFloat(n) / CGFloat(steps)
+                    let v = CGFloat(seg.from) + CGFloat(seg.to - seg.from) * EnvelopeGraph.shape(p, linear: seg.linear)
+                    path.addLine(to: CGPoint(x: xs[k] + (xs[k + 1] - xs[k]) * p, y: y(Float(v))))
+                }
+            }
             var fill = path
+            fill.addLine(to: CGPoint(x: size.width, y: y(0)))
             fill.addLine(to: CGPoint(x: 0, y: y(0)))
             ctx.fill(fill, with: .color(Theme.orange.opacity(0.18)))
             ctx.stroke(path, with: .color(Theme.orange), lineWidth: 1.5)
-            for k in 1..<4 {
-                let gy = 4 + h * CGFloat(k) / 4
-                ctx.stroke(Path { $0.move(to: CGPoint(x: 0, y: gy)); $0.addLine(to: CGPoint(x: size.width, y: gy)) },
-                           with: .color(Theme.hairline.opacity(0.6)), lineWidth: 0.5)
+
+            // Level points L1, L2, L3.
+            for (k, level) in [envelope.l1, envelope.l2, envelope.l3].enumerated() {
+                let pt = CGPoint(x: xs[k + 1], y: y(level))
+                ctx.fill(Path(ellipseIn: CGRect(x: pt.x - 2, y: pt.y - 2, width: 4, height: 4)),
+                         with: .color(Theme.orange))
+            }
+
+            // Playhead of the newest sounding voice.
+            if let head = playhead, head.stage >= 1 {
+                let k = min(head.stage - 1, 4)
+                let p = CGFloat(min(max(head.progress, 0), 1))
+                let seg = levels[k]
+                let v = CGFloat(seg.from) + CGFloat(seg.to - seg.from) * EnvelopeGraph.shape(p, linear: seg.linear)
+                let px = xs[k] + (xs[k + 1] - xs[k]) * (head.stage == 4 ? 0.5 : p)
+                ctx.stroke(Path { $0.move(to: CGPoint(x: px, y: top)); $0.addLine(to: CGPoint(x: px, y: top + h)) },
+                           with: .color(Theme.label.opacity(0.5)), lineWidth: 1)
+                let pt = CGPoint(x: px, y: y(Float(v)))
+                ctx.fill(Path(ellipseIn: CGRect(x: pt.x - 3.5, y: pt.y - 3.5, width: 7, height: 7)),
+                         with: .color(Theme.label))
+            }
+
+            // Duration labels under each segment, "sus" under the plateau.
+            let labels = [EnvelopeGraph.timeLabel(envelope.t1), EnvelopeGraph.timeLabel(envelope.t2),
+                          EnvelopeGraph.timeLabel(envelope.t3), "sus", EnvelopeGraph.timeLabel(envelope.t4)]
+            for (k, label) in labels.enumerated() {
+                let cx = (xs[k] + xs[k + 1]) / 2
+                let text = Text(label).font(Theme.pixel(8, .regular)).foregroundColor(k == 3 ? Theme.dimLabel : Theme.label)
+                ctx.draw(text, at: CGPoint(x: cx, y: size.height - labelHeight / 2), anchor: .center)
             }
         }
         .padding(4)
         .background(RoundedRectangle(cornerRadius: 6).fill(Theme.display))
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.hairline, lineWidth: 1))
+        .accessibilityElement()
+        .accessibilityLabel("Envelope")
+        .accessibilityValue("T1 \(EnvelopeGraph.timeLabel(envelope.t1)), T2 \(EnvelopeGraph.timeLabel(envelope.t2)), T3 \(EnvelopeGraph.timeLabel(envelope.t3)), T4 \(EnvelopeGraph.timeLabel(envelope.t4))")
     }
 }
 

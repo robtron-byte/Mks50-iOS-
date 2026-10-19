@@ -487,6 +487,13 @@ enum Param: Int, CaseIterable, Identifiable {
     }
 
     func string(for value: Float) -> String {
+        switch self {
+        case .envT1: return EnvelopeGraph.timeLabel(SynthEngine.envelopeTime(value, segment: 1))
+        case .envT2: return EnvelopeGraph.timeLabel(SynthEngine.envelopeTime(value, segment: 2))
+        case .envT3: return EnvelopeGraph.timeLabel(SynthEngine.envelopeTime(value, segment: 3))
+        case .envT4: return EnvelopeGraph.timeLabel(SynthEngine.envelopeTime(value, segment: 4))
+        default: break
+        }
         if self == .tempo { return "\(Int(value.rounded()) + 40)" }
         if self == .hpfFreq {
             guard value >= 0.5 else { return "OFF" }

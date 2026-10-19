@@ -842,6 +842,28 @@ final class SynthEngine {
     // MARK: Parameter mapping
 
     /// 0...127 → 1 ms ... 12 s, exponential.
+    /// Envelope state of the most recently started sounding voice, for the
+    /// envelope display (plain values, read by the UI without locking).
+    private(set) var monitorStage = 0
+    private(set) var monitorProgress: Float = 0
+
+    private func updateEnvelopeMonitor() {
+        var newest = -1
+        var newestAge: UInt64 = 0
+        for i in 0..<SynthEngine.maxVoices where voices[i].active && voices[i].age >= newestAge {
+            newest = i
+            newestAge = voices[i].age
+        }
+        if newest >= 0 {
+            let m = voices[newest].env.monitor
+            monitorStage = m.stage
+            monitorProgress = m.progress
+        } else {
+            monitorStage = 0
+            monitorProgress = 0
+        }
+    }
+
     /// Envelope segment time in seconds (segment 1...4 = T1...T4), after the
     /// Juno-2 measurements in `HardwareCurves`.
     @inline(__always) static func envelopeTime(_ raw: Float, segment: Int) -> Float {
@@ -1206,6 +1228,7 @@ final class SynthEngine {
 
         anyActive = false
         for i in 0..<SynthEngine.maxVoices where voices[i].active { anyActive = true }
+        updateEnvelopeMonitor()
         var peak: Float = 0
         for n in 0..<frames { peak = max(peak, abs(left[n]), abs(right[n])) }
         if anyActive || peak > 0.00001 {

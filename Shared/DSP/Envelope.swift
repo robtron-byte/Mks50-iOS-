@@ -25,6 +25,19 @@ struct Envelope {
 
     var isIdle: Bool { stage == .idle }
 
+    /// For the UI: 0 idle, 1...3 = T1...T3, 4 sustain, 5 release, and the
+    /// progress 0...1 within that segment.
+    var monitor: (stage: Int, progress: Float) {
+        switch stage {
+        case .idle: return (0, 0)
+        case .segment1: return (1, progress)
+        case .segment2: return (2, progress)
+        case .segment3: return (3, progress)
+        case .sustain: return (4, 0)
+        case .release: return (5, progress)
+        }
+    }
+
     mutating func reset() {
         stage = .idle
         value = 0

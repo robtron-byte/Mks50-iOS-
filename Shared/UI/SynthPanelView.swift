@@ -41,7 +41,8 @@ struct ParamKnob: View {
 
     var body: some View {
         let p = param.param
-        let display: ((Float) -> String)? = (p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime || p == .delayFeedback || p == .lfoRate || p == .hpfFreq)
+        let display: ((Float) -> String)? = (p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime || p == .delayFeedback || p == .lfoRate || p == .hpfFreq
+            || p == .envT1 || p == .envT2 || p == .envT3 || p == .envT4)
             ? { value in p.string(for: value) } : nil
         Knob(label: label ?? p.shortName,
              value: model.binding(p),
@@ -81,7 +82,10 @@ struct LiveEnvelopeGraph: View {
     @ObservedObject var l3: ParamModel
     @ObservedObject var t4: ParamModel
 
+    private let engine: SynthEngine
+
     init(model: SynthViewModel) {
+        engine = model.audioUnit.engine
         t1 = model.model(.envT1); l1 = model.model(.envL1)
         t2 = model.model(.envT2); l2 = model.model(.envL2)
         t3 = model.model(.envT3); l3 = model.model(.envL3)
@@ -89,11 +93,16 @@ struct LiveEnvelopeGraph: View {
     }
 
     var body: some View {
-        EnvelopeGraph(envelope: EnvelopeSettings(
+        let settings = EnvelopeSettings(
             t1: SynthEngine.envelopeTime(t1.value, segment: 1), l1: l1.value / 127,
             t2: SynthEngine.envelopeTime(t2.value, segment: 2), l2: l2.value / 127,
             t3: SynthEngine.envelopeTime(t3.value, segment: 3), l3: l3.value / 127,
-            t4: SynthEngine.envelopeTime(t4.value, segment: 4)))
+            t4: SynthEngine.envelopeTime(t4.value, segment: 4))
+        // Redraws at 30 fps for the playhead (only while the ENV page is shown).
+        TimelineView(.periodic(from: .now, by: 1.0 / 30)) { _ in
+            EnvelopeGraph(envelope: settings,
+                          playhead: (stage: self.engine.monitorStage, progress: self.engine.monitorProgress))
+        }
     }
 }
 
@@ -371,7 +380,7 @@ struct SynthPanelView: View {
         group("ENVELOPE", "chart.xyaxis.line") {
             let graph = stack {
                 LiveEnvelopeGraph(model: model)
-                    .frame(minWidth: 200, maxWidth: .infinity, minHeight: 110, maxHeight: 110)
+                    .frame(minWidth: 240, maxWidth: .infinity, minHeight: 124, maxHeight: 124)
                 selector(.envRetrigger)
             }
             let controls = stack {
