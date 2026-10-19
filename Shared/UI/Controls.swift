@@ -51,7 +51,7 @@ enum Theme {
         case "WAVE", "DCO", "PULSE", "VOICES": return blue
         case "LFO", "DCO MOD": return green
         case "VCF", "HPF", "DIST": return orange
-        case "DELAY", "REVERB", "CHORUS", "ARP", "SEQ", "PATTERN", "BANK": return violet
+        case "DELAY", "REVERB", "CHORUS", "STUTTER", "ARP", "SEQ", "PATTERN", "BANK": return violet
         default: return white
         }
     }

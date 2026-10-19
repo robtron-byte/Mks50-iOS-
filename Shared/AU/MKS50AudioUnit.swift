@@ -485,6 +485,7 @@ final class MKS50AudioUnit: AUAudioUnit {
         ("lfo", "LFO", [.lfoRate, .lfoDelay, .lfoWave, .lfoSync, .lfoDivision, .lfoKeySync]),
         ("env", "ENV", [.envT1, .envL1, .envT2, .envL2, .envT3, .envL3, .envT4, .envKeyFollow, .envRetrigger, .envSnap]),
         ("chorus", "Chorus", [.chorus, .chorusRate, .chorusMode]),
+        ("stutter", "Stutter", [.stutterOn, .stutterRate]),
         ("control", "Control", [.benderRange, .keyMode, .chordIndex, .portaSwitch, .portaTime,
                                 .modSensitivity, .volume, .keyShift, .midiChannel]),
         ("extra", "Extra", [.pulseDetune, .pulseSync, .pulseEnvMod, .voiceDrift, .unisonDetune]),

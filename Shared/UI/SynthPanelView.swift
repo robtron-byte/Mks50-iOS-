@@ -493,6 +493,15 @@ struct SynthPanelView: View {
                     selector(.chorusMode)
                 }
             }
+            group("STUTTER", "waveform.path") {
+                stack {
+                    selector(.stutterRate)
+                    selector(.stutterOn, "LATCH")
+                    Text("hold stut to chop")
+                        .font(Theme.pixel(9, .regular))
+                        .foregroundColor(Theme.dimLabel)
+                }
+            }
         }
     }
 
@@ -602,6 +611,7 @@ struct PlayBar: View {
                           active: model.padLatch) { model.padLatch.toggle() }
                 ParamToggle(param: model.model(.arpOn), model: model, title: "ARP", icon: "arrow.up.arrow.down")
                 ParamToggle(param: model.model(.seqOn), model: model, title: "SEQ", icon: "square.grid.4x3.fill")
+                StutterButton(param: model.model(.stutterOn), model: model)
             }
         }
         .padding(.horizontal, 10)
@@ -618,6 +628,7 @@ struct PlayBar: View {
                       active: model.padLatch) { model.padLatch.toggle() }
             ParamToggle(param: model.model(.arpOn), model: model, title: "ARP", icon: "arrow.up.arrow.down")
             ParamToggle(param: model.model(.seqOn), model: model, title: "SEQ", icon: "square.grid.4x3.fill")
+            StutterButton(param: model.model(.stutterOn), model: model)
             noteSelector(stacked: false)
             pad
         }
@@ -681,6 +692,34 @@ struct PlayBar: View {
             model.padTouchDown()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { model.padTouchUp() }
         }
+    }
+}
+
+/// Stutter: chops the output in time while held (rate on the FX page).
+struct StutterButton: View {
+    @ObservedObject var param: ParamModel
+    let model: SynthViewModel
+
+    var body: some View {
+        let on = param.value >= 0.5
+        HStack(spacing: 5) {
+            Image(systemName: "waveform.path").font(.system(size: 13, weight: .bold))
+            Text("stut").font(Theme.pixel(12, .bold)).lineLimit(1)
+        }
+        .foregroundColor(on ? Theme.ink : Theme.label)
+        .padding(.horizontal, 12)
+        .frame(minWidth: 64, minHeight: 40)
+        .background(RoundedRectangle(cornerRadius: Theme.corner).fill(on ? Theme.violet : Theme.cell))
+        .overlay(RoundedRectangle(cornerRadius: Theme.corner).stroke(on ? .clear : Theme.hairline, lineWidth: 1))
+        .overlay {
+            PressSurface(onDown: { model.set(.stutterOn, 1) },
+                         onUp: { model.set(.stutterOn, 0) })
+        }
+        .accessibilityElement()
+        .accessibilityLabel("Stutter, hold")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityValue(on ? "On" : "Off")
+        .accessibilityAction { model.set(.stutterOn, on ? 0 : 1) }
     }
 }
 

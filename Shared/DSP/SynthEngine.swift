@@ -1336,6 +1336,8 @@ final class SynthEngine {
         let mixR = mixRight
         mixL.update(repeating: 0, count: frames)
         mixR.update(repeating: 0, count: frames)
+        // Beat position of this chunk's first frame (for the stutter gate).
+        let chunkStartBeat = renderStartBeat + Double(renderFrameOffset) * renderBeatsPerFrame
 
         var pos = 0
         while pos < frames {
@@ -1391,6 +1393,8 @@ final class SynthEngine {
                        modulation: p(.reverbMod) / 127,
                        type: pi(.reverbType))
 
+        applyStutter(left: left, right: right, frames: frames, startBeat: chunkStartBeat)
+
         for n in 0..<frames {
             left[n] = SynthEngine.limit(left[n])
             right[n] = SynthEngine.limit(right[n])
@@ -1398,6 +1402,47 @@ final class SynthEngine {
     }
 
     var maximumFrames: Int { bufferCapacity }
+
+    // MARK: Stutter
+
+    /// Note values of STUTTER RATE in quarter notes: 1/32, 1/16, 1/8, 1/4.
+    static let stutterQuarters: (Double, Double, Double, Double) = (0.125, 0.25, 0.5, 1)
+    static let stutterNames = ["1/32", "1/16", "1/8", "1/4"]
+    private var stutterGain: Float = 1
+
+    /// While STUTTER is held the whole output (incl. delay / reverb) is
+    /// chopped by a square gate locked to the beat clock: on for the first
+    /// half of every step, off for the second. Edges are smoothed (~1 ms)
+    /// so it chops without clicks.
+    private func applyStutter(left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>,
+                              frames: Int, startBeat: Double) {
+        let on = pi(.stutterOn) == 1
+        if !on && stutterGain >= 0.9999 {
+            stutterGain = 1
+            return
+        }
+        let q: Double
+        switch pi(.stutterRate) {
+        case 0: q = SynthEngine.stutterQuarters.0
+        case 2: q = SynthEngine.stutterQuarters.2
+        case 3: q = SynthEngine.stutterQuarters.3
+        default: q = SynthEngine.stutterQuarters.1
+        }
+        let bpf = renderBeatsPerFrame
+        let coef = 1 - expf(-1 / (0.001 * sampleRate))
+        var g = stutterGain
+        for n in 0..<frames {
+            var target: Float = 1
+            if on {
+                let steps = (startBeat + Double(n) * bpf) / q
+                target = steps - floor(steps) < 0.5 ? 1 : 0
+            }
+            g += (target - g) * coef
+            left[n] *= g
+            right[n] *= g
+        }
+        stutterGain = g
+    }
 
     /// HPF FREQ knob: 1...127 → 20 Hz ... 4 kHz.
     static func hpfSweepHz(_ raw: Float) -> Float {

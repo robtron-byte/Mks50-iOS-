@@ -146,6 +146,9 @@ enum Param: Int, CaseIterable, Identifiable {
     case reverbType
     /// Chorus: AJ (Alpha Juno, free RATE) or the Juno-60 modes I / II / I+II.
     case chorusMode
+    /// Stutter (hold to chop the output rhythmically) and its note value.
+    case stutterOn
+    case stutterRate
 
     static let toneParameterCount = 36
     static let storageSize = 192
@@ -175,7 +178,7 @@ enum Param: Int, CaseIterable, Identifiable {
     }
 
     /// Device settings are not stored in sounds / presets.
-    var isDeviceSetting: Bool { self == .midiChannel || self == .tempo }
+    var isDeviceSetting: Bool { self == .midiChannel || self == .tempo || self == .stutterOn }
 
     var maxValue: Int {
         switch self {
@@ -194,6 +197,10 @@ enum Param: Int, CaseIterable, Identifiable {
         case .reverbType:
             return Reverb.typeNames.count - 1
         case .chorusMode:
+            return 3
+        case .stutterOn:
+            return 1
+        case .stutterRate:
             return 3
         case .seqRate:
             return LFOShape.divisionNames.count - 1
@@ -264,6 +271,10 @@ enum Param: Int, CaseIterable, Identifiable {
             return Reverb.typeNames
         case .chorusMode:
             return ["AJ", "I", "II", "I+II"]
+        case .stutterOn:
+            return ["OFF", "ON"]
+        case .stutterRate:
+            return SynthEngine.stutterNames
         case .arpOn, .arpHold, .seqOn:
             return ["OFF", "ON"]
         case .seqStyle:
@@ -331,6 +342,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .delayMod: return 30
         case .reverbDecay: return 60
         case .reverbMod: return 40
+        case .stutterRate: return 1      // 1/16
         default: return 0
         }
     }
@@ -413,6 +425,8 @@ enum Param: Int, CaseIterable, Identifiable {
         case .delayMod: return "Delay Modulation"
         case .reverbType: return "Reverb Type"
         case .chorusMode: return "Chorus Mode"
+        case .stutterOn: return "Stutter"
+        case .stutterRate: return "Stutter Rate"
         case .reverbDecay: return "Reverb Decay"
         case .reverbMod: return "Reverb Modulation"
         case .arpOn: return "Arpeggiator"
@@ -503,6 +517,8 @@ enum Param: Int, CaseIterable, Identifiable {
         case .delayMod: return "MOD"
         case .reverbType: return "TYPE"
         case .chorusMode: return "MODE"
+        case .stutterOn: return "STUTTER"
+        case .stutterRate: return "RATE"
         case .reverbDecay: return "DECAY"
         case .reverbMod: return "MOD"
         case .arpOn: return "ARP"
