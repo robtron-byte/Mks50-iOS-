@@ -42,9 +42,7 @@ final class SynthViewModel: ObservableObject {
     @Published var padLatch = false {
         didSet { if !padLatch && padSounding && !padTouching { padStop() } }
     }
-    @Published private(set) var isLearningPadNote = false
     private var padTouching = false
-    private var learnStartStamp: UInt32 = 0
 
     // MIDI CC learn: tap a control, then move a knob on the controller.
     var ccLearnActive: Bool { learn.active }
@@ -82,7 +80,6 @@ final class SynthViewModel: ObservableObject {
             return
         }
         ccLearnStamp = audioUnit.engine.lastControlChange
-        learnStartStamp = audioUnit.engine.lastNoteOn
         learn.map = audioUnit.ccMap
         poll()
         let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in self?.poll() }
@@ -111,17 +108,6 @@ final class SynthViewModel: ObservableObject {
                 learn.map = audioUnit.ccMap
                 learn.target = nil
                 flash("CC \(cc) → \(target.displayName)")
-            }
-        }
-
-        // MIDI-learn: the next incoming note-on (from any source) becomes the pad note.
-        let stamp = audioUnit.engine.lastNoteOn
-        if isLearningPadNote, stamp != learnStartStamp {
-            let key = Int(stamp & 0x7F)
-            isLearningPadNote = false
-            if (0...127).contains(key) {
-                setPadNote(key)
-                flash("Play button: \(SynthViewModel.noteName(key))")
             }
         }
     }
@@ -215,12 +201,6 @@ final class SynthViewModel: ObservableObject {
     }
 
     func transposePad(_ semitones: Int) { setPadNote(padNote + semitones) }
-
-    func toggleLearnPadNote() {
-        isLearningPadNote.toggle()
-        learnStartStamp = audioUnit.engine.lastNoteOn
-        if isLearningPadNote { flash("Play a note on your MIDI keyboard") }
-    }
 
     func panic() {
         padStop()

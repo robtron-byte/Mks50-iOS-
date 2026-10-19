@@ -605,8 +605,6 @@ struct PlayBar: View {
             }
             .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 6) {
-                BigButton(title: model.isLearningPadNote ? "KEY…" : "LEARN",
-                          icon: "pianokeys", active: model.isLearningPadNote) { model.toggleLearnPadNote() }
                 BigButton(title: "HOLD", icon: model.padLatch ? "lock.fill" : "lock.open",
                           active: model.padLatch) { model.padLatch.toggle() }
                 ParamToggle(param: model.model(.arpOn), model: model, title: "ARP", icon: "arrow.up.arrow.down")
@@ -622,8 +620,6 @@ struct PlayBar: View {
     /// Landscape: switches and note selection on the left, pad on the right.
     private var landscapeBody: some View {
         HStack(spacing: 10) {
-            BigButton(title: model.isLearningPadNote ? "PLAY A KEY…" : "LEARN",
-                      icon: "pianokeys", active: model.isLearningPadNote) { model.toggleLearnPadNote() }
             BigButton(title: "HOLD", icon: model.padLatch ? "lock.fill" : "lock.open",
                       active: model.padLatch) { model.padLatch.toggle() }
             ParamToggle(param: model.model(.arpOn), model: model, title: "ARP", icon: "arrow.up.arrow.down")

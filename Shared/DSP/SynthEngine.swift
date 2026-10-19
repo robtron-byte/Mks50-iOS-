@@ -245,10 +245,6 @@ final class SynthEngine {
     /// Keys currently held by any source (1 = down), for chord LEARN.
     /// Written on the audio thread, read on main.
     private let heldKeyFlags: UnsafeMutablePointer<UInt8>
-    /// Last note-on, packed as `counter << 8 | key` in one word so the UI
-    /// thread always reads a consistent key / counter pair ("MIDI learn").
-    private(set) var lastNoteOn: UInt32 = 0
-    private var noteOnCounter: UInt32 = 0
 
     /// MIDI CC → parameter address (-1 = not mapped). Written on main
     /// (single aligned Int16 stores), read on the audio thread.
@@ -441,8 +437,6 @@ final class SynthEngine {
         switch status & 0xF0 {
         case 0x90 where d2 > 0:
             heldKeyFlags[d1] = 1
-            noteOnCounter &+= 1
-            lastNoteOn = (noteOnCounter << 8) | UInt32(d1)
             if collectorOn {
                 arpKeyDown(d1, velocity: d2)
             } else {
