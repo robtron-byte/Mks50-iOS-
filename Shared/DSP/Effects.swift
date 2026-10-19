@@ -449,8 +449,26 @@ final class AcidDistortion {
     func process(left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>, frames: Int,
                  mode: Int, drive: Float, tone: Float, level: Float, mix: Float) {
         let targetMix: Float = mode == 0 ? 0 : mix
+        let lat = AcidDistortion.latency
         if mode == 0 && mixSmoothed < 0.0001 {
             mixSmoothed = 0
+            // Bypassed: keep the dry delay running so the latency never
+            // jumps by 24 samples (click) and the rings hold no stale audio
+            // when a mode is switched on again; the wet history decays to 0.
+            for n in 0..<frames {
+                dryHist[inPos] = left[n]
+                dryHist[32 + inPos] = right[n]
+                left[n] = dryHist[(inPos - lat) & 31]
+                right[n] = dryHist[32 + ((inPos - lat) & 31)]
+                inHist[inPos] = 0
+                inHist[32 + inPos] = 0
+                osHist[osPos] = 0
+                osHist[(osPos + 1) & 63] = 0
+                osHist[64 + osPos] = 0
+                osHist[64 + ((osPos + 1) & 63)] = 0
+                inPos = (inPos + 1) & 31
+                osPos = (osPos + 2) & 63
+            }
             return
         }
         let m = min(max(mode, 1), 4)
@@ -471,7 +489,6 @@ final class AcidDistortion {
         let lpCoef = 1 - expf(-2 * Float.pi * toneHz / sampleRate)
         let lpCoef2 = 1 - expf(-2 * Float.pi * min(toneHz * 2, sampleRate * 0.45) / sampleRate)
         let smooth: Float = 0.002
-        let lat = AcidDistortion.latency
 
         for n in 0..<frames {
             gainSmoothed += (targetGain - gainSmoothed) * smooth
