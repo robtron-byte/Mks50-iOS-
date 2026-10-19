@@ -25,6 +25,7 @@ enum Theme {
     static let green = Color(red: 0.11, green: 0.80, blue: 0.47)             // #1CCC78
     static let white = Color(red: 0.91, green: 0.91, blue: 0.89)             // #E8E8E3
     static let orange = Color(red: 1.0, green: 0.37, blue: 0.13)             // #FF5E21
+    static let violet = Color(red: 0.66, green: 0.47, blue: 1.0)             // #A878FF
     static let encoders = [blue, green, white, orange]
 
     // Roles
@@ -42,15 +43,42 @@ enum Theme {
     static let displayText = Color(red: 0.96, green: 0.96, blue: 0.95)
     static let readout = green
 
-    /// Colour of a panel section (title mark and single knobs), following
-    /// the signal flow: sources blue, modulation green, filter / drive
-    /// orange, envelopes / amp / keys white.
+    /// Colour of a panel section (title mark), the same scheme as the knobs:
+    /// sound source blue, modulation green, filter / drive orange,
+    /// envelope / amp / play white, time / effects / patterns violet.
     static func sectionColor(_ title: String) -> Color {
         switch title {
-        case "WAVE", "DCO", "PULSE", "DELAY", "SEQ": return blue
-        case "LFO", "DCO MOD", "REVERB", "ARP", "PATTERN", "CHORUS": return green
+        case "WAVE", "DCO", "PULSE", "VOICES": return blue
+        case "LFO", "DCO MOD": return green
         case "VCF", "HPF", "DIST": return orange
+        case "DELAY", "REVERB", "CHORUS", "ARP", "SEQ", "PATTERN", "BANK": return violet
         default: return white
+        }
+    }
+
+    /// Knob colour by function, the same on every page:
+    /// - blue: sound source (oscillator, pulse, voices, tuning)
+    /// - green: modulation (LFO, mod depths, aftertouch, wheel)
+    /// - orange: filter and drive (cutoff, resonance, HPF, distortion)
+    /// - white: envelope, amp and playing (times, levels, VCA, volume, glide)
+    /// - violet: time and effects (delay, reverb, chorus, tempo, arp, sequencer)
+    static func paramColor(_ p: Param) -> Color {
+        switch p {
+        case .dcoPwDepth, .dcoPwmRate, .pulseDetune, .pulseEnvMod, .unisonDetune, .voiceDrift,
+             .keyShift, .benderRange, .chordIndex:
+            return blue
+        case .dcoLfoDepth, .dcoEnvDepth, .dcoAfterDepth, .vcfLfoDepth, .vcfEnvDepth, .vcfAfterDepth,
+             .vcaAfterDepth, .lfoRate, .lfoDelay, .lfoDivision, .modSensitivity:
+            return green
+        case .vcfCutoff, .vcfResonance, .vcfKeyFollow, .hpfFreq,
+             .distDrive, .distTone, .distLevel, .distMix:
+            return orange
+        case .delayMix, .delayTime, .delayFeedback, .delayDivision, .delayTone, .delayMod,
+             .reverbMix, .reverbSize, .reverbDamp, .reverbDecay, .reverbMod, .chorusRate, .tempo,
+             .arpRate, .arpGate, .seqRate, .seqLength, .seqGate, .seqGateVar:
+            return violet
+        default:
+            return white       // envelope, VCA, volume, portamento
         }
     }
 
@@ -175,7 +203,7 @@ struct Knob: View {
     @Environment(\.encoderColor) private var encoderColor
     private var size: CGFloat { fixedSize ?? knobSize }
 
-    static let ledCount = 13
+    static let ledCount = 15
 
     private var fraction: Double { Double(value / maxValue) }
     private var valueText: String { display?(value) ?? "\(Int(value.rounded()))" }
@@ -185,15 +213,17 @@ struct Knob: View {
     var body: some View {
         VStack(spacing: 4) {
             ZStack {
-                // Value arc over a hairline track (270°, gap at the bottom).
-                Circle()
-                    .trim(from: 0, to: 0.75)
-                    .stroke(Theme.hairline, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(135))
-                Circle()
-                    .trim(from: 0, to: 0.75 * fraction)
-                    .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(135))
+                // LED ring of round dots over 270° (gap at the bottom):
+                // lit up to the value in the knob's colour.
+                ForEach(0..<Knob.ledCount, id: \.self) { i in
+                    let lit = fraction > 0.001 && Double(i) <= fraction * Double(Knob.ledCount - 1) + 0.001
+                    let dot = max(3, size * 0.075)
+                    Circle()
+                        .fill(lit ? color : Theme.hairline)
+                        .frame(width: dot, height: dot)
+                        .offset(y: -size / 2 + dot / 2)
+                        .rotationEffect(.degrees(-135 + 270 * Double(i) / Double(Knob.ledCount - 1)))
+                }
                 // Flat coloured cap with an ink notch, like an OP-1 encoder.
                 Circle()
                     .fill(color)

@@ -47,6 +47,8 @@ struct ParamKnob: View {
              maxValue: Float(p.maxValue),
              defaultValue: Float(p.defaultValue),
              display: display)
+            // Colour by function (same scheme on every page).
+            .environment(\.encoderColor, Theme.paramColor(p))
             .modifier(CCLearnOverlay(learn: model.learn, model: model, param: p))
     }
 }
