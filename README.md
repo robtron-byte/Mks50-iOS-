@@ -8,7 +8,7 @@ Ein nativer iOS-Software-Synthesizer, der die Architektur des **Roland MKS-50** 
 
 | Bereich | Umsetzung |
 |---|---|
-| **DCO** | 4 Pulse-, 6 Sägezahn- und 6 Sub-Wellenformen, nachgebaut wie im Alpha-Juno-DCO: Rampe bzw. Rechteck, „zerhackt“ (AND) durch Rechtecke +1 und +3 Oktaven höher bzw. auf Sub-Oktaven. Range 16'/8'/4'/2', Sub-Level, Noise. Alle Wellen phasenstarr über einen Teiler (wie die Hardware) und an jeder Kante mit PolyBLEP bandbegrenzt |
+| **DCO** | 4 Pulse-, 6 Sägezahn- und 6 Sub-Wellenformen, nachgebaut wie im Alpha-Juno-DCO: Rampe bzw. Rechteck, „zerhackt“ (AND) durch Rechtecke +1 und +3 Oktaven höher bzw. auf Sub-Oktaven. Range 4'/8'/16'/32' (SysEx-Reihenfolge), Sub-Level, Noise. Alle Wellen phasenstarr über einen Teiler (wie die Hardware) und an jeder Kante mit PolyBLEP bandbegrenzt |
 | **PWM** | PW/PWM-Tiefe und eigene PWM-Rate (Rate 0 = manuelle Pulsbreite) |
 | **HPF** | 4 Stufen: Bass-Boost, flach, 240 Hz, 720 Hz |
 | **VCF** | Resonanter 24-dB-Tiefpass (IR3109-Stil, Zero-Delay-Feedback), selbstoszillierend, Env/LFO/Key-Follow/Aftertouch-Modulation |
@@ -58,7 +58,7 @@ Jede Optimierung wurde gegen die vorherige Referenz geprüft (Python-Port, Sampl
 Abgeglichen mit dem MB87123-Bit-Modell, der PG-300/MKS-50-SysEx-Tabelle und den am echten Juno-2 gemessenen Tabellen des june-21-Emulators (dessen Autor schreibt, die Messungen schwankten etwas). Zahlen, für die es keine Quelle gibt, sind als Annahme markiert.
 
 - **DCO:** digitale Zähler-Logik des Alpha Juno (siehe oben), phasenstarr, bandbegrenzt. **RANGE** in Hardware-Reihenfolge 4' / 8' / 16' / 32' (SysEx-kompatibel).
-- **PWM:** PW-Wert 0–127 wird wie im Chip mit den unteren 7 Zählerbits verglichen; eigener PW-LFO (Dreieck, 0,04–20 Hz nach Tabelle), PWM RATE 0 = manuelle Breite.
+- **PWM:** PW-Wert 0–127 wird wie im Chip mit den unteren 7 Zählerbits verglichen; eigener PW-LFO (Dreieck, 0,02–20 Hz nach Tabelle), PWM RATE 0 = manuelle Breite.
 - **Pegel:** Sub-Level in 6-dB-Stufen (0 / −12 / −6 / 0 dB), Noise in drei Stufen (Annahme).
 - **HPF:** 0 = Bassanhebung (Shelf, etwa +3 dB bei 70 Hz), 1 = flach, 2/3 = 1-Pol-Hochpass (6 dB/Okt.) bei etwa 225 / 700 Hz, wie Juno-106.
 - **VCF:** 24 dB/Okt., Cutoff 100 Hz · 2^(Wert/12 − 3,2) (etwa 11 Hz–16 kHz, eine Oktave pro 12 Schritte), Env-, LFO- und Key-Follow-Tiefe auf derselben Skala. Wie beim Original **keine Selbstoszillation**: Die Resonanz klingelt stark, und der Bass wird mit steigender Resonanz dünner.
