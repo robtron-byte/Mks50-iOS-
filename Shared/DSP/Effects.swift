@@ -342,20 +342,35 @@ enum DelayDivision {
     static let quarters: [Float] = [0.125, 1.0 / 6, 0.25, 0.375, 1.0 / 3, 0.5, 0.75, 2.0 / 3, 1, 1.5, 2, 4]
 }
 
-/// Distortion voiced for 303-style acid lines. A mid/treble pre-emphasis
-/// pushes the resonant filter peak into the clipper (the "squelch" gets
-/// louder and nastier), the clipper is asymmetric for even harmonics, and a
-/// post tone low-pass tames the fizz. MIX blends with the dry signal so the
-/// bass weight stays when driving hard.
+/// Distortion for synth basses, acid lines and leads, before chorus /
+/// delay / reverb. The clipper runs at 2× oversampling (47-tap half-band
+/// FIR up and down, about −70 dB image rejection), so even hard settings
+/// stay free of the gritty "digital" aliasing; the dry path is delayed by
+/// the same 24 samples so MIX never combs.
+///
+/// Signal per channel: tightening high-pass (keeps the low end clean in
+/// front of the clipper) → mid/treble pre-emphasis → drive → clipper →
+/// DC blocker → 2-pole tone low-pass → level, then MIX with the dry signal.
 ///
 /// Modes: 1 OD (two-stage asymmetric tube overdrive), 2 DIST (soft stage
-/// into a hard clipper with a strong mid push, DS-1 style), 3 RAT (high-gain
-/// diode fuzz with a touch of rectification for the rasp).
+/// into a smooth-knee hard clipper with a strong mid push, DS-1 style),
+/// 3 RAT (op-amp gain into silicon diodes, a touch of rectification for
+/// the rasp), 4 TUBE (warm, even-harmonic tube saturation with soft
+/// compression, after the SPL Kultube that Anthony Rother lists on his
+/// master output in the DEKATRON production notes — he names no
+/// distortion plugin there; gentle at low drive, thick at high drive).
 final class AcidDistortion {
-    static let modeNames = ["OFF", "OD", "DIST", "RAT"]
+    static let modeNames = ["OFF", "OD", "DIST", "RAT", "TUBE"]
+
+    /// Half-band taps at odd offsets 1, 3, 5 ... from the centre (0.5).
+    private static let halfBand: [Float] = [
+        0.3163647824, -0.1003918960, 0.0545327660, -0.0334618158, 0.0211372679, -0.0132048055,
+        0.0079527640, -0.0045132248, 0.0023474055, -0.0010708521, 0.0003905110, -0.0000820879]
+    private static let latency = 24
 
     private var sampleRate: Float = 44100
     private var preL: Float = 0, preR: Float = 0          // pre-emphasis low-pass
+    private var tightL: Float = 0, tightR: Float = 0      // tightening high-pass state
     private var dcXL: Float = 0, dcYL: Float = 0          // DC blocker after the clipper
     private var dcXR: Float = 0, dcYR: Float = 0
     private var lp1L: Float = 0, lp2L: Float = 0          // post tone (2 × one-pole)
@@ -365,6 +380,31 @@ final class AcidDistortion {
     private var gainSmoothed: Float = 1
     private var mixSmoothed: Float = 0
 
+    // Oversampling rings (per channel): base-rate input history (32),
+    // oversampled clipper output (64), dry delay (32).
+    private let inHist: UnsafeMutablePointer<Float>       // L: 0..<32, R: 32..<64
+    private let osHist: UnsafeMutablePointer<Float>       // L: 0..<64, R: 64..<128
+    private let dryHist: UnsafeMutablePointer<Float>      // L: 0..<32, R: 32..<64
+    private var inPos = 0
+    private var osPos = 0
+    private var taps = SIMD16<Float>(repeating: 0)
+
+    init() {
+        inHist = .allocate(capacity: 64)
+        osHist = .allocate(capacity: 128)
+        dryHist = .allocate(capacity: 64)
+        inHist.initialize(repeating: 0, count: 64)
+        osHist.initialize(repeating: 0, count: 128)
+        dryHist.initialize(repeating: 0, count: 64)
+        for k in 0..<12 { taps[k] = AcidDistortion.halfBand[k] }
+    }
+
+    deinit {
+        inHist.deallocate()
+        osHist.deallocate()
+        dryHist.deallocate()
+    }
+
     func prepare(sampleRate: Float) {
         self.sampleRate = sampleRate
         preCoef = 1 - expf(-2 * Float.pi * 280 / sampleRate)
@@ -373,10 +413,36 @@ final class AcidDistortion {
     }
 
     func reset() {
-        preL = 0; preR = 0
+        preL = 0; preR = 0; tightL = 0; tightR = 0
         dcXL = 0; dcYL = 0; dcXR = 0; dcYR = 0
         lp1L = 0; lp2L = 0; lp1R = 0; lp2R = 0
         mixSmoothed = 0
+        inHist.update(repeating: 0, count: 64)
+        osHist.update(repeating: 0, count: 128)
+        dryHist.update(repeating: 0, count: 64)
+    }
+
+    /// 2× oversampled clipping of one channel sample (`ch` 0 = L, 1 = R).
+    @inline(__always) private func oversampledClip(_ x: Float, ch: Int, mode: Int) -> Float {
+        let ib = inHist + ch * 32
+        ib[inPos] = x
+        let ip = inPos
+        func h(_ j: Int) -> Float { ib[(ip - j) & 31] }
+        // Interpolate: even phase = x[m-12], odd phase = half-band midpoint.
+        let even = h(12)
+        var odd: Float = 0
+        for k in 0..<12 { odd += taps[k] * (h(12 + k) + h(11 - k)) }
+        odd *= 2
+
+        let ob = osHist + ch * 64
+        ob[osPos] = AcidDistortion.clip(even, mode: mode)
+        ob[(osPos + 1) & 63] = AcidDistortion.clip(odd, mode: mode)
+        let newest = (osPos + 1) & 63
+        func v(_ j: Int) -> Float { ob[(newest - j) & 63] }
+        // Decimate around the odd-offset centre (integer 24-sample latency).
+        var y = 0.5 * v(25)
+        for k in 0..<12 { y += taps[k] * (v(25 - (2 * k + 1)) + v(25 + (2 * k + 1))) }
+        return y
     }
 
     /// - Parameters: drive, tone, level, mix: 0...1.
@@ -387,17 +453,25 @@ final class AcidDistortion {
             mixSmoothed = 0
             return
         }
-        let m = min(max(mode, 1), 3)
-        // +6 ... +54 dB of drive (already gritty at 0); RAT starts hotter.
-        let targetGain = powf(10, (6 + drive * 48 + (m == 3 ? 6 : 0)) / 20)
-        let emphasis: Float = m == 1 ? 1.0 : (m == 2 ? 2.5 : 1.6)
-        // Output: -18 ... +6 dB around the dry synth's level.
-        let out = powf(10, (level * 24 - 18) / 20) * (m == 1 ? 0.55 : (m == 2 ? 0.4 : 0.45))
+        let m = min(max(mode, 1), 4)
+        // Per mode: drive range, pre-emphasis, tightening high-pass, makeup.
+        // (Plain switch: no array literals on the audio thread.)
+        let driveDB: Float, emphasis: Float, tightHz: Float, makeup: Float
+        switch m {
+        case 1: driveDB = 6 + drive * 48; emphasis = 1.0; tightHz = 45; makeup = 0.55
+        case 2: driveDB = 6 + drive * 48; emphasis = 2.5; tightHz = 110; makeup = 0.4
+        case 3: driveDB = 12 + drive * 48; emphasis = 1.6; tightHz = 90; makeup = 0.45
+        default: driveDB = drive * 30; emphasis = 0.3; tightHz = 18; makeup = 0.85
+        }
+        let targetGain = powf(10, driveDB / 20)
+        let tightCoef = 1 - expf(-2 * Float.pi * tightHz / sampleRate)
+        let out = powf(10, (level * 24 - 18) / 20) * makeup
         // Tone: 1 ... 16 kHz, second pole an octave above (keeps the bite).
         let toneHz = min(1000 * powf(16, tone), sampleRate * 0.45)
         let lpCoef = 1 - expf(-2 * Float.pi * toneHz / sampleRate)
         let lpCoef2 = 1 - expf(-2 * Float.pi * min(toneHz * 2, sampleRate * 0.45) / sampleRate)
         let smooth: Float = 0.002
+        let lat = AcidDistortion.latency
 
         for n in 0..<frames {
             gainSmoothed += (targetGain - gainSmoothed) * smooth
@@ -405,13 +479,26 @@ final class AcidDistortion {
             let g = gainSmoothed
 
             let xl = left[n], xr = right[n]
-            preL += (xl - preL) * preCoef
-            preR += (xr - preR) * preCoef
-            let el = (xl + emphasis * (xl - preL)) * g
-            let er = (xr + emphasis * (xr - preR)) * g
+            // Dry path delayed by the oversampler latency.
+            dryHist[inPos] = xl
+            dryHist[32 + inPos] = xr
+            let dryL = dryHist[(inPos - lat) & 31]
+            let dryR = dryHist[32 + ((inPos - lat) & 31)]
 
-            var yl = AcidDistortion.clip(el, mode: m)
-            var yr = AcidDistortion.clip(er, mode: m)
+            // Tightening high-pass, then pre-emphasis and drive.
+            tightL += (xl - tightL) * tightCoef
+            tightR += (xr - tightR) * tightCoef
+            let hl = xl - tightL
+            let hr = xr - tightR
+            preL += (hl - preL) * preCoef
+            preR += (hr - preR) * preCoef
+            let el = (hl + emphasis * (hl - preL)) * g
+            let er = (hr + emphasis * (hr - preR)) * g
+
+            var yl = oversampledClip(el, ch: 0, mode: m)
+            var yr = oversampledClip(er, ch: 1, mode: m)
+            inPos = (inPos + 1) & 31
+            osPos = (osPos + 2) & 63
 
             let dl = yl - dcXL + dcCoef * dcYL
             dcXL = yl; dcYL = dl
@@ -424,8 +511,8 @@ final class AcidDistortion {
             yr = lp2R * out
 
             let w = mixSmoothed
-            left[n] = xl + (yl - xl) * w
-            right[n] = xr + (yr - xr) * w
+            left[n] = dryL + (yl - dryL) * w
+            right[n] = dryR + (yr - dryR) * w
         }
     }
 
@@ -436,9 +523,19 @@ final class AcidDistortion {
             let a = tanhf(x + 0.35) - 0.336_375_8
             return tanhf(2.2 * a) * 1.03
         case 2:
-            // Soft stage into a hard clipper: square-ish, buzzy.
+            // Soft stage into a smooth-knee hard clipper (p = 6): square-ish,
+            // buzzy, but without the infinite-harmonic corner.
             let v = tanhf(x) * 1.9
-            return min(max(v, -0.8), 0.8) * 1.25
+            let a = abs(v) / 0.8
+            let a6 = a * a * a
+            return v / powf(1 + a6 * a6, 1 / 6) * 1.25
+        case 4:
+            // Tube: triode-like asymmetry (the negative half compresses
+            // earlier -> 2nd harmonic), soft knee, no hard ceiling.
+            let b: Float = 0.2
+            let u = x + b
+            let t = u >= 0 ? tanhf(u * 0.9) / 0.9 : tanhf(u * 1.35) / 1.35
+            return (t - tanhf(b * 0.9) / 0.9) * 1.15
         default:
             // Silicon diodes, unequal halves, plus some full-wave
             // rectification (even harmonics, fuzzy rasp).
