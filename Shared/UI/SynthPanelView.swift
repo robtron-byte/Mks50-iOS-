@@ -490,6 +490,7 @@ struct SynthPanelView: View {
                 stack {
                     knob(.chorusRate)
                     selector(.chorus, "ON")
+                    selector(.chorusMode)
                 }
             }
         }

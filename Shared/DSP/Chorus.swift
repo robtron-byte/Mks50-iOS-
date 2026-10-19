@@ -22,6 +22,8 @@ final class Chorus {
     private var lowpassCoef: Float = 0.5
     /// 0 = off, 1 = on. Smoothed to avoid clicks when switching.
     private var mix: Float = 0
+    /// Modulation depth in samples, smoothed.
+    private var depth: Float = 80
 
     init() {
         mask = size - 1
@@ -60,16 +62,29 @@ final class Chorus {
     /// - Parameters:
     ///   - enabled: chorus switch
     ///   - rate: LFO rate in Hz
+    ///   - mode: 0 = Alpha Juno (free rate), 1 / 2 / 3 = Juno-60 I / II / I+II
+    ///     (fixed rates; I and II sweep about 1.6 ... 5.4 ms, I+II is a fast,
+    ///     shallow vibrato)
     /// The BBD is fed with the mono sum (like the hardware); the dry signal
     /// keeps its stereo image (unison panning).
     func process(inputLeft: UnsafePointer<Float>, inputRight: UnsafePointer<Float>,
                  left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>,
-                 frames: Int, enabled: Bool, rate: Float) {
+                 frames: Int, enabled: Bool, rate: Float, mode: Int = 0) {
         let target: Float = enabled ? 1 : 0
-        let inc = rate / sampleRate
+        let lfoHz: Float
+        let depthSeconds: Float
+        switch mode {
+        case 1: lfoHz = 0.513; depthSeconds = 0.00185
+        case 2: lfoHz = 0.863; depthSeconds = 0.00185
+        case 3: lfoHz = 9.75; depthSeconds = 0.0002
+        default:
+            lfoHz = rate
+            // Slightly less depth at fast rates, like the Juno modes.
+            depthSeconds = 0.0019 - min(rate, 8) * 0.0001
+        }
+        let inc = lfoHz / sampleRate
         let center = 0.0035 * sampleRate
-        // Slightly less depth at fast rates, like the Juno modes.
-        let depth = (0.0019 - min(rate, 8) * 0.0001) * sampleRate
+        let depthTarget = depthSeconds * sampleRate
 
         for n in 0..<frames {
             let xl = inputLeft[n]
@@ -80,6 +95,8 @@ final class Chorus {
             buffer[writeIndex & mask] = softClip(inputLowpass2 * 0.8) * 1.25
 
             mix += (target - mix) * 0.001
+            // Glide the depth so switching modes never jumps the read point.
+            depth += (depthTarget - depth) * 0.0005
             var outL = xl
             var outR = xr
             if mix > 0.0001 {

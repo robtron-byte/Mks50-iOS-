@@ -144,6 +144,8 @@ enum Param: Int, CaseIterable, Identifiable {
     /// Reverb algorithm: SPACE (huge, modulated), ROOM (early reflections),
     /// PLATE (dense, bright).
     case reverbType
+    /// Chorus: AJ (Alpha Juno, free RATE) or the Juno-60 modes I / II / I+II.
+    case chorusMode
 
     static let toneParameterCount = 36
     static let storageSize = 192
@@ -191,6 +193,8 @@ enum Param: Int, CaseIterable, Identifiable {
             return AcidDistortion.modeNames.count - 1
         case .reverbType:
             return Reverb.typeNames.count - 1
+        case .chorusMode:
+            return 3
         case .seqRate:
             return LFOShape.divisionNames.count - 1
         case .seqLength:
@@ -258,6 +262,8 @@ enum Param: Int, CaseIterable, Identifiable {
             return ["ORIG", "SNAP"]
         case .reverbType:
             return Reverb.typeNames
+        case .chorusMode:
+            return ["AJ", "I", "II", "I+II"]
         case .arpOn, .arpHold, .seqOn:
             return ["OFF", "ON"]
         case .seqStyle:
@@ -406,6 +412,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .envSnap: return "Envelope Snap"
         case .delayMod: return "Delay Modulation"
         case .reverbType: return "Reverb Type"
+        case .chorusMode: return "Chorus Mode"
         case .reverbDecay: return "Reverb Decay"
         case .reverbMod: return "Reverb Modulation"
         case .arpOn: return "Arpeggiator"
@@ -495,6 +502,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .envSnap: return "SPEED"
         case .delayMod: return "MOD"
         case .reverbType: return "TYPE"
+        case .chorusMode: return "MODE"
         case .reverbDecay: return "DECAY"
         case .reverbMod: return "MOD"
         case .arpOn: return "ARP"

@@ -15,7 +15,7 @@ Ein nativer iOS-Software-Synthesizer, der die Architektur des **Roland MKS-50** 
 | **VCA** | ENV- oder GATE-Modus, jeweils mit/ohne Velocity („Dynamics“) |
 | **ENV** | Alpha-Juno-Hüllkurve mit 4 Zeiten und 3 Pegeln (T1/L1, T2/L2, T3/L3, T4) plus Key-Follow; Env-Modi normal/invertiert, mit/ohne Dynamics für DCO und VCF |
 | **LFO** | Rate und Delay (Einblendung pro Tastenanschlag). Wellenformen: **Dreieck** (wie das Original, Standard), Sinus, Säge auf/ab, Rechteck, Sample & Hold, weicher Zufall. **Tempo-Sync** mit Notenwerten von 1/32 bis 4 Takte (im Plugin phasenstarr zur Song-Position des Hosts, in der App zum BPM-Regler) und **Key-Sync** (LFO startet bei neuem Tastenanschlag von vorn) |
-| **Chorus** | Juno-artiger Stereo-BBD-Chorus mit Rate-Regler |
+| **Chorus** | Stereo-BBD-Chorus (MN3009-Modell). *MODE*: *AJ* = Alpha-Juno-Chorus mit freiem *RATE*-Regler, *I* / *II* / *I+II* = die drei Juno-60-Modi mit festen Raten (etwa 0,51 / 0,86 / 9,75 Hz). *I+II* ist ein schnelles, flaches Vibrato. *RATE* wirkt nur bei *AJ* |
 | **Patch** | Key-Modi **Poly / Chord / Mono / Unison**, 16 Chord-Memory-Speicher (per „LEARN CHORD“ vom angeschlossenen MIDI-Keyboard, CHORD-Regler stimmt gehaltene Akkorde live um), Portamento **OFF / ON / AUTO**, Hüllkurven-Trigger MULTI / LEGATO, Bender-Range, Mod-Sensitivity, Key Shift, Volume |
 | **Arpeggiator** | Tempo-synchron, UP / DOWN / UP-DN / RAND / ORDER, 1–4 Oktaven, Rate 1/32 bis 4/1, Gate, HOLD; im CHORD-Modus spielt er die Akkordtöne einstimmig nacheinander |
 | **Step-Sequencer** | 16 Steps mit Akzent und Tie, transponiert vom gehaltenen Ton, taktgenau; **Zufallsgenerator** in den Stilen KRAFT, ROTHER, ROBOT und ACID, *VARY* und *G.VAR*-Groove für die Notenlängen |

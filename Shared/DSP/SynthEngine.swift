@@ -1373,7 +1373,7 @@ final class SynthEngine {
 
         let chorusHz = HardwareCurves.chorusHz(p(.chorusRate))
         chorus.process(inputLeft: mixL, inputRight: mixR, left: left, right: right, frames: frames,
-                       enabled: pi(.chorus) == 1, rate: chorusHz)
+                       enabled: pi(.chorus) == 1, rate: chorusHz, mode: pi(.chorusMode))
 
         // FX section: delay, then reverb (as in TAL-Pha).
         delay.process(left: left, right: right, frames: frames,
