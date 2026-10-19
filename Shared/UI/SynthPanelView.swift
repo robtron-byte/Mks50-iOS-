@@ -41,26 +41,33 @@ struct ParamKnob: View {
 
     var body: some View {
         let p = param.param
-        let segment: Int? = [Param.envT1: 1, .envT2: 2, .envT3: 3, .envT4: 4][p]
-        let display: ((Float) -> String)?
-        if let segment {
-            // Envelope times in ms / s, including the SNAP setting.
-            display = { value in
-                EnvelopeGraph.timeLabel(SynthEngine.envelopeTime(value, segment: segment,
-                                                                  snap: model.intValue(.envSnap) == 1))
-            }
-        } else if p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime || p == .delayFeedback
-                    || p == .lfoRate || p == .hpfFreq {
-            display = { value in p.string(for: value) }
-        } else {
-            display = nil
-        }
+        let display = displayFunction(for: p)
         Knob(label: label ?? p.shortName,
              value: model.binding(p),
              maxValue: Float(p.maxValue),
              defaultValue: Float(p.defaultValue),
              display: display)
             .modifier(CCLearnOverlay(learn: model.learn, model: model, param: p))
+    }
+}
+
+extension ParamKnob {
+    /// Value text under the knob (nil = plain 0...127). Kept out of `body`,
+    /// which is a view builder.
+    func displayFunction(for p: Param) -> ((Float) -> String)? {
+        let model = self.model
+        if let segment = [Param.envT1: 1, .envT2: 2, .envT3: 3, .envT4: 4][p] {
+            // Envelope times in ms / s, including the SNAP setting.
+            return { value in
+                EnvelopeGraph.timeLabel(SynthEngine.envelopeTime(value, segment: segment,
+                                                                  snap: model.intValue(.envSnap) == 1))
+            }
+        }
+        if p.isDiscrete || p == .pulseDetune || p == .tempo || p == .delayTime || p == .delayFeedback
+            || p == .lfoRate || p == .hpfFreq {
+            return { value in p.string(for: value) }
+        }
+        return nil
     }
 }
 
