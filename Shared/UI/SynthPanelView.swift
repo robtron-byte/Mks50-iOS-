@@ -90,10 +90,10 @@ struct LiveEnvelopeGraph: View {
 
     var body: some View {
         EnvelopeGraph(envelope: EnvelopeSettings(
-            t1: SynthEngine.envelopeTime(t1.value), l1: l1.value / 127,
-            t2: SynthEngine.envelopeTime(t2.value), l2: l2.value / 127,
-            t3: SynthEngine.envelopeTime(t3.value), l3: l3.value / 127,
-            t4: SynthEngine.envelopeTime(t4.value)))
+            t1: SynthEngine.envelopeTime(t1.value, segment: 1), l1: l1.value / 127,
+            t2: SynthEngine.envelopeTime(t2.value, segment: 2), l2: l2.value / 127,
+            t3: SynthEngine.envelopeTime(t3.value, segment: 3), l3: l3.value / 127,
+            t4: SynthEngine.envelopeTime(t4.value, segment: 4)))
     }
 }
 

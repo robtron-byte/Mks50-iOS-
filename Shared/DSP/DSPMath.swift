@@ -67,6 +67,13 @@ struct BiquadCoefficients {
                                   a1: -2 * cw / a0, a2: (1 - alpha) / a0)
     }
 
+    /// First-order (6 dB/oct) high-pass, bilinear transform.
+    static func onePoleHighPass(freq: Float, sampleRate: Float) -> BiquadCoefficients {
+        let k = tanf(Float.pi * freq / sampleRate)
+        let a0 = 1 + k
+        return BiquadCoefficients(b0: 1 / a0, b1: -1 / a0, b2: 0, a1: (k - 1) / a0, a2: 0)
+    }
+
     static func lowShelf(freq: Float, gainDB: Float, sampleRate: Float) -> BiquadCoefficients {
         let a = powf(10, gainDB / 40)
         let w = 2 * Float.pi * freq / sampleRate

@@ -1,7 +1,10 @@
 import Foundation
 
-/// 24 dB/oct resonant low-pass in the spirit of the IR3109 OTA filter used in
-/// the Alpha Juno / MKS-50.
+/// 24 dB/oct resonant low-pass for the Alpha Juno / MKS-50 VCF.
+///
+/// Like the original (IR3R05-based, no self-oscillation per reviews and the
+/// service-manual description) the resonance stops just short of
+/// oscillation, and the bass thins out as the resonance rises.
 ///
 /// Topology-preserving-transform (zero-delay feedback) cascade of four
 /// one-pole sections with global feedback. The feedback loop is solved
@@ -17,12 +20,12 @@ struct LadderFilter {
 
     /// - Parameters:
     ///   - cutoff: Hz
-    ///   - resonance: 0...1 (>= ~0.95 self-oscillates)
+    ///   - resonance: 0...1 (strong ringing at 1, no self-oscillation)
     @inline(__always) mutating func setCoefficients(cutoff: Float, resonance: Float, sampleRate: Float) {
         let fc = clampf(cutoff, 8, sampleRate * 0.45)
         g = tanf(Float.pi * fc / sampleRate)
         G = g / (1 + g)
-        k = resonance * 4.15
+        k = resonance * 3.8
     }
 
     @inline(__always) mutating func process(_ input: Float) -> Float {
@@ -33,8 +36,8 @@ struct LadderFilter {
 
         // Contributions of the stage states to the output (S_i = s_i / (1 + g)).
         let sigma = (G3 * s1 + G2 * s2 + G * s3 + s4) * inv
-        // Passband gain compensation like the hardware's resonance makeup.
-        let x = input * (1 + 0.35 * k) + 1e-20
+        // Only partial passband makeup: the bass drops with resonance.
+        let x = input * (1 + 0.15 * k) + 1e-20
         let y4Estimate = (G4 * x + sigma) / (1 + k * G4)
         let u = softClip(x - k * y4Estimate)
 

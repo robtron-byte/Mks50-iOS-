@@ -151,10 +151,10 @@ final class SynthViewModel: ObservableObject {
     }
 
     var envelope: EnvelopeSettings {
-        EnvelopeSettings(t1: SynthEngine.envelopeTime(value(.envT1)), l1: value(.envL1) / 127,
-                         t2: SynthEngine.envelopeTime(value(.envT2)), l2: value(.envL2) / 127,
-                         t3: SynthEngine.envelopeTime(value(.envT3)), l3: value(.envL3) / 127,
-                         t4: SynthEngine.envelopeTime(value(.envT4)))
+        EnvelopeSettings(t1: SynthEngine.envelopeTime(value(.envT1), segment: 1), l1: value(.envL1) / 127,
+                         t2: SynthEngine.envelopeTime(value(.envT2), segment: 2), l2: value(.envL2) / 127,
+                         t3: SynthEngine.envelopeTime(value(.envT3), segment: 3), l3: value(.envL3) / 127,
+                         t4: SynthEngine.envelopeTime(value(.envT4), segment: 4))
     }
 
     // MARK: Play button

@@ -217,7 +217,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .vcaEnvMode:
             return ["ENV", "GATE", "ENV-D", "GATE-D"]
         case .dcoRange:
-            return ["16'", "8'", "4'", "2'"]
+            return ["4'", "8'", "16'", "32'"]
         case .dcoPulse, .dcoSubLevel, .dcoNoiseLevel, .hpfCutoff:
             return ["0", "1", "2", "3"]
         case .dcoSaw, .dcoSub:
@@ -503,7 +503,7 @@ enum Param: Int, CaseIterable, Identifiable {
             return SeqStep(raw: Int(value.rounded()))?.label ?? "REST"
         }
         if self == .lfoRate {
-            let hz = 0.1 * powf(300, value / 127)
+            let hz = HardwareCurves.lfoHz(value)
             return hz < 10 ? String(format: "%.2f Hz", hz) : String(format: "%.1f Hz", hz)
         }
         if self == .delayFeedback {

@@ -33,7 +33,7 @@ Die Parameteradressen 0–35 entsprechen exakt den Tone-Parameternummern des MKS
 ## Vorbilder aus der Plugin-Welt – und wie sie für iOS angepasst wurden
 
 - **TAL-Pha (TAL Software)** ist die Hauptvorlage für den Klang: eine Alpha-Juno-2-Emulation, für die das MKS-50 als Referenz diente. Übernommen wurden die Architektur (ein PWM-fähiger DCO mit Sub → HPF → 24-dB-Tiefpass mit verstärkter Resonanz für Selbstoszillation), die Erweiterungen des Pulse-Teils (Detune, Modulation, Sync), die Voice-Calibration-Idee (leichte Abweichungen pro Stimme, damit es nach Analog-Hardware klingt) und der Stereo-Unison. TAL-Pha ist Closed Source. Hier wurde **kein Code übernommen**, nur das öffentlich beschriebene Konzept, umgesetzt mit eigener DSP. Arpeggiator, Delay und Reverb gibt es inzwischen (eigene Umsetzung). MPE, Mikrotuning und der EQ von TAL-Pha sind noch nicht enthalten.
-- **Wellenformen**: Die Saw-/Sub-Varianten folgen dem Reverse-Engineering der Alpha-Juno-Community (KVR-Thread „Alpha Juno-2 pwm sawtooth“): Saw 2 = gehackt durch Rechteck +1 Okt., Saw 3 = wie 2, aber mit PWM, Saw 4 = +3 Okt., Saw 5 = beides. Sub 0–3 liegen eine Oktave tiefer, Sub 4–5 zwei Oktaven tiefer. Wie bei der Hardware schaltet *Sub Level 0* den Sub aus (nicht die Wellenform).
+- **Wellenformen**: Modell des DCO-Chips MB87123 nach der Analyse von ErroneousBosh (alphaOsc, aus Service-Manual und KVR-Thread „Alpha Juno-2 pwm sawtooth“), deckungsgleich mit dem Emulator june-21: Ein 8-Bit-Rampenzähler wird mit Zählerbits UND-verknüpft. Pulse 1 = Rechteck, Pulse 2 = fester 25-%-Puls, Pulse 3 = PWM (einseitig 50 % → 0 %). Saw 2 = Rampe · Rechteck +1 Okt., Saw 3 = Rampe · PWM-Gate (+1 Okt.), Saw 4 = Rampe · Rechteck +3 Okt., Saw 5 = beides. Sub 0 = Rechteck −1 Okt., Sub 1 = 25 % −1 Okt., Sub 2/3 = −1 Okt. gehackt mit +1/+2 Okt., Sub 4 = −2 Okt., Sub 5 = 25 % −2 Okt. Die Gates sind wie im Zähler phasengleich zur Rampe (offen in der oberen Hälfte). *Sub Level 0* schaltet den Sub aus.
 
 - **Apple-AUv3-Instrument-Vorlage**: Eine Audio-Unit-Klasse (`MKS50AudioUnit`) wird sowohl in der App (in-process über `AUAudioUnit.registerSubclass`) als auch in der Extension genutzt. Die App ist damit nur ein „Host“ ihres eigenen Plugins – genau wie Desktop-Plugins Standalone und VST/AU aus einem Kern bauen.
 - **Juno-/Alpha-Juno-Emulationen (z. B. TAL-U-NO-LX, Dexed-artige Editoren mit SysEx-Unterstützung)**: Parameter in Hardware-Einheiten, SysEx-kompatible Tone-Daten, Preset-Import per `.syx`.
@@ -55,11 +55,19 @@ Jede Optimierung wurde gegen die vorherige Referenz geprüft (Python-Port, Sampl
 
 ## Authentizität – was nachgebildet ist
 
-- **DCO:** digitale Chop-Logik des Alpha Juno (siehe oben), phasenstarre Teilerkette, bandbegrenzt.
-- **LFO:** Standard ist das Dreieck des Originals, frei laufend. Weitere Wellenformen, Tempo- und Key-Sync sind Erweiterungen im Stil moderner Emulationen.
-- **Chorus:** MN3009/MN3101-BBD-Modell: Mono-Einspeisung, gegenphasiges Dreieck-LFO links/rechts, zweipolige Anti-Alias- und Rekonstruktionsfilter (~8 kHz), sanfte Eimerketten-Sättigung, leises BBD-Rauschen (~−84 dBFS).
-- **VCF:** 4-Pol-OTA-Kaskade (IR3109-Stil) mit Resonanz bis zur Selbstoszillation und Bass-Ausgleich.
-- **Stimmstabilität:** Das Original hat DCOs und ist stimmstabil. *Voice Drift* steht deshalb standardmäßig niedrig (8) und kann für „Vintage“ erhöht werden.
+Abgeglichen mit dem MB87123-Bit-Modell, der PG-300/MKS-50-SysEx-Tabelle und den am echten Juno-2 gemessenen Tabellen des june-21-Emulators (dessen Autor schreibt, die Messungen schwankten etwas). Zahlen, für die es keine Quelle gibt, sind als Annahme markiert.
+
+- **DCO:** digitale Zähler-Logik des Alpha Juno (siehe oben), phasenstarr, bandbegrenzt. **RANGE** in Hardware-Reihenfolge 4' / 8' / 16' / 32' (SysEx-kompatibel).
+- **PWM:** PW-Wert 0–127 wird wie im Chip mit den unteren 7 Zählerbits verglichen; eigener PW-LFO (Dreieck, 0,04–20 Hz nach Tabelle), PWM RATE 0 = manuelle Breite.
+- **Pegel:** Sub-Level in 6-dB-Stufen (0 / −12 / −6 / 0 dB), Noise in drei Stufen (Annahme).
+- **HPF:** 0 = Bassanhebung (Shelf, etwa +3 dB bei 70 Hz), 1 = flach, 2/3 = 1-Pol-Hochpass (6 dB/Okt.) bei etwa 225 / 700 Hz, wie Juno-106.
+- **VCF:** 24 dB/Okt., Cutoff 100 Hz · 2^(Wert/12 − 3,2) (etwa 11 Hz–16 kHz, eine Oktave pro 12 Schritte), Env-, LFO- und Key-Follow-Tiefe auf derselben Skala. Wie beim Original **keine Selbstoszillation**: Die Resonanz klingelt stark, und der Bass wird mit steigender Resonanz dünner.
+- **Hüllkurve:** T1/T2 = 0,354 s · 2^((Wert − 64)/10) (4 ms … 27 s), T3 (0,09 … 38 s) und T4 (7 ms … 39 s) nach gemessenen Tabellen; Attack linear, die übrigen Segmente exponentiell.
+- **LFO:** Dreieck, Rate etwa 0,02–65 Hz nach Tabelle, Delay exp(Wert/14,2 − 3)/10 s; DCO-LFO-Tiefe bis etwa ±3,3 Halbtöne.
+- **VCA:** GATE-Modus mit sehr schnellem Einsatz und kurzem Declick-Release.
+- **Chorus:** zwei MN3009-Eimerketten, mono rein, stereo raus mit gegenphasiger Modulation; Rate nach Tabelle 0,01–10 Hz. Grundverzögerung und Tiefe sind nicht dokumentiert (Annahme 3,5 ± 1,9 ms).
+- **Stimmstabilität:** Die DCOs sind quarzstabil. *Voice Drift* steht deshalb standardmäßig niedrig (8) und kann für „Vintage“ erhöht werden.
+- **Offen:** Hüllkurven-Update-Rate der CPU, exakte Mixer-Pegel und der genaue VCF-Aufbau (laut Service-Manual zwei State-Variable-Stufen) sind nicht dokumentiert.
 
 ## Projektstruktur
 

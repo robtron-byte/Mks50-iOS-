@@ -248,6 +248,7 @@ final class SynthEngine {
     // MARK: Setup (not real-time)
 
     func prepare(sampleRate: Double, maximumFrames: Int) {
+        HardwareCurves.warmUp()
         self.sampleRate = Float(sampleRate)
         if maximumFrames > bufferCapacity {
             mixLeft.deallocate()
@@ -517,10 +518,10 @@ final class SynthEngine {
     /// on every note event: while the engine is idle no control blocks run,
     /// and a note must never start with stale T1 / L1 values.
     private func refreshEnvelopeSettings() {
-        envSettings.t1 = SynthEngine.envelopeTime(p(.envT1))
-        envSettings.t2 = SynthEngine.envelopeTime(p(.envT2))
-        envSettings.t3 = SynthEngine.envelopeTime(p(.envT3))
-        envSettings.t4 = SynthEngine.envelopeTime(p(.envT4))
+        envSettings.t1 = SynthEngine.envelopeTime(p(.envT1), segment: 1)
+        envSettings.t2 = SynthEngine.envelopeTime(p(.envT2), segment: 2)
+        envSettings.t3 = SynthEngine.envelopeTime(p(.envT3), segment: 3)
+        envSettings.t4 = SynthEngine.envelopeTime(p(.envT4), segment: 4)
         envSettings.l1 = p(.envL1) / 127
         envSettings.l2 = p(.envL2) / 127
         envSettings.l3 = p(.envL3) / 127
@@ -841,8 +842,10 @@ final class SynthEngine {
     // MARK: Parameter mapping
 
     /// 0...127 → 1 ms ... 12 s, exponential.
-    @inline(__always) static func envelopeTime(_ raw: Float) -> Float {
-        0.001 * powf(12000, raw / 127)
+    /// Envelope segment time in seconds (segment 1...4 = T1...T4), after the
+    /// Juno-2 measurements in `HardwareCurves`.
+    @inline(__always) static func envelopeTime(_ raw: Float, segment: Int) -> Float {
+        HardwareCurves.envelopeSeconds(raw, segment: segment)
     }
 
     private func envelopeSettings(forPitch pitch: Float, voice i: Int) -> EnvelopeSettings {
@@ -893,6 +896,7 @@ final class SynthEngine {
         var resonance: Float = 0
         var amp: Float = 1
         var gateCoef: Float = 0.01
+        var gateReleaseCoef: Float = 0.01
     }
 
     private var block = BlockParams()
@@ -906,22 +910,25 @@ final class SynthEngine {
 
         updateLFO(frames: n)
 
-        // PW / PWM: PWM rate 0 = manual pulse width set by the depth control.
-        let pwDepth = p(.dcoPwDepth) / 127
+        // PW / PWM: the PWM gate compares the low 7 counter bits with PW
+        // (0...127), one-sided. PWM RATE 0 = manual width set by the depth
+        // control; otherwise a triangle PW LFO sweeps 0 ... depth.
+        let pwDepth = p(.dcoPwDepth) / 128
         let pwmRate = p(.dcoPwmRate)
         let pw: Float
         if pwmRate < 0.5 {
-            pw = 0.5 - 0.46 * pwDepth
+            pw = pwDepth
         } else {
-            let pwmHz = 0.1 * powf(200, pwmRate / 127)
-            pwmPhase += pwmHz * fn / sr
+            pwmPhase += HardwareCurves.pwmHz(pwmRate) * fn / sr
             if pwmPhase >= 1 { pwmPhase -= floorf(pwmPhase) }
             let tri01 = 1 - abs(2 * pwmPhase - 1)
-            pw = 0.5 - 0.46 * pwDepth * tri01
+            pw = pwDepth * tri01
         }
         dcoSettings.configure(pulse: pi(.dcoPulse), saw: pi(.dcoSaw), sub: pi(.dcoSub), pw: pw)
-        dcoSettings.subLevel = Float(pi(.dcoSubLevel)) / 3 * 0.9
-        dcoSettings.noiseLevel = Float(pi(.dcoNoiseLevel)) / 3 * 0.6
+        // 2-bit sub level, 6 dB per step like the june-21 measurements.
+        let subStep = pi(.dcoSubLevel)
+        dcoSettings.subLevel = subStep == 0 ? 0 : exp2f(Float(subStep) - 3)
+        dcoSettings.noiseLevel = Float(pi(.dcoNoiseLevel)) / 3 * 0.5
 
         refreshEnvelopeSettings()
 
@@ -946,9 +953,11 @@ final class SynthEngine {
         if hpf != hpfMode {
             hpfMode = hpf
             switch hpf {
-            case 0: hpfCoefficients = .lowShelf(freq: 120, gainDB: 6, sampleRate: sr)
-            case 2: hpfCoefficients = .highPass(freq: 240, q: 0.6, sampleRate: sr)
-            case 3: hpfCoefficients = .highPass(freq: 720, q: 0.6, sampleRate: sr)
+            // Juno-106 style 4-step HPF: bass boost (about +3 dB at 70 Hz),
+            // flat, then 1-pole (6 dB/oct) high-passes at about 225 / 700 Hz.
+            case 0: hpfCoefficients = .lowShelf(freq: 70, gainDB: 6, sampleRate: sr)
+            case 2: hpfCoefficients = .onePoleHighPass(freq: 225, sampleRate: sr)
+            case 3: hpfCoefficients = .onePoleHighPass(freq: 700, sampleRate: sr)
             default: hpfCoefficients = .bypass
             }
         }
@@ -961,18 +970,19 @@ final class SynthEngine {
         b.vcaGateMode = vcaMode == 1 || vcaMode == 3
         b.vcaDynamics = vcaMode >= 2
 
-        let lfoVibrato: Float = powf(p(.dcoLfoDepth) / 127, 2) * 12
+        let lfoVibrato: Float = HardwareCurves.vibratoSemitones(p(.dcoLfoDepth))
         let wheelVibrato: Float = modWheel * powf(p(.modSensitivity) / 127, 2) * 3
         let afterVibrato: Float = aftertouch * powf(p(.dcoAfterDepth) / 127, 2) * 3
         b.vibratoSemis = lfoVibrato + wheelVibrato + afterVibrato
         b.dcoEnvSemis = powf(p(.dcoEnvDepth) / 127, 2) * 24
-        b.pitchOffset = Float((pi(.dcoRange) - 1) * 12) + bend * p(.benderRange)
+        // RANGE 0 = 4', 1 = 8', 2 = 16', 3 = 32' (MKS-50 SysEx order).
+        b.pitchOffset = Float((1 - pi(.dcoRange)) * 12) + bend * p(.benderRange)
 
         b.portaOn = portaMode != 0
         let portaSeconds = powf(p(.portaTime) / 127, 2) * 3
         b.portaCoef = portaSeconds < 0.001 ? 1 : 1 - expf(-fn / (portaSeconds * sr))
 
-        let delay = powf(p(.lfoDelay) / 127, 2) * 5
+        let delay = HardwareCurves.lfoDelaySeconds(p(.lfoDelay))
         b.lfoFadeIncrement = delay < 0.001 ? 1 : fn / (delay * sr)
 
         b.drift = p(.voiceDrift) / 127
@@ -981,15 +991,19 @@ final class SynthEngine {
         b.pulseEnvSemis = p(.pulseEnvMod) / 127 * 36
         b.pulseSync = pi(.pulseSync) == 1
 
-        b.cutoffOct = cutoffSmoothed / 127 * 10
-        b.keyFollow = p(.vcfKeyFollow) / 127 * 1.1 / 12
-        b.vcfEnvOct = p(.vcfEnvDepth) / 127 * 9
-        b.vcfLfoOct = powf(p(.vcfLfoDepth) / 127, 2) * 4
+        // Cutoff 100 Hz · 2^(v / 12 − 3.2) (june-21): about 11 Hz ... 16 kHz,
+        // one octave per 12 steps; env, LFO and key follow on the same scale.
+        b.cutoffOct = cutoffSmoothed / 12 - 0.878
+        b.keyFollow = p(.vcfKeyFollow) / 127 / 12
+        b.vcfEnvOct = p(.vcfEnvDepth) / 12
+        b.vcfLfoOct = p(.vcfLfoDepth) / 48
         b.vcfAfterOct = aftertouch * p(.vcfAfterDepth) / 127 * 4
         b.resonance = p(.vcfResonance) / 127
 
         b.amp = p(.vcaLevel) / 127 * (1 + aftertouch * p(.vcaAfterDepth) / 127)
-        b.gateCoef = 1 - expf(-1 / (0.002 * sr))
+        // GATE mode: near-instant on, short declick release.
+        b.gateCoef = 1 - expf(-1 / (0.0003 * sr))
+        b.gateReleaseCoef = 1 - expf(-1 / (0.012 * sr))
         block = b
     }
 
@@ -1016,7 +1030,7 @@ final class SynthEngine {
                 lfoPhase += Float(tempo / 60 / quarters) * fn / sr
             }
         } else {
-            let lfoHz = 0.1 * powf(300, p(.lfoRate) / 127)
+            let lfoHz = HardwareCurves.lfoHz(p(.lfoRate))
             lfoPhase += lfoHz * fn / sr
         }
         if lfoPhase >= 1 {
@@ -1097,7 +1111,7 @@ final class SynthEngine {
         let amp = b.amp * dynamics * unisonGain
         let gateMode = b.vcaGateMode
         let gateTarget: Float = voices[i].gate ? 1 : 0
-        let gateCoef = b.gateCoef
+        let gateCoef = voices[i].gate ? b.gateCoef : b.gateReleaseCoef
 
         // Panning for unison voices
         let pan = voices[i].isUnison ? voices[i].unisonSpread * 0.85 : 0
@@ -1249,7 +1263,7 @@ final class SynthEngine {
                            level: p(.distLevel) / 127,
                            mix: p(.distMix) / 127)
 
-        let chorusHz = 0.15 * powf(60, p(.chorusRate) / 127)
+        let chorusHz = HardwareCurves.chorusHz(p(.chorusRate))
         chorus.process(inputLeft: mixL, inputRight: mixR, left: left, right: right, frames: frames,
                        enabled: pi(.chorus) == 1, rate: chorusHz)
 

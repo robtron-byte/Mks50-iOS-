@@ -137,7 +137,7 @@ enum MKS50SysEx {
 
     static func parse(_ msg: [UInt8]) -> Message? {
         guard msg.count >= 10, msg[0] == 0xF0, msg[1] == rolandID,
-              msg[4] == formatType, msg[5] == levelTone else { return nil }
+              msg[4] == formatType, msg[5] == levelTone || msg[5] == 0x01 else { return nil }
         switch msg[2] {
         case opIPR:
             guard let p = Param(rawValue: Int(msg[7])), p.isTone else { return nil }

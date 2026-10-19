@@ -1,9 +1,13 @@
 import Foundation
 
-/// A waveform built the way the Alpha Juno's digital DCO builds them:
-/// a (unipolar) ramp that is AND-ed ("chopped") with up to three square /
-/// pulse gates running at power-of-two multiples of the base phase.
+/// A waveform built the way the Alpha Juno's MB87123 DCO builds them: an
+/// 8-bit ramp counter whose output is AND-ed ("chopped") with counter bits,
+/// i.e. square gates at power-of-two multiples of the base frequency.
 ///
+/// A gate is open while its local phase is at or above its threshold `w`
+/// (a counter bit is high in the upper half of its period, the PWM gate
+/// while the low counter bits are >= PW), so all shapes keep the hardware's
+/// phase relation between ramp, pulse and sub.
 /// Multipliers are relative to the phase the shape is evaluated with.
 /// Every discontinuity is band-limited with a PolyBLEP whose height is
 /// measured directly on the naive waveform, so arbitrary chop combinations
@@ -25,9 +29,9 @@ struct ChopShape {
 
     /// Unipolar naive value 0...1.
     @inline(__always) func naive(_ p: Float) -> Float {
-        if m0 > 0 && wrap01(p * m0) >= w0 { return 0 }
-        if m1 > 0 && wrap01(p * m1) >= w1 { return 0 }
-        if m2 > 0 && wrap01(p * m2) >= w2 { return 0 }
+        if m0 > 0 && wrap01(p * m0) < w0 { return 0 }
+        if m1 > 0 && wrap01(p * m1) < w1 { return 0 }
+        if m2 > 0 && wrap01(p * m2) < w2 { return 0 }
         return ramp > 0 ? wrap01(p * ramp) : 1
     }
 
@@ -42,7 +46,7 @@ struct ChopShape {
         let l2: Float = m2 > 0 ? wrap01(p * m2) : 0
         let lr: Float = ramp > 0 ? wrap01(p * ramp) : 0
 
-        let isOpen = (m0 <= 0 || l0 < w0) && (m1 <= 0 || l1 < w1) && (m2 <= 0 || l2 < w2)
+        let isOpen = (m0 <= 0 || l0 >= w0) && (m1 <= 0 || l1 >= w1) && (m2 <= 0 || l2 >= w2)
         var out: Float = isOpen ? 2 * (ramp > 0 ? lr : 1) - 1 : -1
 
         var seen = SIMD8<Float>(repeating: 9)
@@ -94,34 +98,39 @@ struct DCOSettings {
     var subLevel: Float = 0
     var noiseLevel: Float = 0
 
-    /// Builds the MKS-50 waveforms from their panel numbers.
+    /// Builds the MKS-50 waveforms from their panel numbers, following the
+    /// MB87123 counter-bit model (ErroneousBosh's alphaOsc analysis, matching
+    /// the june-21 emulator): bit 7 = main square, bit 6 = +1 oct, bit 5 =
+    /// +2 oct, bit 4 = +3 oct, bits 8 / 9 = sub -1 / -2 oct; the PWM gate is
+    /// "low 7 counter bits >= PW", i.e. a +1 oct pulse with threshold `pw`.
+    /// Only Pulse 3 and Saw 3 follow PW / PWM.
     ///
-    /// Reverse-engineering of the Alpha Juno shows the extra waves are the
-    /// ramp / squares chopped by squares an octave (+1) or three octaves (+3)
-    /// higher; only Pulse 2 and Saw 3 follow PW/PWM.
+    /// - Parameter pw: PWM threshold 0 ... <1 (PW value / 128).
     mutating func configure(pulse: Int, saw: Int, sub: Int, pw: Float) {
-        // Master phase units: -2 oct = 1, -1 oct = 2, main = 4, +1 oct = 8, +3 oct = 32
+        // Pulse phase: main = 1, +1 oct = 2.
         switch pulse {
-        case 1: self.pulse = .gate(1)                                   // square
-        case 2: self.pulse = .gate(1, pw)                               // PWM pulse
-        case 3: self.pulse = ChopShape(ramp: 0, m0: 1, w0: 0.5, m1: 8)  // square chopped at +3 oct
+        case 1: self.pulse = .gate(1)                                            // square (bit 7)
+        case 2: self.pulse = ChopShape(ramp: 0, m0: 1, w0: 0.5, m1: 2)           // 25 % (bit 7 · bit 6)
+        case 3: self.pulse = ChopShape(ramp: 0, m0: 1, w0: 0.5, m1: 2, w1: pw)   // PWM, 50 % → 0 %
         default: self.pulse = .off
         }
+        // Master phase units: -2 oct = 1, -1 oct = 2, main = 4, +1 oct = 8,
+        // +2 oct = 16, +3 oct = 32.
         switch saw {
-        case 1: self.saw = ChopShape(ramp: 4)                                    // sawtooth
-        case 2: self.saw = ChopShape(ramp: 4, m0: 8)                             // chopped by +1 oct square
-        case 3: self.saw = ChopShape(ramp: 4, m0: 8, w0: pw)                     // chopped by +1 oct PWM pulse
-        case 4: self.saw = ChopShape(ramp: 4, m0: 32)                            // chopped by +3 oct square
-        case 5: self.saw = ChopShape(ramp: 4, m0: 8, w0: 0.5, m1: 32)            // chopped by both
+        case 1: self.saw = ChopShape(ramp: 4)                                    // ramp
+        case 2: self.saw = ChopShape(ramp: 4, m0: 8)                             // ramp · bit 6
+        case 3: self.saw = ChopShape(ramp: 4, m0: 8, w0: pw)                     // ramp · PWM gate
+        case 4: self.saw = ChopShape(ramp: 4, m0: 32)                            // ramp · bit 4
+        case 5: self.saw = ChopShape(ramp: 4, m0: 8, w0: 0.5, m1: 32)            // ramp · bit 6 · bit 4
         default: self.saw = .off
         }
         switch sub {
-        case 1: self.sub = ChopShape(ramp: 0, m0: 2, w0: 0.5, m1: 4)             // -1 oct chopped by main square
-        case 2: self.sub = ChopShape(ramp: 0, m0: 2, w0: 0.5, m1: 8)             // -1 oct chopped by +1 oct
-        case 3: self.sub = ChopShape(ramp: 0, m0: 2, w0: 0.5, m1: 4, w1: 0.5, m2: 8)
-        case 4: self.sub = .gate(1)                                              // -2 oct square
-        case 5: self.sub = ChopShape(ramp: 0, m0: 1, w0: 0.5, m1: 2)             // -2 oct, 25 % pulse
-        default: self.sub = .gate(2)                                             // -1 oct square
+        case 1: self.sub = ChopShape(ramp: 0, m0: 2, w0: 0.5, m1: 4)             // bit 8 · bit 7 (25 %)
+        case 2: self.sub = ChopShape(ramp: 0, m0: 2, w0: 0.5, m1: 8)             // bit 8 · bit 6
+        case 3: self.sub = ChopShape(ramp: 0, m0: 2, w0: 0.5, m1: 16)            // bit 8 · bit 5
+        case 4: self.sub = .gate(1)                                              // bit 9 (-2 oct)
+        case 5: self.sub = ChopShape(ramp: 0, m0: 1, w0: 0.5, m1: 2)             // bit 9 · bit 8 (25 %)
+        default: self.sub = .gate(2)                                             // bit 8 (-1 oct)
         }
     }
 }
