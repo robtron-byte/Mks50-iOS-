@@ -309,7 +309,6 @@ enum Param: Int, CaseIterable, Identifiable {
         case .delaySync: return 1
         case .delayDivision: return 6
         case .delayTone: return 80
-        case .delayPingPong: return 1
         case .reverbSize: return 60
         case .reverbDamp: return 50
         case .tempo: return 80
