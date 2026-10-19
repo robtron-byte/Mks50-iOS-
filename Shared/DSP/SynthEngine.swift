@@ -841,7 +841,6 @@ final class SynthEngine {
 
     // MARK: Parameter mapping
 
-    /// 0...127 → 1 ms ... 12 s, exponential.
     /// Envelope state of the most recently started sounding voice, for the
     /// envelope display (plain values, read by the UI without locking).
     private(set) var monitorStage = 0
@@ -864,6 +863,7 @@ final class SynthEngine {
         }
     }
 
+    /// 0...127 → 1 ms ... 12 s, exponential.
     /// Envelope segment time in seconds (segment 1...4 = T1...T4), after the
     /// Juno-2 measurements in `HardwareCurves`.
     @inline(__always) static func envelopeTime(_ raw: Float, segment: Int) -> Float {

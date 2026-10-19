@@ -419,7 +419,9 @@ struct EnvelopeGraph: View {
     /// Stage 1...5 (T1, T2, T3, sustain, release) and progress 0...1; nil / 0 = idle.
     var playhead: (stage: Int, progress: Float)? = nil
 
-    static func timeLabel(_ seconds: Float) -> String {
+    /// nonisolated: also called from `Param.string(for:)` on the AU's
+    /// parameter-string callback (any thread), while a View is main-actor isolated.
+    nonisolated static func timeLabel(_ seconds: Float) -> String {
         if seconds < 0.0995 { return String(format: "%.0f ms", max(seconds * 1000, 1)) }
         if seconds < 0.9995 { return String(format: "%.0f ms", seconds * 1000) }
         if seconds < 9.95 { return String(format: "%.2f s", seconds) }
