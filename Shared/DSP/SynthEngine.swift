@@ -1470,9 +1470,23 @@ final class SynthEngine {
         return Double(params[Param.tempo.rawValue]) + 40
     }
 
+    /// Tempo for the delay: while following MIDI clock the measured tempo
+    /// jitters slightly from tick to tick, which would bend the echoes'
+    /// pitch. It only follows real tempo changes (> 0.3 %), rounded to
+    /// 0.1 BPM.
+    private var delayTempo: Double = 120
+
     private func currentDelaySeconds() -> Float {
-        guard pi(.delaySync) == 1 else { return SynthEngine.delaySeconds(p(.delayTime)) }
+        let followingClock = clockSyncEnabled && hostTempo <= 0 && clockTempo > 0
+        // Following MIDI clock the delay is always tempo-synced (note value).
+        guard pi(.delaySync) == 1 || followingClock else { return SynthEngine.delaySeconds(p(.delayTime)) }
+        let tempo = max(tempoBPM, 20)
+        if followingClock {
+            if abs(tempo - delayTempo) / delayTempo > 0.003 { delayTempo = (tempo * 10).rounded() / 10 }
+        } else {
+            delayTempo = tempo
+        }
         let index = min(max(pi(.delayDivision), 0), DelayDivision.quarters.count - 1)
-        return DelayDivision.quarters[index] * Float(60 / max(tempoBPM, 20))
+        return DelayDivision.quarters[index] * Float(60 / delayTempo)
     }
 }
