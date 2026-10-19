@@ -83,6 +83,9 @@ final class SynthEngine {
     private var renderStartBeat: Double = 0
     /// Frames rendered so far within the current `render` call.
     private var renderFrameOffset = 0
+    /// Beat-clock speed of the current render call (fixed per call so the
+    /// beat never runs past the next call's start).
+    private var renderBeatsPerFrame: Double = 0
 
     /// Bar-accurate loop recorder (fed with the final output).
     let recorder = LoopRecorder()
@@ -120,16 +123,15 @@ final class SynthEngine {
     private var recorderTailGate = false
 
     @inline(__always) private var beatsPerFrame: Double {
-        max(tempoBPM, 20) / 60 / Double(sampleRate) * clockRate
+        let rate = clockSyncEnabled && hostTempo <= 0 ? (clockRunning ? clockRate : 0) : 1
+        return max(tempoBPM, 20) / 60 / Double(sampleRate) * rate
     }
 
     // MARK: MIDI clock sync (standalone app; plugins follow the host)
 
     /// Follow incoming MIDI clock (24 ppqn) and Start / Continue / Stop /
     /// Song Position instead of the internal BPM. Set from the main thread.
-    var clockSyncEnabled = false {
-        didSet { clockRate = !clockSyncEnabled || clockRunning ? 1 : 0 }
-    }
+    var clockSyncEnabled = false
     /// Tempo measured from the clock ticks (BPM, 0 = no clock yet). Set by
     /// the MIDI thread from the packet time stamps.
     var clockTempo: Double = 0
@@ -137,7 +139,7 @@ final class SynthEngine {
     private(set) var clockRunning = false
     private var clockTicks: Int64 = 0
     /// Speed of the beat clock relative to the tempo: gently pulled towards
-    /// the tick position (phase lock), 0 while the clock is stopped.
+    /// the tick position (phase lock). Audio thread only.
     private var clockRate: Double = 1
 
     /// Effective BPM for display.
@@ -148,8 +150,9 @@ final class SynthEngine {
         switch status {
         case 0xF8:  // timing clock
             guard clockRunning else { return }
-            clockTicks += 1
+            // Position of this tick: the first tick after Start is beat 0.
             let target = Double(clockTicks) / 24
+            clockTicks += 1
             let error = target - internalBeat
             if error > 1 {
                 internalBeat = target           // far behind: catch up (never backwards)
@@ -169,7 +172,6 @@ final class SynthEngine {
             clockRate = 1
         case 0xFC:  // stop
             clockRunning = false
-            clockRate = 0
             stopPatterns()
         case 0xF2:  // song position (sixteenths)
             let sixteenths = d2 << 7 | d1
@@ -773,7 +775,10 @@ final class SynthEngine {
         arpHoldWasOn = hold
 
         // MIDI clock stopped: patterns wait for Start / Continue.
-        if transportHalted { return }
+        if transportHalted {
+            stopPatterns()      // e.g. sync switched on while a pattern plays
+            return
+        }
 
         if seqOn {
             let root = arp.count > 0 ? arp.keys[arp.count - 1] : -1
@@ -1119,7 +1124,7 @@ final class SynthEngine {
             if pi(.lfoKeySync) == 0 {
                 // Locked to the beat clock (host song position or the internal
                 // clock), so synced LFOs line up with bars and loop recordings.
-                let beat = renderStartBeat + Double(renderFrameOffset) * beatsPerFrame
+                let beat = renderStartBeat + Double(renderFrameOffset) * renderBeatsPerFrame
                 let cycles = beat / quarters
                 let newPhase = Float(cycles - floor(cycles))
                 wrapped = newPhase < lfoPhase
@@ -1263,6 +1268,7 @@ final class SynthEngine {
     func render(frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>) -> Bool {
         // Beat clock: host song position inside a DAW, else the internal clock.
         let bpf = beatsPerFrame
+        renderBeatsPerFrame = bpf
         if hostBeatPosition >= 0 && hostTempo > 0 {
             renderStartBeat = hostBeatPosition + Double(cycleSamples) * bpf
         } else {
@@ -1334,7 +1340,7 @@ final class SynthEngine {
         var pos = 0
         while pos < frames {
             let n = min(SynthEngine.controlInterval, frames - pos)
-            arpTick(beat: renderStartBeat + Double(renderFrameOffset) * beatsPerFrame)
+            arpTick(beat: renderStartBeat + Double(renderFrameOffset) * renderBeatsPerFrame)
             updateGlobalControl(frames: n)
             for i in 0..<SynthEngine.maxVoices where voices[i].active {
                 renderVoice(i, left: mixL + pos, right: mixR + pos, frames: n)
