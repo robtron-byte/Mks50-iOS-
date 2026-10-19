@@ -44,8 +44,26 @@ final class MIDIManager: ObservableObject {
     var hasActiveInputs: Bool { sources.contains { $0.enabled } }
     @Published private(set) var lastActivity = Date.distantPast
 
-    /// Called on the CoreMIDI thread for channel voice messages.
+    /// Called on the CoreMIDI thread for channel voice messages and for MIDI
+    /// clock / transport (F8, FA, FB, FC, F2).
     var onChannelMessage: ((UInt8, UInt8, UInt8) -> Void)?
+    /// Called on the CoreMIDI thread with the tempo measured from MIDI clock.
+    var onClockTempo: ((Double) -> Void)?
+    /// Main thread: tempo and running state of the incoming MIDI clock.
+    @Published private(set) var clockTempo: Double = 0
+    @Published private(set) var clockRunning = false
+
+    // Clock tempo measurement (CoreMIDI thread only).
+    private var lastTickTime: UInt64 = 0
+    private var tickIntervals = [Double](repeating: 0, count: 24)
+    private var tickIndex = 0
+    private var tickCount = 0
+    private var lastPublishedTempo: Double = 0
+    private static let ticksPerSecond: Double = {
+        var info = mach_timebase_info_data_t()
+        mach_timebase_info(&info)
+        return 1e9 * Double(info.denom) / Double(info.numer)
+    }()
     /// Called on the main thread with complete F0...F7 messages.
     var onSysEx: (([UInt8]) -> Void)?
 
@@ -168,6 +186,11 @@ final class MIDIManager: ObservableObject {
                         let status = UInt8((word >> 16) & 0xFF)
                         onChannelMessage?(status, UInt8((word >> 8) & 0x7F), UInt8(word & 0x7F))
                         noteActivity()
+                    case 0x1:
+                        // System real time / common: MIDI clock and transport.
+                        let status = UInt8((word >> 16) & 0xFF)
+                        handleSystem(status, UInt8((word >> 8) & 0x7F), UInt8(word & 0x7F),
+                                     time: packet.pointee.timeStamp)
                     case 0x3 where i + 1 < count:
                         handleSysEx7(word, words[i + 1], input: input)
                     default:
@@ -177,6 +200,42 @@ final class MIDIManager: ObservableObject {
                 }
             }
         }
+    }
+
+    private func handleSystem(_ status: UInt8, _ d1: UInt8, _ d2: UInt8, time: MIDITimeStamp) {
+        switch status {
+        case 0xF8:
+            let now = time != 0 ? time : mach_absolute_time()
+            if lastTickTime != 0 && now > lastTickTime {
+                let interval = Double(now - lastTickTime) / MIDIManager.ticksPerSecond
+                if interval < 0.25 {        // ignore gaps (clock restarted)
+                    tickIntervals[tickIndex] = interval
+                    tickIndex = (tickIndex + 1) % tickIntervals.count
+                    tickCount = min(tickCount + 1, tickIntervals.count)
+                    let average = tickIntervals.prefix(tickCount).reduce(0, +) / Double(tickCount)
+                    let bpm = 60 / (average * 24)
+                    if bpm > 20 && bpm < 400 {
+                        onClockTempo?(bpm)
+                        if abs(bpm - lastPublishedTempo) > 0.05 {
+                            lastPublishedTempo = bpm
+                            DispatchQueue.main.async { [weak self] in self?.clockTempo = bpm }
+                        }
+                    }
+                }
+            }
+            lastTickTime = now
+        case 0xFA, 0xFB:
+            DispatchQueue.main.async { [weak self] in self?.clockRunning = true }
+        case 0xFC:
+            lastTickTime = 0
+            tickCount = 0
+            DispatchQueue.main.async { [weak self] in self?.clockRunning = false }
+        case 0xF2:
+            break
+        default:
+            return                          // other system messages are not used
+        }
+        onChannelMessage?(status, d1, d2)
     }
 
     private static func wordCount(forMessageType type: UInt32) -> Int {

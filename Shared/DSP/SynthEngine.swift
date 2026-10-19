@@ -120,8 +120,76 @@ final class SynthEngine {
     private var recorderTailGate = false
 
     @inline(__always) private var beatsPerFrame: Double {
-        max(tempoBPM, 20) / 60 / Double(sampleRate)
+        max(tempoBPM, 20) / 60 / Double(sampleRate) * clockRate
     }
+
+    // MARK: MIDI clock sync (standalone app; plugins follow the host)
+
+    /// Follow incoming MIDI clock (24 ppqn) and Start / Continue / Stop /
+    /// Song Position instead of the internal BPM. Set from the main thread.
+    var clockSyncEnabled = false {
+        didSet { clockRate = !clockSyncEnabled || clockRunning ? 1 : 0 }
+    }
+    /// Tempo measured from the clock ticks (BPM, 0 = no clock yet). Set by
+    /// the MIDI thread from the packet time stamps.
+    var clockTempo: Double = 0
+    /// Transport state of the clock source.
+    private(set) var clockRunning = false
+    private var clockTicks: Int64 = 0
+    /// Speed of the beat clock relative to the tempo: gently pulled towards
+    /// the tick position (phase lock), 0 while the clock is stopped.
+    private var clockRate: Double = 1
+
+    /// Effective BPM for display.
+    var displayTempo: Double { tempoBPM }
+
+    private func handleClock(_ status: UInt8, _ d1: Int, _ d2: Int) {
+        guard clockSyncEnabled, hostTempo <= 0 else { return }
+        switch status {
+        case 0xF8:  // timing clock
+            guard clockRunning else { return }
+            clockTicks += 1
+            let target = Double(clockTicks) / 24
+            let error = target - internalBeat
+            if error > 1 {
+                internalBeat = target           // far behind: catch up (never backwards)
+                clockRate = 1
+            } else {
+                // Close the gap within about half a beat; slow down if ahead.
+                clockRate = min(max(1 + error * 2, 0.5), 1.5)
+            }
+        case 0xFA:  // start
+            stopPatterns()
+            clockTicks = 0
+            internalBeat = 0
+            clockRunning = true
+            clockRate = 1
+        case 0xFB:  // continue
+            clockRunning = true
+            clockRate = 1
+        case 0xFC:  // stop
+            clockRunning = false
+            clockRate = 0
+            stopPatterns()
+        case 0xF2:  // song position (sixteenths)
+            let sixteenths = d2 << 7 | d1
+            clockTicks = Int64(sixteenths) * 6
+            internalBeat = Double(sixteenths) / 4
+        default:
+            break
+        }
+    }
+
+    /// Transport stopped / restarted: release arp and sequencer notes.
+    private func stopPatterns() {
+        let a = arp.stop()
+        let q = seq.stop()
+        if a >= 0 { noteOff(a) }
+        if q >= 0 { noteOff(q) }
+    }
+
+    /// Clock sync on, but the clock source is stopped: arp / sequencer wait.
+    private var transportHalted: Bool { clockSyncEnabled && hostTempo <= 0 && !clockRunning }
 
     // Performance controllers
     private var bend: Float = 0
@@ -357,7 +425,11 @@ final class SynthEngine {
 
     /// Audio thread: handles one MIDI 1.0 channel message.
     func handleMIDI(_ status: UInt8, _ data1: UInt8, _ data2: UInt8) {
-        guard status >= 0x80, status < 0xF0 else { return }
+        if status >= 0xF0 {
+            handleClock(status, Int(data1 & 0x7F), Int(data2 & 0x7F))
+            return
+        }
+        guard status >= 0x80 else { return }
         let channel = Int(status & 0x0F)
         let wanted = pi(.midiChannel)
         if wanted > 0 && channel != wanted - 1 { return }
@@ -699,6 +771,9 @@ final class SynthEngine {
             for k in 0..<128 where heldKeyFlags[k] == 0 { arp.remove(k) }
         }
         arpHoldWasOn = hold
+
+        // MIDI clock stopped: patterns wait for Start / Continue.
+        if transportHalted { return }
 
         if seqOn {
             let root = arp.count > 0 ? arp.keys[arp.count - 1] : -1
@@ -1201,7 +1276,10 @@ final class SynthEngine {
         }
         recorderTailGate = tail
         internalBeat = renderStartBeat + Double(frames) * bpf
-        if internalBeat > 1_000_000 { internalBeat -= 1_000_000 }   // keep precision (multiple of 4 beats)
+        if internalBeat > 1_000_000 {
+            internalBeat -= 1_000_000                       // keep precision (multiple of 4 beats)
+            clockTicks -= 24_000_000
+        }
         cycleSamples += frames
         defer {
             recorder.process(left: left, right: right, frames: frames,
@@ -1331,7 +1409,9 @@ final class SynthEngine {
 
     /// Effective tempo: host tempo inside a DAW, else the TEMPO parameter.
     var tempoBPM: Double {
-        hostTempo > 0 ? hostTempo : Double(params[Param.tempo.rawValue]) + 40
+        if hostTempo > 0 { return hostTempo }
+        if clockSyncEnabled && clockTempo > 0 { return clockTempo }
+        return Double(params[Param.tempo.rawValue]) + 40
     }
 
     private func currentDelaySeconds() -> Float {

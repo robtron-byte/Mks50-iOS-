@@ -6,6 +6,7 @@ struct SettingsView: View {
     @ObservedObject var midi: MIDIManager
     @Environment(\.dismiss) private var dismiss
     @AppStorage(AudioHost.backgroundAudioKey) private var backgroundAudio = true
+    @AppStorage(AudioHost.clockSyncKey) private var clockSync = false
 
     private func endpointRow(_ endpoint: MIDIManager.Endpoint, toggle: @escaping (Bool) -> Void) -> some View {
         Button { toggle(!endpoint.enabled) } label: {
@@ -71,12 +72,23 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("Sync to MIDI Clock", isOn: $clockSync)
+                        .onChangeCompat(of: clockSync) { model.audioUnit.engine.clockSyncEnabled = $0 }
+                    if clockSync {
+                        LabeledContent("Clock") {
+                            Text(midi.clockTempo > 0
+                                 ? String(format: "%@ %.1f BPM", midi.clockRunning ? "▶" : "■", midi.clockTempo)
+                                 : "waiting for clock …")
+                                .foregroundColor(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
                     Toggle("Network MIDI (Wi-Fi)", isOn: $midi.networkEnabled)
                     Toggle("Run in Background", isOn: $backgroundAudio)
                 } header: {
                     Text("Connectivity")
                 } footer: {
-                    Text("Network MIDI makes the iPhone visible to a Mac (Audio MIDI Setup › Network). \"Run in Background\" keeps the synth playing while you use another app, e.g. a sequencer that sends to \"MKS50 Synth\".")
+                    Text("Sync to MIDI Clock: tempo, start and stop come from the selected MIDI inputs or another app (sending clock to \"MKS50 Synth\"). Arp and sequencer run only while the clock source is playing; Start restarts them on the first step. " + "Network MIDI makes the iPhone visible to a Mac (Audio MIDI Setup › Network). \"Run in Background\" keeps the synth playing while you use another app, e.g. a sequencer that sends to \"MKS50 Synth\".")
                 }
 
                 Section("MIDI CC Assignments") {

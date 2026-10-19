@@ -120,20 +120,39 @@ struct RecorderStrip: View {
 private struct BPMControl: View {
     @ObservedObject var param: ParamModel
     let model: SynthViewModel
+    @AppStorage(AudioHost.clockSyncKey) private var clockSync = false
 
     var body: some View {
         HStack(spacing: 4) {
             StepButton(symbol: "minus", label: "Tempo down") { step(-1) }
-            VStack(spacing: 0) {
-                Text("\(Int(param.value.rounded()) + 40)")
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
-                    .foregroundColor(Theme.readout)
-                Text("bpm")
-                    .font(Theme.pixel(9, .regular))
-                    .foregroundColor(Theme.dimLabel)
+                .disabled(clockSync)
+            if clockSync {
+                // Following MIDI clock: show the measured tempo and transport.
+                TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                    let engine = model.audioUnit.engine
+                    VStack(spacing: 0) {
+                        Text(engine.clockTempo > 0 ? String(format: "%.1f", engine.clockTempo) : "--")
+                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            .foregroundColor(Theme.readout)
+                        Text(engine.clockRunning ? "ext ▶" : "ext ■")
+                            .font(Theme.pixel(9, .regular))
+                            .foregroundColor(engine.clockRunning ? Theme.readout : Theme.dimLabel)
+                    }
+                    .frame(minWidth: 52)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    Text("\(Int(param.value.rounded()) + 40)")
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.readout)
+                    Text("bpm")
+                        .font(Theme.pixel(9, .regular))
+                        .foregroundColor(Theme.dimLabel)
+                }
+                .frame(minWidth: 44)
             }
-            .frame(minWidth: 44)
             StepButton(symbol: "plus", label: "Tempo up") { step(1) }
+                .disabled(clockSync)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Tempo")
