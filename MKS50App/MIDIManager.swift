@@ -3,18 +3,45 @@ import Foundation
 
 /// CoreMIDI input/output for the standalone app.
 ///
-/// - Connects to every MIDI source (USB, network, Bluetooth LE once paired)
+/// - Connects to the enabled MIDI sources (USB, network, Bluetooth LE, other
+///   apps' virtual outputs); all are enabled until switched off in Settings
 /// - Publishes a virtual destination so other apps can play the synth
+/// - Optional network MIDI session (Wi-Fi, e.g. from a Mac)
 /// - Reassembles SysEx (UMP SysEx7) for MKS-50 tone dumps / parameter changes
 /// - Sends tone dumps to a real MKS-50 via all MIDI destinations
 final class MIDIManager: ObservableObject {
     struct Endpoint: Identifiable, Hashable {
         let id: MIDIUniqueID
         let name: String
+        var enabled: Bool
     }
 
     @Published private(set) var sources: [Endpoint] = []
     @Published private(set) var destinations: [Endpoint] = []
+
+    private static let disabledInputsKey = "midiDisabledInputs"
+    private static let disabledOutputsKey = "midiDisabledOutputs"
+    private static let networkKey = "midiNetworkSession"
+
+    /// Inputs / outputs switched off by the user (by unique ID, so they stay
+    /// off across reconnects); everything new is on.
+    private var disabledInputs: Set<MIDIUniqueID> {
+        didSet { UserDefaults.standard.set(Array(disabledInputs), forKey: MIDIManager.disabledInputsKey) }
+    }
+    private var disabledOutputs: Set<MIDIUniqueID> {
+        didSet { UserDefaults.standard.set(Array(disabledOutputs), forKey: MIDIManager.disabledOutputsKey) }
+    }
+
+    /// Network MIDI (Wi-Fi) session, visible to Macs in "Audio MIDI Setup".
+    @Published var networkEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(networkEnabled, forKey: MIDIManager.networkKey)
+            applyNetworkSession()
+        }
+    }
+
+    /// Number of enabled sources that are connected.
+    var hasActiveInputs: Bool { sources.contains { $0.enabled } }
     @Published private(set) var lastActivity = Date.distantPast
 
     /// Called on the CoreMIDI thread for channel voice messages.
@@ -34,6 +61,12 @@ final class MIDIManager: ObservableObject {
     private var activityPending = false
 
     init() {
+        let defaults = UserDefaults.standard
+        disabledInputs = Set((defaults.array(forKey: MIDIManager.disabledInputsKey) as? [Int] ?? []).map { MIDIUniqueID($0) })
+        disabledOutputs = Set((defaults.array(forKey: MIDIManager.disabledOutputsKey) as? [Int] ?? []).map { MIDIUniqueID($0) })
+        networkEnabled = defaults.bool(forKey: MIDIManager.networkKey)
+        applyNetworkSession()
+
         let status = MIDIClientCreateWithBlock("MKS50 Synth" as CFString, &client) { [weak self] notification in
             guard notification.pointee.messageID == .msgSetupChanged else { return }
             DispatchQueue.main.async { self?.refreshConnections() }
@@ -64,19 +97,40 @@ final class MIDIManager: ObservableObject {
         for i in 0..<MIDIGetNumberOfSources() {
             let source = MIDIGetSource(i)
             guard source != 0 else { continue }
-            if MIDIPortConnectSource(inputPort, source, nil) == noErr {
+            let id = uniqueID(source)
+            let enabled = !disabledInputs.contains(id)
+            if enabled, MIDIPortConnectSource(inputPort, source, nil) == noErr {
                 connected.append(source)
-                foundSources.append(Endpoint(id: uniqueID(source), name: displayName(source)))
             }
+            foundSources.append(Endpoint(id: id, name: displayName(source), enabled: enabled))
         }
         var foundDestinations: [Endpoint] = []
         for i in 0..<MIDIGetNumberOfDestinations() {
             let dest = MIDIGetDestination(i)
             guard dest != 0, dest != virtualDestination else { continue }
-            foundDestinations.append(Endpoint(id: uniqueID(dest), name: displayName(dest)))
+            let id = uniqueID(dest)
+            foundDestinations.append(Endpoint(id: id, name: displayName(dest), enabled: !disabledOutputs.contains(id)))
         }
         sources = foundSources
         destinations = foundDestinations
+    }
+
+    /// Settings: switch an input on / off.
+    func setInput(_ id: MIDIUniqueID, enabled: Bool) {
+        if enabled { disabledInputs.remove(id) } else { disabledInputs.insert(id) }
+        refreshConnections()
+    }
+
+    /// Settings: switch an output (SysEx to hardware) on / off.
+    func setOutput(_ id: MIDIUniqueID, enabled: Bool) {
+        if enabled { disabledOutputs.remove(id) } else { disabledOutputs.insert(id) }
+        refreshConnections()
+    }
+
+    private func applyNetworkSession() {
+        let session = MIDINetworkSession.default()
+        session.isEnabled = networkEnabled
+        session.connectionPolicy = networkEnabled ? .anyone : .noOne
     }
 
     private func displayName(_ endpoint: MIDIEndpointRef) -> String {
@@ -218,7 +272,7 @@ final class MIDIManager: ObservableObject {
 
         for i in 0..<MIDIGetNumberOfDestinations() {
             let dest = MIDIGetDestination(i)
-            guard dest != 0, dest != virtualDestination else { continue }
+            guard dest != 0, dest != virtualDestination, !disabledOutputs.contains(uniqueID(dest)) else { continue }
             MIDISendEventList(outputPort, dest, list)
         }
     }

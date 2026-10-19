@@ -5,6 +5,20 @@ struct SettingsView: View {
     @ObservedObject var model: SynthViewModel
     @ObservedObject var midi: MIDIManager
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(AudioHost.backgroundAudioKey) private var backgroundAudio = true
+
+    private func endpointRow(_ endpoint: MIDIManager.Endpoint, toggle: @escaping (Bool) -> Void) -> some View {
+        Button { toggle(!endpoint.enabled) } label: {
+            HStack {
+                Text(endpoint.name).foregroundColor(.primary)
+                Spacer()
+                Image(systemName: endpoint.enabled ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(endpoint.enabled ? .accentColor : .secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .accessibilityValue(endpoint.enabled ? "On" : "Off")
+    }
 
     var body: some View {
         NavigationStack {
@@ -25,20 +39,44 @@ struct SettingsView: View {
                     Button("Rescan MIDI Ports") { midi.refreshConnections() }
                 }
 
-                Section("Inputs") {
+                Section {
                     if midi.sources.isEmpty {
                         Text("No MIDI inputs found").foregroundColor(.secondary)
                     }
-                    ForEach(midi.sources) { Text($0.name) }
-                    Text("Other apps can also send to the virtual port \"MKS50 Synth\".")
-                        .font(.footnote).foregroundColor(.secondary)
+                    ForEach(midi.sources) { source in
+                        endpointRow(source) { midi.setInput(source.id, enabled: $0) }
+                    }
+                    HStack {
+                        Label("MKS50 Synth (virtual input)", systemImage: "app.connected.to.app.below.fill")
+                        Spacer()
+                        Image(systemName: "checkmark").foregroundColor(.accentColor)
+                    }
+                } header: {
+                    Text("Inputs")
+                } footer: {
+                    Text("Tap an input to switch it on or off. Other apps (sequencers, AUM, DAWs) can always play the synth through its virtual input \"MKS50 Synth\" – choose it as MIDI output in the other app.")
                 }
 
-                Section("Outputs (SysEx to hardware MKS-50)") {
+                Section {
                     if midi.destinations.isEmpty {
                         Text("No MIDI outputs found").foregroundColor(.secondary)
                     }
-                    ForEach(midi.destinations) { Text($0.name) }
+                    ForEach(midi.destinations) { dest in
+                        endpointRow(dest) { midi.setOutput(dest.id, enabled: $0) }
+                    }
+                } header: {
+                    Text("Outputs (SysEx to hardware MKS-50)")
+                } footer: {
+                    Text("The paper-plane button sends the current tone to every switched-on output.")
+                }
+
+                Section {
+                    Toggle("Network MIDI (Wi-Fi)", isOn: $midi.networkEnabled)
+                    Toggle("Run in Background", isOn: $backgroundAudio)
+                } header: {
+                    Text("Connectivity")
+                } footer: {
+                    Text("Network MIDI makes the iPhone visible to a Mac (Audio MIDI Setup › Network). \"Run in Background\" keeps the synth playing while you use another app, e.g. a sequencer that sends to \"MKS50 Synth\".")
                 }
 
                 Section("MIDI CC Assignments") {

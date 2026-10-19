@@ -110,13 +110,19 @@ final class AudioHost: ObservableObject {
         }
     }
 
-    /// Saves battery: in the background the engine only keeps running when
-    /// a MIDI source is connected (or another app can reach the virtual port
-    /// while we are visible). Coming back to the foreground restarts it.
+    static let backgroundAudioKey = "backgroundAudio"
+
+    /// In the background the engine keeps running by default, so other apps
+    /// (sequencers, AUM, DAWs) can play the synth through its virtual MIDI
+    /// port. With "Run in Background" switched off it only keeps running
+    /// while a MIDI input is enabled. Coming back to the foreground restarts it.
     func sceneDidChange(active: Bool) {
         if active {
             restart()
-        } else if midi.sources.isEmpty && engine.isRunning {
+            return
+        }
+        let keepRunning = UserDefaults.standard.object(forKey: AudioHost.backgroundAudioKey) as? Bool ?? true
+        if !keepRunning && !midi.hasActiveInputs && engine.isRunning {
             model?.panic()
             engine.pause()
         }
