@@ -250,7 +250,8 @@ final class Reverb {
     }
 
     /// - Parameters:
-    ///   - size: 0...1 (small room ... huge space; also pre-delay 0 ... 60 ms)
+    ///   - size: 0...1 (small ... large; SPACE also sets a pre-delay up to 60 ms,
+    ///     ROOM up to 12 ms plus its early reflections)
     ///   - decay: DECAY parameter 0...127 (RT60 0.15 ... 60 s)
     ///   - damp: 0...1 (bright ... dark)
     ///   - modulation: 0...1
@@ -306,7 +307,7 @@ final class Reverb {
         let dampCoef = 1 - expf(-2 * Float.pi * min(dampTop - damp * (dampTop - 1500), sr * 0.45) / sr)
         let modDepth = modulation * modScale * (1.5 + 14 * sz) * sr / 44100
         // Early reflections (ROOM only), scaled with the size.
-        let erLevel: Float = kind == 1 ? 0.75 : 0
+        let erLevel: Float = kind == 1 ? 0.35 : 0
         if kind == 1 {
             let scale = (0.25 + 0.75 * sz) * sr / 1000
             for k in 0..<6 {
