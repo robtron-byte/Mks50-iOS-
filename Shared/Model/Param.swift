@@ -563,7 +563,7 @@ enum Param: Int, CaseIterable, Identifiable {
         }
         if self == .seqGate {
             let steps = StepSequencer.gateSteps(value)
-            return steps <= 1 ? "\(Int((steps * 100).rounded())) %" : String(format: "%.1f ST", steps)
+            return steps <= 1 ? "\(Int((steps * 100).rounded())) %" : "\(Int(steps)) ST"
         }
         if self == .seqGateVar {
             return "\(Int((value / 127 * 100).rounded())) %"

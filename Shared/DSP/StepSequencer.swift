@@ -48,25 +48,27 @@ struct StepSequencer {
     static let maxSteps = 16
 
     /// GATE knob → note length in steps: 0...80 is 5 ... 100 % of a step,
-    /// above that the note holds over several steps (exponentially up to
-    /// 8 steps at 127: 2 at 96, 4 at 112).
+    /// above that whole steps, 1 ... 8 (the note rings over rests until its
+    /// length is up or the next note takes over).
     static func gateSteps(_ raw: Float) -> Double {
         let v = Double(max(0, min(127, raw)))
         if v <= 80 { return 0.05 + 0.95 * v / 80 }
-        return pow(2, 3 * (v - 80) / 47)
+        return Double(1 + Int((7 * (v - 80) / 47).rounded()))
     }
 
     private(set) var soundingKey = -1
     private(set) var currentStep = -1
     private var gateOffBeat: Double = 0
-    /// G.VAR made the sounding step legato: it ties into the next step.
-    private var grooveTie = false
+    /// A G.VAR long note covers the steps up to here (absolute step count).
+    private var holdUntilStep: Int64 = .min
+    /// The previous step was covered by a long note (its TIE does not count).
+    private var previousCovered = false
     private var lastStep: Int64 = .min
 
     /// - Parameters:
     ///   - root: held key (-1: none held → stop)
     ///   - steps: the 16 step parameter values
-    ///   - gateVariation: 0...1, how far each step's gate departs from `gate`
+    ///   - gateVariation: 0...1 (G.VAR), how many notes become long notes
     mutating func process(beat: Double, root: Int, rateIndex: Int, length: Int, gate: Double,
                           gateVariation: Double = 0, steps: UnsafePointer<Float>) -> SeqEvents {
         var events = SeqEvents()
@@ -78,6 +80,8 @@ struct StepSequencer {
         }
         guard root >= 0 else {
             lastStep = .min
+            holdUntilStep = .min
+            previousCovered = false
             currentStep = -1
             return events
         }
@@ -91,19 +95,26 @@ struct StepSequencer {
         let previous = currentStep
         currentStep = index
 
+        // Covered by a G.VAR long note: it keeps sounding, the step is skipped.
+        if step < holdUntilStep {
+            previousCovered = true
+            return events
+        }
+        let afterLongNote = previousCovered
+        previousCovered = false
+
         guard let s = SeqStep(raw: Int(steps[index].rounded())) else {
             // Rest: a tied note before it ends here; a long gate rings on.
             if soundingKey >= 0 && gateOffBeat == .infinity {
                 events.off = soundingKey
                 soundingKey = -1
             }
-            grooveTie = false
             return events
         }
 
         let key = min(max(root + s.note, 0), 127)
-        let tiedFromPrevious = previous >= 0 && soundingKey >= 0
-            && ((SeqStep(raw: Int(steps[previous].rounded()))?.tie ?? false) || grooveTie)
+        let tiedFromPrevious = previous >= 0 && soundingKey >= 0 && !afterLongNote
+            && (SeqStep(raw: Int(steps[previous].rounded()))?.tie ?? false)
         if soundingKey >= 0 {
             events.off = soundingKey
             events.legato = tiedFromPrevious && soundingKey != key
@@ -119,78 +130,68 @@ struct StepSequencer {
             events.velocity = s.accent ? 127 : 88
         }
         soundingKey = key
-        // Tied steps hold until the next step; others stop after the gate.
-        var stepGate = gate
-        if gateVariation > 0 {
-            // Blend from the GATE knob towards the groove's length.
-            let target = StepSequencer.grooveGate(index: index, count: count, steps: steps)
-            stepGate = min(max(gate + gateVariation * (target - gate), 0.05), 8)
-            // The groove's legato length runs into the next step (a tie).
-            grooveTie = target > 1 && stepGate > 1 && gate <= 1
-        } else {
-            grooveTie = false
+
+        let hold = gateVariation > 0
+            ? StepSequencer.holdSteps(index: index, count: count, amount: gateVariation, steps: steps) : 1
+        if hold > 1 && !s.tie {
+            // Long note: exactly `hold` whole steps, the steps under it are skipped.
+            holdUntilStep = step + Int64(hold)
+            gateOffBeat = Double(step + Int64(hold)) * quarters
+            return events
         }
-        // A GATE above 100 % holds the note over the following steps until
-        // its length is up or the next note takes over.
-        let tied = s.tie || grooveTie
-        let length = tied ? 1.0 : (s.accent && stepGate < 1 ? min(1, stepGate + 0.15) : stepGate)
-        gateOffBeat = tied ? .infinity : Double(step) * quarters + quarters * length
+        // Tied steps hold until the next step; others stop after the gate.
+        let length = s.tie ? 1.0 : (s.accent && gate < 1 ? min(1, gate + 0.15) : gate)
+        gateOffBeat = s.tie ? .infinity : Double(step) * quarters + quarters * length
         if gateOffBeat <= beat { gateOffBeat = beat + quarters * length }
         return events
     }
 
-    /// Gate lengths of the groove: staccato, short, mid, full step, and
-    /// legato (> 1: ties into the next step, slides with portamento AUTO).
-    private static let grooveLevels: [Double] = [0.18, 0.42, 0.7, 1.0, 1.5]
+    /// Lengths of G.VAR long notes in steps and their weights: mostly
+    /// two steps (an 8th on the 16th grid), then dotted (3) and 4 steps.
+    private static let holdLengths = (2, 3, 4)
 
-    /// Groove templates for one beat (four 16ths), as `grooveLevels` indices.
-    /// Each pairs with a variation used on the last beat of the bar as a
-    /// phrase ending.
-    private static let grooveTemplates: [(main: [Int], end: [Int])] = [
-        ([3, 1, 2, 1], [4, 1, 1, 3]),      // long – short – mid – short, legato pickup
-        ([3, 1, 1, 4], [2, 1, 3, 0]),      // gallop sliding into the beat
-        ([2, 0, 4, 0], [3, 0, 4, 1]),      // off-beat push, held "and"
-        ([4, 2, 1, 0], [1, 1, 3, 4]),      // legato downbeat, decaying; answer swells
-        ([1, 1, 4, 1], [3, 1, 4, 1]),      // stab on the "and"
-    ]
-
-    /// Gate length (0...1) of one step for G.VAR. A groove template, picked
-    /// from the pattern itself, repeats every beat (so it locks to the
-    /// rhythm) with a variation on the bar's last beat, then reads the
-    /// pattern: notes before a rest ring out, accents get longer, octave
-    /// jumps up become short bleeps. Changes with NEW / VARY.
-    static func grooveGate(index: Int, count: Int, steps: UnsafePointer<Float>) -> Double {
+    /// G.VAR: length of the note on `index` in whole steps (1 = normal
+    /// GATE). Each step has a fixed random value from the pattern itself,
+    /// so turning G.VAR up only adds long notes (on the beat first) and
+    /// the rhythm stays the same until NEW / VARY. A long note never runs
+    /// past the end of the pattern.
+    static func holdSteps(index: Int, count: Int, amount: Double, steps: UnsafePointer<Float>) -> Int {
+        guard amount > 0, index < count, SeqStep(raw: Int(steps[index].rounded())) != nil else { return 1 }
         var h: UInt64 = 0xcbf2_9ce4_8422_2325
         for i in 0..<maxSteps {
             h = (h ^ UInt64(max(0, Int(steps[i].rounded())))) &* 0x100_0000_01b3
         }
-        h ^= h >> 31
-        let template = grooveTemplates[Int(h % UInt64(grooveTemplates.count))]
-        let inBeat = index % 4
-        let lastBeat = (index % 16) / 4 == 3 || index / 4 == (count - 1) / 4
-        var level = lastBeat && count > 4 ? template.end[inBeat] : template.main[inBeat]
+        h = (h ^ UInt64(index + 1)) &* 0x9e37_79b9_7f4a_7c15
+        h ^= h >> 29
+        let chance = Double(h & 0xFFFF) / 65536
+        let pick = Double((h >> 16) & 0xFFFF) / 65536
+        // Downbeats and 8ths take long notes more readily than off-16ths.
+        let weight = index % 4 == 0 ? 1.0 : (index % 2 == 0 ? 0.8 : 0.45)
+        guard chance < amount * 0.8 * weight else { return 1 }
+        let length = pick < 0.5 ? holdLengths.0 : (pick < 0.8 ? holdLengths.1 : holdLengths.2)
+        return max(1, min(length, count - index))
+    }
 
-        if let step = SeqStep(raw: Int(steps[index].rounded())) {
-            let next = SeqStep(raw: Int(steps[(index + 1) % count].rounded()))
-            if next == nil {
-                level = max(level, 3)                  // ring out fully before a rest
-            } else if let n = next, n.note - step.note >= 12 {
-                level = min(level, 1)                  // clipped before an octave leap
-            }
-            if step.accent { level = min(level + 1, 4) }
-            let prevIndex = (index + count - 1) % count
-            if let prev = SeqStep(raw: Int(steps[prevIndex].rounded())), step.note - prev.note >= 12 {
-                level = 0                              // the leap itself: a short bleep
-            }
+    /// For the step grid: which steps a G.VAR long note covers (they are
+    /// skipped while it sounds), following the pattern from step 1.
+    static func coveredSteps(count: Int, amount: Double, steps: UnsafePointer<Float>) -> [Bool] {
+        var covered = [Bool](repeating: false, count: maxSteps)
+        var i = 0
+        while i < count {
+            let isTie = SeqStep(raw: Int(steps[i].rounded()))?.tie ?? false
+            let hold = isTie ? 1 : holdSteps(index: i, count: count, amount: amount, steps: steps)
+            for k in 1..<max(hold, 1) where i + k < maxSteps { covered[i + k] = true }
+            i += max(hold, 1)
         }
-        return grooveLevels[level]
+        return covered
     }
 
     /// Stops the pattern; returns the note to release (-1: none).
     mutating func stop() -> Int {
         let key = soundingKey
         soundingKey = -1
-        grooveTie = false
+        holdUntilStep = .min
+        previousCovered = false
         lastStep = .min
         currentStep = -1
         return key
@@ -199,7 +200,8 @@ struct StepSequencer {
     /// Voices were released elsewhere: forget the sounding note.
     mutating func silence() {
         soundingKey = -1
-        grooveTie = false
+        holdUntilStep = .min
+        previousCovered = false
         lastStep = .min
     }
 }

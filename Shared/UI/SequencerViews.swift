@@ -81,6 +81,7 @@ private struct StepGrid: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1.0 / 20)) { _ in
             let playing = model.audioUnit.engine.sequencerStep
+            let held = longNotes()
             VStack(spacing: 4) {
                 ForEach(0..<2, id: \.self) { row in
                     HStack(spacing: 4) {
@@ -90,13 +91,35 @@ private struct StepGrid: View {
                                      length: model.model(.seqLength),
                                      model: model, index: i,
                                      editMode: editMode,
-                                     playing: playing == i)
+                                     playing: playing == i,
+                                     hold: held[i])
                         }
                     }
                 }
             }
         }
     }
+
+    /// G.VAR long notes: per step whether it starts one, is covered by one,
+    /// and whether the long note continues into the next step.
+    private func longNotes() -> [StepHold] {
+        let steps = model.sequencerSteps().map(Float.init)
+        let count = model.intValue(.seqLength) + 1
+        let amount = Double(model.value(.seqGateVar)) / 127
+        let covered = steps.withUnsafeBufferPointer {
+            StepSequencer.coveredSteps(count: count, amount: amount, steps: $0.baseAddress!)
+        }
+        return (0..<StepSequencer.maxSteps).map { i in
+            let next = i + 1 < covered.count && covered[i + 1]
+            return StepHold(covered: covered[i], continues: next)
+        }
+    }
+}
+
+struct StepHold {
+    var covered = false
+    /// The long note runs on into the next step.
+    var continues = false
 }
 
 private struct StepCell: View {
@@ -106,6 +129,7 @@ private struct StepCell: View {
     let index: Int
     let editMode: Int
     let playing: Bool
+    let hold: StepHold
 
     @State private var dragStartNote: Int?
 
@@ -131,7 +155,15 @@ private struct StepCell: View {
                     .opacity(0.6)
             }
             .foregroundColor(step == nil ? Theme.dimLabel : Theme.ink)
+            .opacity(hold.covered ? 0.35 : 1)        // skipped under a long note
             .frame(maxHeight: .infinity)
+        }
+        .overlay(alignment: .bottomLeading) {
+            // G.VAR long note: a bar from its first step over the held ones.
+            if hold.covered || hold.continues {
+                Rectangle().fill(Theme.blue)
+                    .frame(width: 38 + (hold.continues ? 4 : 0), height: 4)
+            }
         }
         .overlay(alignment: .trailing) {
             if step?.tie == true {
