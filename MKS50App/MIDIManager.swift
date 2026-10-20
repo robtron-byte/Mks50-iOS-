@@ -54,10 +54,16 @@ final class MIDIManager: ObservableObject {
     @Published private(set) var clockRunning = false
 
     // Clock tempo measurement (CoreMIDI thread only).
+    // Single ticks jitter by a millisecond or more (USB, Bluetooth, app
+    // timing), so the tempo is measured over the last 4 beats, smoothed,
+    // and only published when it really moves (hysteresis).
     private var lastTickTime: UInt64 = 0
-    private var tickIntervals = [Double](repeating: 0, count: 24)
+    private var tickTimes = [UInt64](repeating: 0, count: 97)   // 96 ticks = 4 beats
     private var tickIndex = 0
     private var tickCount = 0
+    private var smoothedTempo: Double = 0
+    /// Ticks in a row whose short-term tempo is far from the smoothed one.
+    private var tempoChangeTicks = 0
     private var lastPublishedTempo: Double = 0
     private static let ticksPerSecond: Double = {
         var info = mach_timebase_info_data_t()
@@ -202,33 +208,70 @@ final class MIDIManager: ObservableObject {
         }
     }
 
+    /// Tempo of the last `ticks` clock ticks (BPM), 0 if not enough ticks.
+    private func tempo(overTicks ticks: Int) -> Double {
+        let n = min(ticks, tickCount - 1)
+        guard n >= 1 else { return 0 }
+        let newest = tickTimes[(tickIndex + tickTimes.count - 1) % tickTimes.count]
+        let oldest = tickTimes[(tickIndex + tickTimes.count - 1 - n) % tickTimes.count]
+        guard newest > oldest else { return 0 }
+        let seconds = Double(newest - oldest) / MIDIManager.ticksPerSecond
+        return 60 * Double(n) / (24 * seconds)
+    }
+
+    private func measureTempo(tick now: UInt64) {
+        tickTimes[tickIndex] = now
+        tickIndex = (tickIndex + 1) % tickTimes.count
+        tickCount = min(tickCount + 1, tickTimes.count)
+
+        guard tickCount > 12 else { return }        // wait for half a beat
+        let long = tempo(overTicks: tickTimes.count - 1)
+        let short = tempo(overTicks: 12)            // half a beat
+        guard long > 20 && long < 400 else { return }
+
+        if smoothedTempo <= 0 {
+            smoothedTempo = long
+        } else if abs(short - smoothedTempo) / smoothedTempo > 0.04 {
+            // A real tempo change: after half a beat, follow it at once.
+            tempoChangeTicks += 1
+            if tempoChangeTicks >= 12 {
+                let keep = min(tickCount, 13)
+                tickCount = keep                    // forget the old tempo
+                smoothedTempo = tempo(overTicks: keep - 1)
+                tempoChangeTicks = 0
+            }
+        } else {
+            tempoChangeTicks = 0
+            smoothedTempo += 0.08 * (long - smoothedTempo)
+        }
+
+        // Most clocks run at whole BPM values: snap to them, else 0.1 BPM,
+        // and only move the shown tempo when it changes clearly.
+        let nearest = smoothedTempo.rounded()
+        let shown = abs(smoothedTempo - nearest) < 0.12 ? nearest : (smoothedTempo * 10).rounded() / 10
+        guard lastPublishedTempo == 0 || abs(smoothedTempo - lastPublishedTempo) > 0.08,
+              shown != lastPublishedTempo else { return }
+        lastPublishedTempo = shown
+        onClockTempo?(shown)
+        DispatchQueue.main.async { [weak self] in self?.clockTempo = shown }
+    }
+
     private func handleSystem(_ status: UInt8, _ d1: UInt8, _ d2: UInt8, time: MIDITimeStamp) {
         switch status {
         case 0xF8:
             let now = time != 0 ? time : mach_absolute_time()
-            if lastTickTime != 0 && now > lastTickTime {
-                let interval = Double(now - lastTickTime) / MIDIManager.ticksPerSecond
-                if interval < 0.25 {        // ignore gaps (clock restarted)
-                    tickIntervals[tickIndex] = interval
-                    tickIndex = (tickIndex + 1) % tickIntervals.count
-                    tickCount = min(tickCount + 1, tickIntervals.count)
-                    let average = tickIntervals.prefix(tickCount).reduce(0, +) / Double(tickCount)
-                    let bpm = 60 / (average * 24)
-                    if bpm > 20 && bpm < 400 {
-                        onClockTempo?(bpm)
-                        if abs(bpm - lastPublishedTempo) > 0.05 {
-                            lastPublishedTempo = bpm
-                            DispatchQueue.main.async { [weak self] in self?.clockTempo = bpm }
-                        }
-                    }
-                }
+            if lastTickTime != 0 && (now <= lastTickTime
+                || Double(now - lastTickTime) / MIDIManager.ticksPerSecond > 0.25) {
+                tickCount = 0               // gap: clock restarted
             }
             lastTickTime = now
+            measureTempo(tick: now)
         case 0xFA, 0xFB:
             DispatchQueue.main.async { [weak self] in self?.clockRunning = true }
         case 0xFC:
             lastTickTime = 0
             tickCount = 0
+            tempoChangeTicks = 0
             DispatchQueue.main.async { [weak self] in self?.clockRunning = false }
         case 0xF2:
             break
