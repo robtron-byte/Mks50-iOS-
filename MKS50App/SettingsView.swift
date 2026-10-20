@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage(AudioHost.backgroundAudioKey) private var backgroundAudio = true
     @AppStorage(AudioHost.clockSyncKey) private var clockSync = false
     @AppStorage(AudioHost.sleepMinutesKey) private var sleepMinutes = 10
+    @AppStorage(AudioHost.bufferFramesKey) private var bufferFrames = 256
 
     private func endpointRow(_ endpoint: MIDIManager.Endpoint, toggle: @escaping (Bool) -> Void) -> some View {
         Button { toggle(!endpoint.enabled) } label: {
@@ -110,6 +111,29 @@ struct SettingsView: View {
                     Text("Recordings")
                 } footer: {
                     Text("Loop recordings are saved as WAV files. Choose any folder from the Files app, e.g. in iCloud Drive, on a USB drive or in another app's folder. If the folder is not available when saving, the loop goes to the default folder (Files › On My iPhone › MKS50 › Recordings).")
+                }
+
+                Section {
+                    Picker("Audio Buffer", selection: $bufferFrames) {
+                        ForEach(AudioHost.bufferOptions, id: \.self) { f in
+                            Text("\(f) samples").tag(f)
+                        }
+                    }
+                    .onChangeCompat(of: bufferFrames) { _ in AudioHost.applyBufferSize() }
+                    TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                        let status = AudioHost.bufferStatus
+                        let load = model.audioUnit.engine.cpuLoad
+                        LabeledContent("Now") {
+                            Text(String(format: "%d samples · %.1f ms · DSP %d %%",
+                                        status.frames, status.milliseconds, Int((load * 100).rounded())))
+                                .monospacedDigit()
+                                .foregroundColor(load > 0.7 ? .orange : .secondary)
+                        }
+                    }
+                } header: {
+                    Text("Performance")
+                } footer: {
+                    Text("Smaller buffers play with less delay, larger ones leave more headroom: if you hear crackles, choose 512. Above 70 % DSP load the synth fades out released notes early instead of crackling.")
                 }
 
                 Section("MIDI CC Assignments") {

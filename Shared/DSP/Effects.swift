@@ -19,6 +19,12 @@ final class StereoDelay {
     private var highCoef: Float = 0.02
     private var mixSmoothed: Float = 0
     private var isClear = true
+    /// Clearing the 2 MB of buffers at once would cost a whole audio block
+    /// (a click when the delay is switched off while playing): it is done
+    /// in slices over the following blocks instead.
+    private var clearing = false
+    private var clearPos = 0
+    private static let clearSlice = 16_384
     // Movement: wow (slow), flutter (fast), drift (smoothed noise).
     private var wowPhase: Float = 0
     private var flutterPhase: Float = 0.37
@@ -44,15 +50,31 @@ final class StereoDelay {
         self.sampleRate = sampleRate
         highCoef = 1 - expf(-2 * Float.pi * 60 / sampleRate)
         reset()
+        continueClear(limit: size)              // not real-time: all at once
     }
 
+    /// Silences the delay; the buffers are cleared over the next blocks.
     func reset() {
-        guard !isClear else { return }
-        bufferL.update(repeating: 0, count: size)
-        bufferR.update(repeating: 0, count: size)
         lowL = 0; lowR = 0; highL = 0; highR = 0
         mixSmoothed = 0
-        isClear = true
+        guard !isClear, !clearing else { return }
+        clearing = true
+        clearPos = 0
+    }
+
+    /// Idle blocks (engine not rendering): keep clearing.
+    func tidy() { if clearing { continueClear(limit: StereoDelay.clearSlice) } }
+
+    private func continueClear(limit: Int) {
+        guard clearing else { return }
+        let n = min(limit, size - clearPos)
+        (bufferL + clearPos).update(repeating: 0, count: n)
+        (bufferR + clearPos).update(repeating: 0, count: n)
+        clearPos += n
+        if clearPos >= size {
+            clearing = false
+            isClear = true
+        }
     }
 
     /// 4-point Hermite interpolation: clean at very short times and while
@@ -90,8 +112,13 @@ final class StereoDelay {
         // never reappear when the delay is switched on again.
         if mix < 0.0005 && mixSmoothed < 0.0005 {
             reset()
+            tidy()
             return
         }
+        // Switched on again before the slices were done: stop clearing (a
+        // full clear here would cost the block). What is left is either
+        // near-silent (idle reset) or a moment-old echo, never a click.
+        clearing = false
         isClear = false
 
         // Upper bound leaves room for the right channel's +1.2 % and the
@@ -209,6 +236,9 @@ final class Reverb {
     private var erTapsR = SIMD8<Int>(repeating: 1)
     private var erGainVector = SIMD8<Float>(repeating: 0)
     private var isClear = true
+    /// The 1 MB of delay lines are cleared in slices (see StereoDelay).
+    private var clearing = false
+    private var clearPos = 0
 
     init() {
         lines = .allocate(capacity: Reverb.lineCount * Reverb.lineCapacity)
@@ -237,16 +267,33 @@ final class Reverb {
         for i in 0..<Reverb.lineCount { lfoIncrements[i] = rates[i] / sampleRate }
         isClear = false
         reset()
+        continueClear(limit: Reverb.lineCount * Reverb.lineCapacity)   // not real-time
     }
 
+    /// Silences the reverb; the delay lines are cleared over the next blocks.
     func reset() {
-        guard !isClear else { return }
-        lines.update(repeating: 0, count: Reverb.lineCount * Reverb.lineCapacity)
-        diffusers.update(repeating: 0, count: 4 * Reverb.diffuserCapacity)
-        preDelay.update(repeating: 0, count: Reverb.preDelayCapacity)
         damping = SIMD8<Float>(repeating: 0)
         mixSmoothed = 0
-        isClear = true
+        guard !isClear, !clearing else { return }
+        diffusers.update(repeating: 0, count: 4 * Reverb.diffuserCapacity)
+        preDelay.update(repeating: 0, count: Reverb.preDelayCapacity)
+        clearing = true
+        clearPos = 0
+    }
+
+    /// Idle blocks (engine not rendering): keep clearing.
+    func tidy() { if clearing { continueClear(limit: 16_384) } }
+
+    private func continueClear(limit: Int) {
+        guard clearing else { return }
+        let total = Reverb.lineCount * Reverb.lineCapacity
+        let n = min(limit, total - clearPos)
+        (lines + clearPos).update(repeating: 0, count: n)
+        clearPos += n
+        if clearPos >= total {
+            clearing = false
+            isClear = true
+        }
     }
 
     /// - Parameters:
@@ -262,8 +309,10 @@ final class Reverb {
                  mix: Float, size: Float, decay: Float, damp: Float, modulation: Float, type: Int = 0) {
         if mix < 0.0005 && mixSmoothed < 0.0005 {
             reset()
+            tidy()
             return
         }
+        clearing = false                        // see StereoDelay
         isClear = false
 
         let sr = sampleRate

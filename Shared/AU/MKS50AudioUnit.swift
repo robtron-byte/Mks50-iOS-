@@ -263,6 +263,7 @@ final class MKS50AudioUnit: AUAudioUnit {
         let context = self.hostContext
 
         return { actionFlags, timestamp, frameCount, _, outputData, realtimeEventListHead, _ in
+            let startTicks = mach_absolute_time()
             let abl = UnsafeMutableAudioBufferListPointer(outputData)
             guard abl.count > 0 else { return kAudioUnitErr_FormatNotSupported }
             guard Int(frameCount) <= buffers.capacity else { return kAudioUnitErr_TooManyFramesToProcess }
@@ -312,6 +313,7 @@ final class MKS50AudioUnit: AUAudioUnit {
                 // Lets hosts skip downstream processing while the synth is idle.
                 actionFlags.pointee.insert(.unitRenderAction_OutputIsSilence)
             }
+            engine.reportRenderTime(ticks: mach_absolute_time() &- startTicks, frames: Int(frameCount))
             return noErr
         }
     }

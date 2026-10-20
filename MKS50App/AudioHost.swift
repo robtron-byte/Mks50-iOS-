@@ -31,7 +31,7 @@ final class AudioHost: ObservableObject {
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-            try session.setPreferredIOBufferDuration(0.005)
+            try session.setPreferredIOBufferDuration(AudioHost.preferredBufferDuration(session))
             try session.setActive(true)
         } catch {
             let message = "Audio session: \(error.localizedDescription)"
@@ -118,6 +118,30 @@ final class AudioHost: ObservableObject {
     }
 
     static let backgroundAudioKey = "backgroundAudio"
+    /// Audio buffer in frames: smaller = less latency, larger = more
+    /// headroom against crackles when the device is busy.
+    static let bufferFramesKey = "audioBufferFrames"
+    static let bufferOptions = [128, 256, 512, 1024]
+
+    static func preferredBufferDuration(_ session: AVAudioSession) -> TimeInterval {
+        let frames = UserDefaults.standard.object(forKey: bufferFramesKey) as? Int ?? 256
+        let rate = session.sampleRate > 0 ? session.sampleRate : 48000
+        return Double(frames) / rate
+    }
+
+    /// Applies a new buffer size (from Settings).
+    static func applyBufferSize() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let session = AVAudioSession.sharedInstance()
+            try? session.setPreferredIOBufferDuration(AudioHost.preferredBufferDuration(session))
+        }
+    }
+
+    /// Buffer iOS actually granted: frames and milliseconds.
+    static var bufferStatus: (frames: Int, milliseconds: Double) {
+        let session = AVAudioSession.sharedInstance()
+        return (Int((session.ioBufferDuration * session.sampleRate).rounded()), session.ioBufferDuration * 1000)
+    }
     /// Minutes of silence in the background before the app goes to sleep
     /// (0 = never).
     static let sleepMinutesKey = "sleepAfterMinutes"

@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// SEQ page: sequencer settings, the random pattern generator and the
@@ -73,29 +74,48 @@ struct SequencerPage: View {
     }
 }
 
-/// 2 × 8 step buttons with a running playhead.
+/// 2 × 8 step buttons with a running playhead. The buttons only redraw
+/// when a step, the length or G.VAR changes; the playhead is a separate
+/// layer, so the 20 Hz update is cheap while the sequencer runs.
 private struct StepGrid: View {
     let model: SynthViewModel
     let editMode: Int
+    @StateObject private var watcher = StepPatternWatcher()
+
+    private static let cell = CGSize(width: 38, height: 44)
+    private static let gap: CGFloat = 4
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1.0 / 20)) { _ in
-            let playing = model.audioUnit.engine.sequencerStep
-            let held = longNotes()
-            VStack(spacing: 4) {
-                ForEach(0..<2, id: \.self) { row in
-                    HStack(spacing: 4) {
-                        ForEach(0..<8, id: \.self) { col in
-                            let i = row * 8 + col
-                            StepCell(param: model.model(Param.seqStep(i)),
-                                     length: model.model(.seqLength),
-                                     model: model, index: i,
-                                     editMode: editMode,
-                                     playing: playing == i,
-                                     hold: held[i])
-                        }
+        _ = watcher.revision                     // redraw when the pattern changes
+        let held = longNotes()
+        return VStack(spacing: StepGrid.gap) {
+            ForEach(0..<2, id: \.self) { row in
+                HStack(spacing: StepGrid.gap) {
+                    ForEach(0..<8, id: \.self) { col in
+                        let i = row * 8 + col
+                        StepCell(param: model.model(Param.seqStep(i)),
+                                 length: model.model(.seqLength),
+                                 model: model, index: i,
+                                 editMode: editMode,
+                                 hold: held[i])
                     }
                 }
+            }
+        }
+        .overlay(alignment: .topLeading) { playhead.allowsHitTesting(false) }
+        .onAppear { watcher.watch(model) }
+    }
+
+    /// Green frame on the playing step.
+    private var playhead: some View {
+        TimelineView(.periodic(from: .now, by: 1.0 / 20)) { _ in
+            let step = model.audioUnit.engine.sequencerStep
+            if step >= 0 && step < StepSequencer.maxSteps {
+                RoundedRectangle(cornerRadius: Theme.corner)
+                    .stroke(Theme.green, lineWidth: 2)
+                    .frame(width: StepGrid.cell.width, height: StepGrid.cell.height)
+                    .offset(x: CGFloat(step % 8) * (StepGrid.cell.width + StepGrid.gap),
+                            y: CGFloat(step / 8) * (StepGrid.cell.height + StepGrid.gap))
             }
         }
     }
@@ -128,7 +148,6 @@ private struct StepCell: View {
     let model: SynthViewModel
     let index: Int
     let editMode: Int
-    let playing: Bool
     let hold: StepHold
 
     @State private var dragStartNote: Int?
@@ -170,10 +189,6 @@ private struct StepCell: View {
                 Rectangle().fill(Theme.blue).frame(width: 4).offset(x: 4)
             }
         }
-        .overlay {
-            RoundedRectangle(cornerRadius: Theme.corner)
-                .stroke(playing ? Theme.green : .clear, lineWidth: 2)
-        }
         .frame(width: 38, height: 44)
         .opacity(inRange ? 1 : 0.35)
         .overlay {
@@ -208,6 +223,24 @@ private struct StepCell: View {
             model.set(p, Float(s.raw))
         default:
             model.toggleStep(index)
+        }
+    }
+}
+
+/// Bumps `revision` when any step, the length or G.VAR changes, so the
+/// grid recomputes its long notes (they depend on the whole pattern).
+private final class StepPatternWatcher: ObservableObject {
+    @Published private(set) var revision = 0
+    private var observers: [AnyCancellable] = []
+
+    func watch(_ model: SynthViewModel) {
+        guard observers.isEmpty else { return }
+        var params = (0..<StepSequencer.maxSteps).map { Param.seqStep($0) }
+        params += [.seqLength, .seqGateVar]
+        observers = params.map { p in
+            model.model(p).objectWillChange.sink { [weak self] _ in
+                DispatchQueue.main.async { self?.revision &+= 1 }
+            }
         }
     }
 }

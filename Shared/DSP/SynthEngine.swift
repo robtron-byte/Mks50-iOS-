@@ -18,6 +18,9 @@ struct Voice {
     var targetPitch: Float = 60
     var lfoFade: Float = 1
     var gateAmp: Float = 0
+    /// Overload protection: a released voice fading out quickly (1 → 0).
+    var shedding = false
+    var shed: Float = 1
 
     /// Unison position -1...1 (0 = centre / not in unison).
     var unisonSpread: Float = 0
@@ -380,6 +383,7 @@ final class SynthEngine {
 
     func prepare(sampleRate: Double, maximumFrames: Int) {
         HardwareCurves.warmUp()
+        _ = SynthEngine.secondsPerTick          // initialise off the audio thread
         self.sampleRate = Float(sampleRate)
         if maximumFrames > bufferCapacity {
             mixLeft.deallocate()
@@ -741,6 +745,8 @@ final class SynthEngine {
         voices[i].velocity = velocity
         voices[i].gate = true
         voices[i].sustained = false
+        voices[i].shedding = false
+        voices[i].shed = 1
         voices[i].age = noteCounter
         voices[i].targetPitch = Float(note)
         voices[i].pitch = portamentoOn ? lastPitch : Float(note)
@@ -1301,6 +1307,9 @@ final class SynthEngine {
         let sweepActive = hpfSweepActive
         let sweepC = hpfSweepCoefficients
 
+        let shedding = voices[i].shedding
+        let shedStep: Float = shedding ? 1 / (0.01 * sr) : 0   // 10 ms fade
+        var shed = voices[i].shed
         for k in 0..<n {
             let e = voices[i].env.next(es)
             voices[i].gateAmp += (gateTarget - voices[i].gateAmp) * gateCoef
@@ -1309,12 +1318,19 @@ final class SynthEngine {
             if sweepActive { s = voices[i].hpfSweep.process(s, sweepC) }
             s = voices[i].filter.process(s)
             s *= gateMode ? voices[i].gateAmp : e
+            if shedding {
+                shed = max(0, shed - shedStep)
+                s *= shed
+            }
             left[k] += s * gainL
             right[k] += s * gainR
         }
+        voices[i].shed = shed
 
         // Voice finished?
-        if gateMode {
+        if shedding && shed <= 0 {
+            voices[i].active = false
+        } else if gateMode {
             if !voices[i].gate && voices[i].gateAmp < 0.0001 { voices[i].active = false }
         } else if voices[i].env.isIdle {
             voices[i].active = false
@@ -1330,6 +1346,28 @@ final class SynthEngine {
 
     /// Frames rendered since the last voice went idle.
     private var idleFrames = 0
+
+    // MARK: DSP load
+
+    /// Share of the audio deadline used by rendering (0 ... 1+), smoothed:
+    /// rises at once, falls slowly. Racy read for the UI.
+    private(set) var cpuLoad: Double = 0
+    /// Load above 70 %: released voices are faded out quickly.
+    private var overloaded = false
+    private static let secondsPerTick: Double = {
+        var info = mach_timebase_info_data_t()
+        mach_timebase_info(&info)
+        return Double(info.numer) / Double(info.denom) / 1e9
+    }()
+
+    /// Called by the render block with the time one cycle took.
+    func reportRenderTime(ticks: UInt64, frames: Int) {
+        guard frames > 0 else { return }
+        let budget = Double(frames) / Double(sampleRate)
+        let load = Double(ticks) * SynthEngine.secondsPerTick / budget
+        cpuLoad += (load - cpuLoad) * (load > cpuLoad ? 0.6 : 0.02)
+        overloaded = cpuLoad > 0.7
+    }
     /// True while the engine renders pure silence (nothing sounding, no
     /// arp / sequencer / loops running). Racy read for the app's sleep timer.
     private(set) var silent = false
@@ -1375,6 +1413,9 @@ final class SynthEngine {
         if !anyActive && idleFrames >= tailFrames && arp.isEmpty && collectorOn == arpWasOn && !loops.active {
             left.update(repeating: 0, count: frames)
             right.update(repeating: 0, count: frames)
+            // Clear the effect buffers in slices while idle.
+            delay.tidy()
+            reverb.tidy()
             silent = true
             return true
         }
@@ -1420,6 +1461,13 @@ final class SynthEngine {
             let n = min(SynthEngine.controlInterval, frames - pos)
             arpTick(beat: renderStartBeat + Double(renderFrameOffset) * renderBeatsPerFrame)
             updateGlobalControl(frames: n)
+            if overloaded {
+                // Over budget: fade out the voices that are only releasing,
+                // before the output starts to crackle.
+                for i in 0..<SynthEngine.maxVoices where voices[i].active && !voices[i].gate && !voices[i].shedding {
+                    voices[i].shedding = true
+                }
+            }
             for i in 0..<SynthEngine.maxVoices where voices[i].active {
                 renderVoice(i, left: mixL + pos, right: mixR + pos, frames: n)
             }
