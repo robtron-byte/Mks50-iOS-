@@ -61,7 +61,7 @@ Abgeglichen mit dem MB87123-Bit-Modell, der PG-300/MKS-50-SysEx-Tabelle und den 
 - **PWM:** PW-Wert 0–127 wird wie im Chip mit den unteren 7 Zählerbits verglichen; eigener PW-LFO (Dreieck, 0,02–20 Hz nach Tabelle), PWM RATE 0 = manuelle Breite.
 - **Pegel:** Sub-Level in 6-dB-Stufen (0 / −12 / −6 / 0 dB), Noise in drei Stufen (Annahme).
 - **HPF:** 0 = Bassanhebung (Shelf, etwa +3 dB bei 70 Hz), 1 = flach, 2/3 = 1-Pol-Hochpass (6 dB/Okt.) bei etwa 225 / 700 Hz, wie Juno-106.
-- **VCF:** 24 dB/Okt., Cutoff 100 Hz · 2^(Wert/12 − 3,2) (etwa 11 Hz–16 kHz, eine Oktave pro 12 Schritte), Env-, LFO- und Key-Follow-Tiefe auf derselben Skala. Wie beim Original **keine Selbstoszillation**: Die Resonanz klingelt stark, und der Bass wird mit steigender Resonanz dünner.
+- **VCF:** 24 dB/Okt., Cutoff 100 Hz · 2^(Wert/12 − 3,2) (etwa 11 Hz–16 kHz, eine Oktave pro 12 Schritte), Env-, LFO- und Key-Follow-Tiefe auf derselben Skala. Wie beim Original **keine Selbstoszillation**: Die Resonanz klingelt stark, und der Bass wird mit steigender Resonanz etwas dünner (höchstens etwa 4 dB, eine reine Ladder-Schaltung verliert bis zu 10 dB). Die Eingangssättigung hat genug Headroom, sodass auch eine volle DCO-Mischung aus Säge, Puls und Sub unverzerrt und druckvoll durchkommt.
 - **Hüllkurve:** T1/T2 = 0,354 s · 2^((Wert − 64)/10) (4 ms … 27 s), T3 (0,09 … 38 s) und T4 (7 ms … 39 s) nach gemessenen Tabellen; Attack linear, die übrigen Segmente exponentiell.
 - **LFO:** Dreieck, Rate etwa 0,02–65 Hz nach Tabelle, Delay exp(Wert/14,2 − 3)/10 s; DCO-LFO-Tiefe bis etwa ±3,3 Halbtöne.
 - **VCA:** GATE-Modus mit sehr schnellem Einsatz und kurzem Declick-Release.

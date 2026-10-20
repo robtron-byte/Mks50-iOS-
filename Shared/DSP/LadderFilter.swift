@@ -36,10 +36,14 @@ struct LadderFilter {
 
         // Contributions of the stage states to the output (S_i = s_i / (1 + g)).
         let sigma = (G3 * s1 + G2 * s2 + G * s3 + s4) * inv
-        // Only partial passband makeup: the bass drops with resonance.
-        let x = input * (1 + 0.15 * k) + 1e-20
+        // Partial passband makeup: the bass still thins with resonance like
+        // the original, but by about 3-4 dB instead of the plain ladder's
+        // 10 dB (1 / (1 + k)), which left basses without punch.
+        let x = input * (1 + 0.55 * k) + 1e-20
         let y4Estimate = (G4 * x + sigma) / (1 + k * G4)
-        let u = softClip(x - k * y4Estimate)
+        // Saturation with 2x headroom: a full DCO mix (saw + pulse + sub)
+        // passes nearly clean instead of being flattened at the peaks.
+        let u = 2 * softClip(0.5 * (x - k * y4Estimate))
 
         var v = (u - s1) * G
         let y1 = v + s1
