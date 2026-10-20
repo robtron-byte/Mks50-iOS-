@@ -227,7 +227,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .portaSwitch:
             return 2
         case .chordIndex:
-            return 15
+            return ChordMemory.slots - 1
         case .midiChannel:
             return 16
         case .keyShift:

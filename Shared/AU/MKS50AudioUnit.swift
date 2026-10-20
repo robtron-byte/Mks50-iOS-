@@ -375,6 +375,10 @@ final class MKS50AudioUnit: AUAudioUnit {
         }
         if let chords = tone.chords {
             for (i, chord) in chords.enumerated() { engine.setChord(i, chord) }
+        } else if includePatch {
+            // Factory sounds carry no chords: back to the default set, so
+            // chords learned in a user sound do not leak into them.
+            for (i, chord) in ChordMemory.defaultChords.enumerated() { engine.setChord(i, chord) }
         }
         toneName = tone.name
     }

@@ -129,22 +129,64 @@ struct LiveEnvelopeGraph: View {
     }
 }
 
-/// Chord memory readout + learn button.
-struct ChordReadout: View {
+/// Chord memory as 2 × 4 buttons. A tap selects the chord (and switches
+/// to CHORD mode), the held chord follows at once. Below: the notes of the
+/// selected chord and LEARN; holding a button resets it to its default.
+struct ChordPad: View {
     @ObservedObject var chordIndex: ParamModel
+    @ObservedObject var keyMode: ParamModel
     @ObservedObject var model: SynthViewModel
 
+    private var selected: Int { Int(chordIndex.value.rounded()) }
+    private var chordMode: Bool { Int(keyMode.value.rounded()) == 1 }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(model.chordDescription(Int(chordIndex.value.rounded())))
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                .foregroundColor(Theme.displayText)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 4).fill(Theme.display))
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.hairline, lineWidth: 1))
-            BigButton(title: "LEARN CHORD", icon: "music.note.list") { model.learnChord() }
+        VStack(alignment: .leading, spacing: 6) {
+            Text("CHORD")
+                .font(Theme.pixel(9, .bold))
+                .foregroundColor(Theme.dimLabel)
+            ForEach(0..<2, id: \.self) { row in
+                HStack(spacing: 4) {
+                    ForEach(0..<4, id: \.self) { col in
+                        button(row * 4 + col)
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                Text(model.chordDescription(selected))
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundColor(Theme.displayText)
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Theme.display))
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.hairline, lineWidth: 1))
+                BigButton(title: "LEARN", icon: "music.note.list") { model.learnChord() }
+            }
         }
+    }
+
+    private func button(_ i: Int) -> some View {
+        let lit = chordMode && selected == i
+        return Button { model.selectChord(i) } label: {
+            Text(model.chordName(i))
+                .font(Theme.pixel(11, .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .foregroundColor(lit ? Theme.ink : (selected == i ? Theme.readout : Theme.label))
+                .frame(width: 58, height: 36)
+                .background(RoundedRectangle(cornerRadius: Theme.corner)
+                    .fill(lit ? Theme.blue : Theme.cell))
+                .overlay(RoundedRectangle(cornerRadius: Theme.corner)
+                    .stroke(lit ? .clear : (selected == i ? Theme.blue : Theme.hairline), lineWidth: 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .contextMenu {
+            Button("Reset to \(ChordMemory.defaultNames[i])") { model.resetChord(i) }
+        }
+        .accessibilityLabel("Chord \(model.chordName(i))")
+        .accessibilityAddTraits(lit ? .isSelected : [])
     }
 }
 
@@ -525,10 +567,7 @@ struct SynthPanelView: View {
             group("KEY", "pianokeys") {
                 stack {
                     selector(.keyMode)
-                    HStack(alignment: .top, spacing: 14) {
-                        knob(.chordIndex, "CHORD")
-                        ChordReadout(chordIndex: model.model(.chordIndex), model: model)
-                    }
+                    ChordPad(chordIndex: model.model(.chordIndex), keyMode: model.model(.keyMode), model: model)
                 }
             }
             group("PERFORM", "hand.point.up.left.fill") {

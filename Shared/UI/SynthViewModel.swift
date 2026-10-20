@@ -247,6 +247,23 @@ final class SynthViewModel: ObservableObject {
         ChordMemory.describe(audioUnit.engine.chord(slot))
     }
 
+    func chordName(_ slot: Int) -> String {
+        ChordMemory.name(audioUnit.engine.chord(slot))
+    }
+
+    /// Chord button: select the chord and switch to CHORD mode (a held
+    /// chord is retuned at once by the engine).
+    func selectChord(_ slot: Int) {
+        set(.chordIndex, Float(slot))
+        if intValue(.keyMode) != 1 { set(.keyMode, 1) }
+    }
+
+    func resetChord(_ slot: Int) {
+        guard ChordMemory.defaultChords.indices.contains(slot) else { return }
+        audioUnit.engine.setChord(slot, ChordMemory.defaultChords[slot])
+        objectWillChange.send()
+    }
+
     // MARK: Step sequencer
 
     func sequencerSteps() -> [Int] {

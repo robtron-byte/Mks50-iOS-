@@ -583,7 +583,8 @@ final class SynthEngine {
             return
         }
         let size = groupSize(slot, false)
-        var signature = slot &* 131 &+ size
+        // KEY SHIFT is part of it: transposing retunes a held chord at once.
+        var signature = (slot &* 131 &+ size) &* 61 &+ keyShift
         for j in 0..<size { signature = signature &* 31 &+ groupOffset(slot, j) }
         guard signature != lastChordSignature else { return }
         let first = lastChordSignature == -1

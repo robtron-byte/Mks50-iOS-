@@ -436,7 +436,7 @@ enum FactoryPresets {
              [0, 0, 0,  3, 1, 0,  1, 0, 0,  2, 1,
               0, 0, 0, 56, 36,  62, 14, 0, 30, 40, 0,  108, 0,  64, 0,
               30, 127, 60, 110, 60, 100, 60, 0,  44, 2],
-             keyMode: 1, chord: 8,
+             keyMode: 1, chord: 1,
              extra: [.pulseDetune: 65, .reverbMix: 45, .delayMix: 20, .delayDivision: 6]),
 
         make(.stringsBrass, "SLOW STR",
