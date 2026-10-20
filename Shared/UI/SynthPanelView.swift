@@ -6,15 +6,31 @@ enum PanelPage: String, CaseIterable, Identifiable {
     case osc = "OSC"
     case mod = "MOD"
     case filter = "FILTER"
-    case env = "ENV"
-    case amp = "AMP"
+    case env = "ENV"            // envelope + VCA
     case fx = "FX"
-    case arp = "ARP"
-    case seq = "SEQ"
+    case seq = "SEQ"            // arpeggiator + sequencer
     case patch = "PATCH"
     case extra = "EXTRA"
 
     var id: String { rawValue }
+
+    /// Tab label.
+    var title: String {
+        switch self {
+        case .env: return "ENV/VCA"
+        case .seq: return "ARP/SEQ"
+        default: return rawValue
+        }
+    }
+
+    /// Stored page; the former AMP and ARP pages live on ENV and SEQ now.
+    init(stored: String) {
+        switch stored {
+        case "AMP": self = .env
+        case "ARP": self = .seq
+        default: self = PanelPage(rawValue: stored) ?? .osc
+        }
+    }
 
     var icon: String {
         switch self {
@@ -22,9 +38,7 @@ enum PanelPage: String, CaseIterable, Identifiable {
         case .mod: return "waveform.path.ecg"
         case .filter: return "line.3.horizontal.decrease"
         case .env: return "chart.xyaxis.line"
-        case .amp: return "speaker.wave.2.fill"
         case .fx: return "sparkles"
-        case .arp: return "arrow.up.arrow.down"
         case .seq: return "square.grid.4x3.fill"
         case .patch: return "pianokeys"
         case .extra: return "plus.square.on.square"
@@ -229,7 +243,7 @@ struct SynthPanelView: View {
     @State private var width: CGFloat = 390
     private let encoders = EncoderCounter()
 
-    private var page: PanelPage { PanelPage(rawValue: pageRaw) ?? .osc }
+    private var page: PanelPage { PanelPage(stored: pageRaw) }
 
     /// Knobs grow with the screen: 40 pt on small phones, ~50 pt on Pro Max
     /// widths, capped on iPad / landscape.
@@ -260,8 +274,8 @@ struct SynthPanelView: View {
 
     @ViewBuilder private var pageTabs: some View {
         if PortraitReader.isPortrait(hSize, vSize) {
-            // Two rows of five on an upright iPhone.
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4) {
+            // Two rows of four on an upright iPhone.
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 4) {
                 tabButtons
             }
             .padding(.horizontal, 10)
@@ -281,7 +295,7 @@ struct SynthPanelView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: p.icon).font(.system(size: 11, weight: .semibold))
-                        Text(p.rawValue.lowercased())
+                        Text(p.title.lowercased())
                             .font(Theme.pixel(11, .bold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
@@ -293,7 +307,7 @@ struct SynthPanelView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PressableButtonStyle())
-                .accessibilityLabel(p.rawValue)
+                .accessibilityLabel(p.title)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
     }
@@ -311,10 +325,8 @@ struct SynthPanelView: View {
         case .mod: modPage
         case .filter: filterPage
         case .env: envPage
-        case .amp: ampPage
         case .fx: fxPage
-        case .arp: arpPage
-        case .seq: SequencerPage(model: model)
+        case .seq: seqPage
         case .patch: patchPage
         case .extra: extraPage
         }
@@ -441,7 +453,15 @@ struct SynthPanelView: View {
         }
     }
 
+    /// Envelope with the VCA next to it (or below on narrow screens).
     private var envPage: some View {
+        row {
+            envelopeSection
+            ampSection
+        }
+    }
+
+    private var envelopeSection: some View {
         group("ENVELOPE", "chart.xyaxis.line") {
             let graph = stack {
                 LiveEnvelopeGraph(model: model)
@@ -472,7 +492,7 @@ struct SynthPanelView: View {
         }
     }
 
-    private var ampPage: some View {
+    private var ampSection: some View {
         group("VCA", "speaker.wave.2.fill") {
             stack {
                 knobs {
@@ -547,17 +567,30 @@ struct SynthPanelView: View {
         }
     }
 
-    private var arpPage: some View {
+    /// Arpeggiator on top, sequencer (settings, steps, bank) below.
+    private var seqPage: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            arpSection
+            SequencerPage(model: model)
+        }
+    }
+
+    private var arpSection: some View {
         group("ARP", "arrow.up.arrow.down") {
-            stack {
-                knobs {
-                    selector(.arpOn, "ARP")
-                    knob(.arpRate)
-                    knob(.arpGate)
-                    selector(.arpHold)
-                }
+            let controls = knobs {
+                selector(.arpOn, "ARP")
+                knob(.arpRate)
+                knob(.arpGate)
+                selector(.arpHold)
+            }
+            let modes = VStack(alignment: .leading, spacing: 8) {
                 selector(.arpMode, inline: true)
                 selector(.arpOctaves, inline: true)
+            }
+            // One line when it fits, else modes below the knobs.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 18) { controls; modes }
+                VStack(alignment: .leading, spacing: 12) { controls; modes }
             }
         }
     }
