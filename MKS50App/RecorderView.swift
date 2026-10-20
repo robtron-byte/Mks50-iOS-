@@ -70,7 +70,7 @@ struct RecorderStrip: View {
                 Text(statusText.lowercased())
                     .font(Theme.pixel(12, .bold))
                     .lineLimit(1)
-                    // Fixed width so "100 %" does not shift the row while recording.
+                    // Fixed width so "8/8" or "tail" does not shift the row while recording.
                     .frame(width: 44, alignment: .leading)
             }
             .foregroundColor(recorder.phase == .idle ? Theme.label : .white)
@@ -83,7 +83,7 @@ struct RecorderStrip: View {
                             .fill(recorder.phase == .idle ? Theme.cell : Theme.accent.opacity(0.45))
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(Theme.hairline, lineWidth: 1)
-                        if recorder.phase == .recording {
+                        if recorder.phase == .recording || recorder.phase == .tail {
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(Theme.accent)
                                 .frame(width: geo.size.width * CGFloat(recorder.progress))
@@ -101,7 +101,8 @@ struct RecorderStrip: View {
         switch recorder.phase {
         case .idle: return "REC"
         case .armed: return recorder.startOnNote ? "PLAY…" : "WAIT…"
-        case .recording: return "\(Int(recorder.progress * 100)) %"
+        case .recording: return "\(recorder.currentBar)/\(recorder.recordingBars)"
+        case .tail: return "TAIL"
         case .saving: return "SAVE…"
         }
     }

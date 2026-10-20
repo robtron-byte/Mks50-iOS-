@@ -6,6 +6,8 @@ import os
 /// The main thread prepares buffers and arms the recorder; the audio thread
 /// starts on the first note (or on the next bar of the beat clock), records
 /// exactly `bars` bars plus an optional tail, and marks the take finished.
+/// The tail ends early once the output has died away, so the pause after a
+/// take is only as long as the delay / reverb actually ring.
 /// The main thread then folds the tail onto the loop start (so delay /
 /// reverb ring seamlessly across the loop point) and writes a WAV file.
 ///
@@ -47,6 +49,12 @@ final class LoopRecorder {
 
     // Audio-thread private.
     private var latched = false
+    /// Consecutive silent frames in the tail (ends the tail early).
+    private var silentTailFrames = 0
+    /// Tail output below this peak counts as silence (about -80 dBFS) …
+    private static let silenceLevel: Float = 1e-4
+    /// … once it stayed there this long.
+    private static let silenceSeconds = 0.15
     /// True while the audio thread may touch the buffers.
     private(set) var audioBusy = false
     /// Set by the engine (audio thread) when a note starts.
@@ -161,6 +169,7 @@ final class LoopRecorder {
             }
             noteTrigger = false
             startBeat = beatStart + Double(offset) * beatsPerFrame
+            silentTailFrames = 0
             state = .recording
         }
 
@@ -171,7 +180,12 @@ final class LoopRecorder {
             if count > 0 {
                 (l + framesWritten).update(from: inL + offset, count: count)
                 (r + framesWritten).update(from: inR + offset, count: count)
+                let tailStart = max(loopFrames - framesWritten, 0)
                 framesWritten += count
+                if tailStart < count {
+                    trackTailSilence(left: inL + offset + tailStart, right: inR + offset + tailStart,
+                                     count: count - tailStart)
+                }
             }
         }
         if framesWritten >= totalFrames, os_unfair_lock_trylock(lock) {
@@ -182,6 +196,17 @@ final class LoopRecorder {
         }
     }
 
+    /// Audio thread: once the tail has stayed silent long enough, the take
+    /// is complete; the rest of the buffers is already zero.
+    private func trackTailSilence(left: UnsafePointer<Float>, right: UnsafePointer<Float>, count: Int) {
+        var peak: Float = 0
+        for i in 0..<count { peak = max(peak, abs(left[i]), abs(right[i])) }
+        silentTailFrames = peak < LoopRecorder.silenceLevel ? silentTailFrames + count : 0
+        if silentTailFrames >= Int(LoopRecorder.silenceSeconds * sampleRate) {
+            framesWritten = totalFrames
+        }
+    }
+
     /// Audio thread: the loop part is complete and only the tail (effect /
     /// release ringing) is being captured. New notes must not start now, or
     /// they would be folded onto the loop start as a second layer.
@@ -189,8 +214,14 @@ final class LoopRecorder {
         state == .recording && tailFrames > 0 && framesWritten >= loopFrames
     }
 
+    /// Progress through the recorded bars (0...1); the tail is not included.
     var progress: Double {
-        totalFrames > 0 ? Double(framesWritten) / Double(totalFrames) : 0
+        loopFrames > 0 ? min(Double(framesWritten) / Double(loopFrames), 1) : 0
+    }
+
+    /// True once the bars are complete and the tail is ringing out.
+    var capturingTail: Bool {
+        state == .recording && framesWritten >= loopFrames
     }
 }
 

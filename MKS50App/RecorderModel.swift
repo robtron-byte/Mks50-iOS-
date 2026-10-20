@@ -4,7 +4,7 @@ import SwiftUI
 /// Loop recorder front end: arms the engine's bar-accurate recorder, polls
 /// its progress and writes finished takes as 24-bit WAV files.
 final class RecorderModel: ObservableObject {
-    enum Phase: Equatable { case idle, armed, recording, saving }
+    enum Phase: Equatable { case idle, armed, recording, tail, saving }
 
     static let barOptions = [1, 2, 4, 8]
 
@@ -39,6 +39,10 @@ final class RecorderModel: ObservableObject {
     var onDeleted: ((URL) -> Void)?
 
     private var engine: SynthEngine { audioUnit.engine }
+    /// Bar currently being recorded (1-based), for the record button.
+    var currentBar: Int { min(Int(progress * Double(armedBars)) + 1, armedBars) }
+    var recordingBars: Int { armedBars }
+
     var bars: Int { RecorderModel.barOptions[min(max(barsIndex, 0), RecorderModel.barOptions.count - 1)] }
 
     init(audioUnit: MKS50AudioUnit, synth: SynthViewModel) {
@@ -65,7 +69,7 @@ final class RecorderModel: ObservableObject {
     func toggleRecord() {
         switch phase {
         case .idle: arm()
-        case .armed, .recording: cancel()
+        case .armed, .recording, .tail: cancel()
         case .saving: break
         }
     }
@@ -114,8 +118,8 @@ final class RecorderModel: ObservableObject {
         case .armed:
             phase = .armed
         case .recording:
-            phase = .recording
             progress = engine.recorder.progress
+            phase = engine.recorder.capturingTail ? .tail : .recording
         case .finished:
             finish()
         case .idle:
