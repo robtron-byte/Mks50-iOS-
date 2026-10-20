@@ -882,12 +882,17 @@ struct SynthMainView<Toolbar: View, Accessory: View>: View {
     @Environment(\.verticalSizeClass) private var vSize
 
     var body: some View {
+        // Each bar is held to the screen width (minWidth 0): a row that is
+        // too wide for a small iPhone can never widen and shift the screen.
         VStack(spacing: 0) {
             toolbar
+                .frame(minWidth: 0, maxWidth: .infinity)
             SynthPanelView(model: model)
-                .frame(maxHeight: .infinity)
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
             accessory
+                .frame(minWidth: 0, maxWidth: .infinity)
             BottomBar(learn: model.learn, model: model)
+                .frame(minWidth: 0, maxWidth: .infinity)
                 .frame(height: PortraitReader.isPortrait(hSize, vSize) ? 146 : 54)
         }
         .overlay(alignment: .top) { StatusBanner(model: model) }

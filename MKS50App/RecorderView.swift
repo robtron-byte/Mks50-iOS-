@@ -9,7 +9,7 @@ struct RecorderStrip: View {
     var body: some View {
         // One row in landscape, two rows on an upright iPhone.
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 recordButton
                 barsSelector
                 startSelector
@@ -19,12 +19,12 @@ struct RecorderStrip: View {
                 listButton
             }
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     recordButton
                     barsSelector
                     startSelector
                 }
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     tailsButton
                     bpm
                     Spacer(minLength: 0)
@@ -32,7 +32,7 @@ struct RecorderStrip: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(Theme.panel)
         .overlay(alignment: .top) { Rectangle().fill(Theme.panelEdge).frame(height: 1) }
@@ -62,10 +62,11 @@ struct RecorderStrip: View {
                 Text(statusText.lowercased())
                     .font(Theme.pixel(12, .bold))
                     .lineLimit(1)
-                    .frame(minWidth: 64, alignment: .leading)
+                    // Fixed width so "100 %" does not shift the row while recording.
+                    .frame(width: 44, alignment: .leading)
             }
             .foregroundColor(recorder.phase == .idle ? Theme.label : .white)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 10)
             .frame(minHeight: 44)
             .background(
                 GeometryReader { geo in
@@ -102,7 +103,7 @@ struct RecorderStrip: View {
                      options: RecorderModel.barOptions.map { "\($0)" },
                      value: Binding(get: { Float(recorder.barsIndex) },
                                     set: { recorder.barsIndex = Int($0.rounded()) }),
-                     cellWidth: 26)
+                     cellWidth: 24)
             .disabled(recorder.phase != .idle)
     }
 
@@ -111,7 +112,7 @@ struct RecorderStrip: View {
                      options: ["NOTE", "BAR"],
                      value: Binding(get: { recorder.startOnNote ? 0 : 1 },
                                     set: { recorder.startOnNote = $0 < 0.5 }),
-                     cellWidth: 38)
+                     cellWidth: 34)
             .disabled(recorder.phase != .idle)
     }
 }
