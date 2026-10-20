@@ -811,7 +811,7 @@ final class SynthEngine {
             let ev = seq.process(beat: beat, root: root,
                                  rateIndex: pi(.seqRate),
                                  length: pi(.seqLength) + 1,
-                                 gate: Arpeggiator.gateFraction(p(.seqGate)),
+                                 gate: StepSequencer.gateSteps(p(.seqGate)),
                                  gateVariation: Double(p(.seqGateVar)) / 127,
                                  steps: UnsafePointer(params + Param.seqStep0.rawValue))
             if ev.legato {

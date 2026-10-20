@@ -334,7 +334,7 @@ enum Param: Int, CaseIterable, Identifiable {
         case .arpGate: return 80
         case .seqRate: return 2          // 1/16
         case .seqLength: return 15       // 16 steps
-        case .seqGate: return 70
+        case .seqGate: return 44       // 57 %
         case .distDrive: return 64
         case .distTone: return 80
         case .distLevel: return 64
@@ -558,8 +558,12 @@ enum Param: Int, CaseIterable, Identifiable {
             let hz = SynthEngine.hpfSweepHz(value)
             return hz < 1000 ? "\(Int(hz)) Hz" : String(format: "%.1f kHz", hz / 1000)
         }
-        if self == .arpGate || self == .seqGate {
+        if self == .arpGate {
             return "\(Int(Arpeggiator.gateFraction(value) * 100)) %"
+        }
+        if self == .seqGate {
+            let steps = StepSequencer.gateSteps(value)
+            return steps <= 1 ? "\(Int((steps * 100).rounded())) %" : String(format: "%.1f ST", steps)
         }
         if self == .seqGateVar {
             return "\(Int((value / 127 * 100).rounded())) %"

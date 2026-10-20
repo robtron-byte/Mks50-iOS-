@@ -7,6 +7,12 @@ struct SeqPattern: Codable, Equatable {
     var rate: Int
     var gate: Int
     var gateVar: Int
+    /// 2: GATE on the multi-step scale (StepSequencer.gateSteps); nil:
+    /// stored before, 0...127 = 5 ... 100 %.
+    var gateScale: Int?
+
+    /// GATE value on the current scale.
+    var currentGate: Int { gateScale == nil ? Int((Float(gate) * 80 / 127).rounded()) : gate }
 }
 
 /// 8 pattern slots for live use: save the current sequence with one tap,
@@ -81,7 +87,8 @@ final class PatternBank: ObservableObject {
                    length: model.intValue(.seqLength),
                    rate: model.intValue(.seqRate),
                    gate: model.intValue(.seqGate),
-                   gateVar: model.intValue(.seqGateVar))
+                   gateVar: model.intValue(.seqGateVar),
+                   gateScale: 2)
     }
 
     private func apply(_ i: Int) {
@@ -91,7 +98,7 @@ final class PatternBank: ObservableObject {
         }
         model.set(.seqLength, Float(p.length))
         model.set(.seqRate, Float(p.rate))
-        model.set(.seqGate, Float(p.gate))
+        model.set(.seqGate, Float(p.currentGate))
         model.set(.seqGateVar, Float(p.gateVar))
         activeSlot = i
     }

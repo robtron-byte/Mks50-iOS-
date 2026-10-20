@@ -47,6 +47,15 @@ struct SeqEvents {
 struct StepSequencer {
     static let maxSteps = 16
 
+    /// GATE knob → note length in steps: 0...80 is 5 ... 100 % of a step,
+    /// above that the note holds over several steps (exponentially up to
+    /// 8 steps at 127: 2 at 96, 4 at 112).
+    static func gateSteps(_ raw: Float) -> Double {
+        let v = Double(max(0, min(127, raw)))
+        if v <= 80 { return 0.05 + 0.95 * v / 80 }
+        return pow(2, 3 * (v - 80) / 47)
+    }
+
     private(set) var soundingKey = -1
     private(set) var currentStep = -1
     private var gateOffBeat: Double = 0
@@ -83,8 +92,8 @@ struct StepSequencer {
         currentStep = index
 
         guard let s = SeqStep(raw: Int(steps[index].rounded())) else {
-            // Rest: a tied note before it ends here.
-            if soundingKey >= 0 {
+            // Rest: a tied note before it ends here; a long gate rings on.
+            if soundingKey >= 0 && gateOffBeat == .infinity {
                 events.off = soundingKey
                 soundingKey = -1
             }
@@ -115,12 +124,16 @@ struct StepSequencer {
         if gateVariation > 0 {
             // Blend from the GATE knob towards the groove's length.
             let target = StepSequencer.grooveGate(index: index, count: count, steps: steps)
-            stepGate = min(max(gate + gateVariation * (target - gate), 0.05), 1.5)
+            stepGate = min(max(gate + gateVariation * (target - gate), 0.05), 8)
+            // The groove's legato length runs into the next step (a tie).
+            grooveTie = target > 1 && stepGate > 1 && gate <= 1
+        } else {
+            grooveTie = false
         }
-        // Past a full step the note runs legato into the next one (a tie).
-        grooveTie = stepGate > 1
+        // A GATE above 100 % holds the note over the following steps until
+        // its length is up or the next note takes over.
         let tied = s.tie || grooveTie
-        let length = tied ? 1.0 : (s.accent ? min(1, stepGate + 0.15) : stepGate)
+        let length = tied ? 1.0 : (s.accent && stepGate < 1 ? min(1, stepGate + 0.15) : stepGate)
         gateOffBeat = tied ? .infinity : Double(step) * quarters + quarters * length
         if gateOffBeat <= beat { gateOffBeat = beat + quarters * length }
         return events
