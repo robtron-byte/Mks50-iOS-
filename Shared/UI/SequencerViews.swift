@@ -37,7 +37,7 @@ struct SequencerPage: View {
 
     @ViewBuilder private var switches: some View {
         ParamSelector(param: model.model(.seqOn), model: model, label: "SEQ")
-        // HOLD (shared with the arp) sits in the ARP section above.
+        // HOLD (shared with the arp) sits in the ARP section below.
     }
 
     @ViewBuilder private var knobs: some View {

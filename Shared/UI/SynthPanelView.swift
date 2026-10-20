@@ -567,11 +567,11 @@ struct SynthPanelView: View {
         }
     }
 
-    /// Arpeggiator on top, sequencer (settings, steps, bank) below.
+    /// Sequencer (settings, steps, bank) on top, arpeggiator below.
     private var seqPage: some View {
         VStack(alignment: .leading, spacing: 10) {
-            arpSection
             SequencerPage(model: model)
+            arpSection
         }
     }
 
