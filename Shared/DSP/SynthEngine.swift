@@ -1309,6 +1309,9 @@ final class SynthEngine {
 
     /// Frames rendered since the last voice went idle.
     private var idleFrames = 0
+    /// True while the engine renders pure silence (nothing sounding, no
+    /// arp / sequencer / loops running). Racy read for the app's sleep timer.
+    private(set) var silent = false
 
     /// Renders `frames` stereo samples, overwriting the destination buffers.
     ///
@@ -1355,8 +1358,10 @@ final class SynthEngine {
         if !anyActive && idleFrames >= tailFrames && arp.isEmpty && collectorOn == arpWasOn && !loops.active {
             left.update(repeating: 0, count: frames)
             right.update(repeating: 0, count: frames)
+            silent = true
             return true
         }
+        silent = false
 
         var offset = 0
         while offset < frames {

@@ -10,6 +10,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(AudioHost.backgroundAudioKey) private var backgroundAudio = true
     @AppStorage(AudioHost.clockSyncKey) private var clockSync = false
+    @AppStorage(AudioHost.sleepMinutesKey) private var sleepMinutes = 10
 
     private func endpointRow(_ endpoint: MIDIManager.Endpoint, toggle: @escaping (Bool) -> Void) -> some View {
         Button { toggle(!endpoint.enabled) } label: {
@@ -82,10 +83,17 @@ struct SettingsView: View {
                     }
                     Toggle("Network MIDI (Wi-Fi)", isOn: $midi.networkEnabled)
                     Toggle("Run in Background", isOn: $backgroundAudio)
+                    if backgroundAudio {
+                        Picker("Sleep When Idle", selection: $sleepMinutes) {
+                            ForEach(AudioHost.sleepOptions, id: \.self) { m in
+                                Text(m == 0 ? "Never" : "After \(m) min").tag(m)
+                            }
+                        }
+                    }
                 } header: {
                     Text("Connectivity")
                 } footer: {
-                    Text("Sync to MIDI Clock: tempo, start and stop come from the selected MIDI inputs or another app (sending clock to \"MKS50 Synth\"). Arp and sequencer run only while the clock source is playing; Start restarts them on the first step. " + "Network MIDI makes the iPhone visible to a Mac (Audio MIDI Setup › Network). \"Run in Background\" keeps the synth playing while you use another app, e.g. a sequencer that sends to \"MKS50 Synth\".")
+                    Text("Sync to MIDI Clock: tempo, start and stop come from the selected MIDI inputs or another app (sending clock to \"MKS50 Synth\"). Arp and sequencer run only while the clock source is playing; Start restarts them on the first step. " + "Network MIDI makes the iPhone visible to a Mac (Audio MIDI Setup › Network). \"Run in Background\" keeps the synth playing while you use another app, e.g. a sequencer that sends to \"MKS50 Synth\". \"Sleep When Idle\": in the background, after this long without sound and without MIDI notes the app goes to sleep to save battery; it then no longer receives MIDI until you open it again.")
                 }
 
                 Section {
