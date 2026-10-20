@@ -86,6 +86,7 @@ final class AudioHost: ObservableObject {
                     unit?.engine.clockTempo = bpm
                 }
                 unit.engine.clockSyncEnabled = UserDefaults.standard.bool(forKey: AudioHost.clockSyncKey)
+                model.set(.midiChannel, Float(UserDefaults.standard.integer(forKey: AudioHost.midiChannelKey)))
                 self.midi.onSysEx = { [weak model] message in
                     model?.handleSysEx(message)
                 }
@@ -116,6 +117,8 @@ final class AudioHost: ObservableObject {
 
     static let backgroundAudioKey = "backgroundAudio"
     static let clockSyncKey = "midiClockSync"
+    /// MIDI receive channel (0 = omni), kept across launches.
+    static let midiChannelKey = "midiReceiveChannel"
 
     /// In the background the engine keeps running by default, so other apps
     /// (sequencers, AUM, DAWs) can play the synth through its virtual MIDI

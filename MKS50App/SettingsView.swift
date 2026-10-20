@@ -28,13 +28,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("MIDI") {
-                    Picker("Receive Channel", selection: Binding(
-                        get: { model.intValue(.midiChannel) },
-                        set: { model.set(.midiChannel, Float($0)) })) {
-                        ForEach(0...16, id: \.self) { ch in
-                            Text(ch == 0 ? "Omni" : "Channel \(ch)").tag(ch)
-                        }
-                    }
+                    ChannelPicker(channel: model.model(.midiChannel), model: model)
                     NavigationLink("Bluetooth MIDI Devices") {
                         BluetoothMIDIView()
                             .navigationTitle("Bluetooth MIDI")
@@ -158,6 +152,26 @@ struct SettingsView: View {
             }
         }
         .onAppear { midi.refreshConnections() }
+    }
+}
+
+/// Receive channel. Observes the parameter itself, so the choice shows
+/// at once (the settings view only observes the view model).
+private struct ChannelPicker: View {
+    @ObservedObject var channel: ParamModel
+    let model: SynthViewModel
+
+    var body: some View {
+        Picker("Receive Channel", selection: Binding(
+            get: { Int(channel.value.rounded()) },
+            set: {
+                model.set(.midiChannel, Float($0))
+                UserDefaults.standard.set($0, forKey: AudioHost.midiChannelKey)
+            })) {
+            ForEach(0...16, id: \.self) { ch in
+                Text(ch == 0 ? "Omni" : "Channel \(ch)").tag(ch)
+            }
+        }
     }
 }
 
