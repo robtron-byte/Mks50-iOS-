@@ -147,13 +147,30 @@ final class SynthEngine {
     /// Stop received: wait for Start / Continue or a new key instead of
     /// running free when the source then stops sending clock.
     private var clockStoppedBySource = false
+    /// A key was played while the clock source was stopped (or silent):
+    /// arp / sequencer run on their own at the last received tempo until
+    /// the source sends Start / Continue / Stop.
+    private var localRun = false
+
+    /// No clock arriving for half a second.
+    private var clockSilent: Bool { framesSinceClockTick > Int(sampleRate / 2) }
 
     /// Clock sync is on and no host, but no clock arrives (nothing
-    /// connected, or the source went quiet for half a second): the beat
-    /// clock runs free on the last measured tempo, or the TEMPO setting.
+    /// connected, or the source went quiet), or a key started the patterns
+    /// while the source is stopped: the beat clock runs free on the last
+    /// measured tempo, or the TEMPO setting.
     var clockFreeRunning: Bool {
-        clockSyncEnabled && hostTempo <= 0 && !clockStoppedBySource
-            && framesSinceClockTick > Int(sampleRate / 2)
+        clockSyncEnabled && hostTempo <= 0
+            && (localRun || (!clockStoppedBySource && clockSilent))
+    }
+
+    /// Tempo ± while running free without clock: changes the last received
+    /// tempo. Returns false when the TEMPO setting is in use (no clock was
+    /// ever received) or a clock is arriving (the source sets the tempo).
+    func nudgeFreeTempo(by delta: Int) -> Bool {
+        guard clockTempo > 0, clockSilent else { return false }
+        clockTempo = min(max(clockTempo.rounded() + Double(delta), 20), 300)
+        return true
     }
 
     /// Beat clock follows the incoming MIDI clock.
@@ -166,7 +183,7 @@ final class SynthEngine {
         guard clockSyncEnabled, hostTempo <= 0 else { return }
         switch status {
         case 0xF8:  // timing clock
-            let wasFree = clockFreeRunning
+            let wasFree = clockFreeRunning && !localRun
             framesSinceClockTick = 0
             if wasFree {
                 // Clock (re)appeared while running free: wait for Start.
@@ -192,15 +209,18 @@ final class SynthEngine {
             clockRunning = true
             clockRate = 1
             clockStoppedBySource = false
+            localRun = false
             framesSinceClockTick = 0
         case 0xFB:  // continue
             clockRunning = true
             clockRate = 1
             clockStoppedBySource = false
+            localRun = false
             framesSinceClockTick = 0
         case 0xFC:  // stop
             clockRunning = false
             clockStoppedBySource = true
+            localRun = false
             stopPatterns()
         case 0xF2:  // song position (sixteenths)
             let sixteenths = d2 << 7 | d1
@@ -466,8 +486,9 @@ final class SynthEngine {
         switch status & 0xF0 {
         case 0x90 where d2 > 0:
             heldKeyFlags[d1] = 1
-            // After a Stop from a source that then went quiet, a new key
-            // starts the patterns on the internal clock again.
+            // Clock source stopped or silent: a key starts arp / sequencer
+            // on their own at the last received tempo (Start re-syncs).
+            if clockSyncEnabled && hostTempo <= 0 && !clockRunning { localRun = true }
             clockStoppedBySource = false
             if collectorOn {
                 arpKeyDown(d1, velocity: d2)

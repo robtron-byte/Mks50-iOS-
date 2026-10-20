@@ -124,8 +124,7 @@ private struct BPMControl: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            StepButton(symbol: "minus", label: "Tempo down") { step(-1) }
-                .disabled(clockSync)
+            RepeatStepButton(symbol: "minus", label: "Tempo down") { step(-$0) }
             if clockSync {
                 // Following MIDI clock: show the measured tempo and transport.
                 TimelineView(.periodic(from: .now, by: 0.25)) { _ in
@@ -153,15 +152,19 @@ private struct BPMControl: View {
                 }
                 .frame(minWidth: 44)
             }
-            StepButton(symbol: "plus", label: "Tempo up") { step(1) }
-                .disabled(clockSync)
+            RepeatStepButton(symbol: "plus", label: "Tempo up") { step($0) }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Tempo")
     }
 
-    private func step(_ delta: Float) {
-        model.set(.tempo, param.value.rounded() + delta)
+    /// With clock sync, ± changes the last received tempo while no clock
+    /// arrives (a running clock sets the tempo itself); before any clock
+    /// was received it changes the TEMPO setting the synth then runs on.
+    private func step(_ delta: Int) {
+        if clockSync && model.audioUnit.engine.nudgeFreeTempo(by: delta) { return }
+        if clockSync && model.audioUnit.engine.clockTempo > 0 { return }
+        model.set(.tempo, param.value.rounded() + Float(delta))
     }
 }
 

@@ -614,6 +614,60 @@ struct StepButton: View {
     }
 }
 
+/// StepButton that repeats while held: one step on touch-down, after
+/// 0.4 s about 12 steps a second, after 2 s in steps of `fastStep`.
+struct RepeatStepButton: View {
+    let symbol: String
+    let label: String
+    var enabled = true
+    var fastStep = 5
+    let action: (Int) -> Void
+
+    @State private var pressed = false
+    @State private var timer: Timer?
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 16, weight: .bold))
+            .foregroundColor(enabled ? Theme.label : Theme.dimLabel)
+            .frame(width: 40, height: 40)
+            .background(RoundedRectangle(cornerRadius: Theme.corner)
+                .fill(pressed ? Theme.hairline : Theme.cell))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner).stroke(Theme.hairline, lineWidth: 1))
+            .scaleEffect(pressed ? 0.94 : 1)
+            .overlay(PressSurface(onDown: down, onUp: up))
+            .allowsHitTesting(enabled)
+            .opacity(enabled ? 1 : 0.5)
+            .onDisappear(perform: up)
+            .accessibilityElement()
+            .accessibilityLabel(label)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { if enabled { action(1) } }
+    }
+
+    private func down() {
+        pressed = true
+        action(1)
+        let started = Date()
+        var next = started.addingTimeInterval(0.4)
+        timer?.invalidate()
+        let t = Timer(timeInterval: 1.0 / 60, repeats: true) { _ in
+            let now = Date()
+            guard now >= next else { return }
+            action(now.timeIntervalSince(started) > 2 ? fastStep : 1)
+            next = now.addingTimeInterval(1.0 / 12)
+        }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    private func up() {
+        pressed = false
+        timer?.invalidate()
+        timer = nil
+    }
+}
+
 /// Touch-down / touch-up area for the play pad, UIKit based like the knobs:
 /// it reacts on the first touch without delay, also near the screen edges
 /// and inside scroll views.

@@ -263,6 +263,7 @@ final class MIDIManager: ObservableObject {
             if lastTickTime != 0 && (now <= lastTickTime
                 || Double(now - lastTickTime) / MIDIManager.ticksPerSecond > 0.25) {
                 tickCount = 0               // gap: clock restarted
+                lastPublishedTempo = 0      // publish the new measurement
             }
             lastTickTime = now
             measureTempo(tick: now)
@@ -272,6 +273,7 @@ final class MIDIManager: ObservableObject {
             lastTickTime = 0
             tickCount = 0
             tempoChangeTicks = 0
+            lastPublishedTempo = 0
             DispatchQueue.main.async { [weak self] in self?.clockRunning = false }
         case 0xF2:
             break
