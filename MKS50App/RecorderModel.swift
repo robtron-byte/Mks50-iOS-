@@ -125,6 +125,11 @@ final class RecorderModel: ObservableObject {
     }
 
     private func poll() {
+        if engine.consumePatternsStopped() {
+            // The new loop plays the pattern now: arp / sequencer were stopped.
+            synth.set(.arpOn, 0)
+            synth.set(.seqOn, 0)
+        }
         switch engine.recorder.state {
         case .armed:
             phase = .armed

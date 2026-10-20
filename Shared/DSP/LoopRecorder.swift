@@ -4,21 +4,25 @@ import os
 /// Bar-accurate loop recorder running on the audio thread.
 ///
 /// The main thread prepares buffers and arms the recorder; the audio thread
-/// starts on the first note (or on the next bar of the beat clock) and
-/// records exactly `bars` bars.
+/// starts on the first note (sample-accurate) or on the next bar line of the
+/// beat clock and records until the beat clock has advanced exactly `bars`
+/// bars. The length is measured in beats, not samples, so a take stays on
+/// the bar grid even while the tempo follows a (slightly jittery) MIDI clock;
+/// while the clock is halted the take pauses with it.
 ///
 /// Live looping: with a loop pad as target, the bars are written straight
 /// into that pad's buffer as well, and the pad starts playing on the very
-/// frame the last bar ends, so the sound goes on without a gap. Playing
-/// never stops: notes keep sounding and new ones can be played over the
-/// loop at once.
+/// frame the last bar ends, so the sound goes on without a gap. Notes played
+/// by hand keep sounding; a running arpeggiator / sequencer is stopped right
+/// on the loop end (`patternStopBeat`), so the loop does not play twice.
 ///
-/// Tail: after the bars the recorder keeps listening for up to
-/// `tailSeconds` so delay / reverb / release ringing past the loop end can
-/// be folded onto the loop start (seamless repeats). The tail ends as soon
-/// as the output has died away or a new note is played (that note belongs
-/// to the next pass, not to the loop); the fold is then done in place, in
-/// the take and in the pad's buffer.
+/// Loop point: whatever sounds past the loop end (delay / reverb / release
+/// with TAILS, else only a short de-click overlap) is folded onto the loop
+/// start, so the end flows into the start without a click. The overlap ends
+/// at the first new note (sample-accurate: that note belongs to the next
+/// pass), at silence or at its limit, always with a fade. It is at most half
+/// the loop long, so folding it in place never touches the frames the live
+/// pad is about to play.
 ///
 /// Thread hand-off: configuration changes are made by the main thread under
 /// a lock while the audio thread is not using the buffers; the audio thread
@@ -29,7 +33,7 @@ final class LoopRecorder {
     }
 
     struct Take {
-        /// The loop with the tail already folded onto its start.
+        /// The loop with the overlap already folded onto its start.
         let left: [Float]
         let right: [Float]
         let sampleRate: Double
@@ -43,8 +47,6 @@ final class LoopRecorder {
 
     // Shared state (racy reads are fine for UI polling; transitions use the lock).
     private(set) var state: State = .idle
-    private(set) var framesWritten = 0
-    private(set) var totalFrames = 0
     private var cancelRequested = false
     /// Main thread asks to end the tail now (stop button during the tail).
     private var endTailRequested = false
@@ -53,9 +55,16 @@ final class LoopRecorder {
     private var left: UnsafeMutablePointer<Float>?
     private var right: UnsafeMutablePointer<Float>?
     private var capacity = 0
-    private var loopFrames = 0
+    /// Room for the bars (nominal length plus slack for tempo drift).
+    private var loopCapacity = 0
+    /// Nominal length of the bars at the tempo they were armed with (progress).
+    private var nominalFrames = 0
     private var loopBeats: Double = 0
-    private var tailFrames = 0
+    /// Longest overlap folded onto the loop start.
+    private var tailLimit = 0
+    /// Without TAILS the overlap only de-clicks the loop point: it fades out
+    /// over its whole (short) length.
+    private var declickOnly = false
     private var startOnNote = true
     private var sampleRate: Double = 44100
     private var startBeat: Double = 0
@@ -68,20 +77,37 @@ final class LoopRecorder {
     /// Player the live take is handed to (set once by the engine).
     weak var loops: LoopPlayer?
 
-    // Audio-thread private.
+    // Audio-thread state (read racily by the UI).
     private var latched = false
+    /// Frames of the bars recorded so far; their final count once complete.
+    private(set) var loopFrames = 0
+    private var loopDone = false
+    private var tailFrames = 0
+    private var tailDone = false
+    /// Peak of the output while armed (last block), to tell whether the
+    /// take starts from silence.
+    private var armedPeak: Float = 0
+    /// The take started from silence: the overlap is added onto the loop
+    /// start; else it cross-fades into it (see `foldTail`).
+    private var foldAdds = true
     /// Consecutive silent frames in the tail (ends the tail early).
     private var silentTailFrames = 0
     /// Tail output below this peak counts as silence (about -80 dBFS) …
     private static let silenceLevel: Float = 1e-4
     /// … once it stayed there this long.
     private static let silenceSeconds = 0.15
-    /// Fade at a tail cut (new note / time limit), so the fold has no click.
+    /// Overlap without TAILS: just enough to cross-fade the loop point.
+    private static let declickSeconds = 0.012
+    /// Fade at a tail cut by a new note.
     private static let cutFadeFrames = 256
     /// True while the audio thread may touch the buffers.
     private(set) var audioBusy = false
-    /// Set by the engine (audio thread) when a note starts.
-    var noteTrigger = false
+    /// Frame (within the current render call) of the first note started in
+    /// it, -1: none. Set by the engine on the audio thread.
+    private var noteFrame = -1
+    /// Beat at which a live take goes live: the engine stops arp / sequencer
+    /// there (audio thread). Infinity: nothing to stop.
+    var patternStopBeat: Double = .infinity
 
     init() {
         lock = .allocate(capacity: 1)
@@ -103,13 +129,16 @@ final class LoopRecorder {
         guard !audioBusy, state == .idle || state == .finished else { return false }
         cleanUpAfterCancel()
         let beats = Double(bars * 4)
-        let loop = Int((beats * 60 / max(tempo, 20) * sampleRate).rounded())
-        let tail = Int(tailSeconds * sampleRate)
-        let total = loop + tail
-        guard loop > 0 else { return false }
+        let nominal = Int((beats * 60 / max(tempo, 20) * sampleRate).rounded())
+        guard nominal > 0 else { return false }
+        // 10 % slack: a followed MIDI clock may run slower than its tempo was.
+        let loopRoom = nominal + nominal / 10 + 1024
+        let wanted = tailSeconds > 0 ? tailSeconds : LoopRecorder.declickSeconds
+        let tail = min(Int(wanted * sampleRate), nominal / 2)
+        let total = loopRoom + tail
         var live: (UnsafeMutablePointer<Float>, UnsafeMutablePointer<Float>)?
         if let slot = liveSlot {
-            live = loops?.prepareLive(slot, frames: loop, beats: beats)
+            live = loops?.prepareLive(slot, frames: loopRoom, beats: beats)
         }
 
         os_unfair_lock_lock(lock)
@@ -122,11 +151,16 @@ final class LoopRecorder {
         }
         left?.initialize(repeating: 0, count: total)
         right?.initialize(repeating: 0, count: total)
-        loopFrames = loop
+        loopCapacity = loopRoom
+        nominalFrames = nominal
         loopBeats = beats
-        tailFrames = tail
-        totalFrames = total
-        framesWritten = 0
+        tailLimit = tail
+        declickOnly = tailSeconds <= 0
+        loopFrames = 0
+        armedPeak = 0
+        loopDone = false
+        tailFrames = 0
+        tailDone = false
         self.startOnNote = startOnNote
         self.sampleRate = sampleRate
         self.liveSlot = live != nil ? liveSlot ?? -1 : -1
@@ -176,7 +210,7 @@ final class LoopRecorder {
     func takeRecording() -> Take? {
         os_unfair_lock_lock(lock)
         defer { os_unfair_lock_unlock(lock) }
-        guard state == .finished, let l = left, let r = right else { return nil }
+        guard state == .finished, let l = left, let r = right, loopFrames > 0 else { return nil }
         let take = Take(left: Array(UnsafeBufferPointer(start: l, count: loopFrames)),
                         right: Array(UnsafeBufferPointer(start: r, count: loopFrames)),
                         sampleRate: sampleRate, startBeat: startBeat,
@@ -191,21 +225,27 @@ final class LoopRecorder {
 
     // MARK: Audio thread
 
+    /// Engine: a note starts at `frame` of the current render call.
+    func noteStarted(at frame: Int) {
+        if noteFrame < 0 || frame < noteFrame { noteFrame = max(frame, 0) }
+    }
+
     /// - Parameters:
     ///   - beatStart: beat-clock position at the first frame
-    ///   - beatsPerFrame: beat-clock speed
+    ///   - beatsPerFrame: beat-clock speed (0: transport halted, the take pauses)
     func process(left inL: UnsafePointer<Float>, right inR: UnsafePointer<Float>, frames: Int,
-                 beatStart: Double, beatsPerFrame: Double) {
+                 beatStart: Double, beatsPerFrame bpf: Double) {
+        let note = noteFrame
+        noteFrame = -1
+
         if !latched {
-            // Keep a note that started in this very buffer: it may be the
-            // one that should start an armed take (don't clear it before latching).
-            guard state == .armed, os_unfair_lock_trylock(lock) else { noteTrigger = false; return }
+            guard state == .armed, os_unfair_lock_trylock(lock) else { return }
             if state == .armed && !cancelRequested {
                 latched = true
                 audioBusy = true
             }
             os_unfair_lock_unlock(lock)
-            if !latched { noteTrigger = false; return }
+            if !latched { return }
         }
 
         if cancelRequested {
@@ -215,65 +255,88 @@ final class LoopRecorder {
                 cancelRequested = false
                 latched = false
                 audioBusy = false
+                patternStopBeat = .infinity
                 os_unfair_lock_unlock(lock)
             }
             return
         }
 
-        var offset = 0
+        guard let l = left, let r = right else { return }
+        var pos = 0
         if state == .armed {
+            var peak: Float = 0
+            var start = -1
             if startOnNote {
-                guard noteTrigger else { return }
-                offset = 0
-            } else {
+                // Exactly on the first note's frame.
+                if note >= 0, note < frames { start = note }
+            } else if bpf > 0 {
                 // Next bar line (4/4) of the beat clock.
-                let barBeats = 4.0
-                let nextBar = (beatStart / barBeats - 1e-9).rounded(.up) * barBeats
-                let delta = Int(((nextBar - beatStart) / max(beatsPerFrame, 1e-12)).rounded())
-                guard delta < frames else { return }
-                offset = max(0, delta)
+                let nextBar = (beatStart / 4 - 1e-9).rounded(.up) * 4
+                let delta = Int(((nextBar - beatStart) / bpf).rounded())
+                if delta < frames { start = max(0, delta) }
             }
-            noteTrigger = false
-            startBeat = beatStart + Double(offset) * beatsPerFrame
+            guard start >= 0 else {
+                for i in 0..<frames { peak = max(peak, abs(inL[i]), abs(inR[i])) }
+                armedPeak = peak
+                return
+            }
+            pos = start
+            // Sound right before the start (this block and the last one)?
+            for i in 0..<pos { peak = max(peak, abs(inL[i]), abs(inR[i])) }
+            foldAdds = max(peak, armedPeak) < LoopRecorder.silenceLevel * 10
+            if !foldAdds { tailLimit = min(tailLimit, Int(0.02 * sampleRate)) }
+            startBeat = beatStart + Double(pos) * bpf
             silentTailFrames = 0
+            if liveSlot >= 0 { patternStopBeat = startBeat + loopBeats }
             state = .recording
         }
+        guard state == .recording else { return }
 
-        guard state == .recording, let l = left, let r = right else { return }
-
-        // In the tail: a new note (or the stop button) ends it before this block.
-        if framesWritten >= loopFrames && framesWritten < totalFrames && (noteTrigger || endTailRequested) {
-            endTail(cut: true)
-        }
-
-        let remaining = totalFrames - framesWritten
-        if remaining > 0 {
-            let count = min(remaining, frames - offset)
-            if count > 0 {
-                (l + framesWritten).update(from: inL + offset, count: count)
-                (r + framesWritten).update(from: inR + offset, count: count)
-                // The bars also go straight into the live pad's buffer.
-                let loopCount = min(count, loopFrames - framesWritten)
-                if loopCount > 0, let ll = liveLeft, let lr = liveRight {
-                    (ll + framesWritten).update(from: inL + offset, count: loopCount)
-                    (lr + framesWritten).update(from: inR + offset, count: loopCount)
+        // The bars: until the beat clock reaches their end.
+        if !loopDone {
+            guard bpf > 0 else { return }               // clock halted: pause
+            let endBeat = startBeat + loopBeats
+            let here = beatStart + Double(pos) * bpf
+            let untilEnd = max(0, Int(((endBeat - here) / bpf - 1e-6).rounded(.up)))
+            let n = min(untilEnd, frames - pos, loopCapacity - loopFrames)
+            if n > 0 {
+                (l + loopFrames).update(from: inL + pos, count: n)
+                (r + loopFrames).update(from: inR + pos, count: n)
+                if let ll = liveLeft, let lr = liveRight {
+                    (ll + loopFrames).update(from: inL + pos, count: n)
+                    (lr + loopFrames).update(from: inR + pos, count: n)
                 }
-                let wasInLoop = framesWritten < loopFrames
-                let tailStart = max(loopFrames - framesWritten, 0)
-                framesWritten += count
-                if wasInLoop && framesWritten >= loopFrames {
-                    // Bars complete: the pad plays on from the next frame, gap-free
-                    // (its anchor is the end of the bars, same phase as their start).
-                    if liveSlot >= 0 { loops?.startLive(liveSlot, anchor: startBeat + loopBeats) }
-                    noteTrigger = false
-                }
-                if tailStart < count {
-                    trackTailSilence(left: inL + offset + tailStart, right: inR + offset + tailStart,
-                                     count: count - tailStart)
-                }
+                loopFrames += n
+                pos += n
+            }
+            if n >= untilEnd || loopFrames >= loopCapacity {
+                // Bars complete: the pad plays on from this very frame, gap-free
+                // (its anchor is the end of the bars, same phase as their start).
+                loopDone = true
+                if liveSlot >= 0 { loops?.startLive(liveSlot, anchor: endBeat, frames: loopFrames) }
             }
         }
-        if framesWritten >= totalFrames, os_unfair_lock_trylock(lock) {
+
+        // The overlap past the loop end, up to the next note.
+        if loopDone && !tailDone {
+            let cutByNote = note >= pos
+            let stop = endTailRequested ? pos : (cutByNote ? note : frames)
+            let n = min(max(stop - pos, 0), tailLimit - tailFrames)
+            if n > 0 {
+                (l + loopFrames + tailFrames).update(from: inL + pos, count: n)
+                (r + loopFrames + tailFrames).update(from: inR + pos, count: n)
+                tailFrames += n
+                trackTailSilence(left: inL + pos, right: inR + pos, count: n)
+            }
+            if endTailRequested || cutByNote {
+                endTail(fade: LoopRecorder.cutFadeFrames)
+            } else if tailFrames >= tailLimit {
+                // Time limit: fade the ringing out over its last third.
+                endTail(fade: max(LoopRecorder.cutFadeFrames, tailFrames / 3))
+            }
+        }
+
+        if tailDone, os_unfair_lock_trylock(lock) {
             foldTail()
             state = .finished
             latched = false
@@ -282,66 +345,80 @@ final class LoopRecorder {
         }
     }
 
-    /// Audio thread: once the tail has stayed silent long enough, it is
-    /// complete (the rest of the buffers is already zero).
+    /// Audio thread: once the tail has stayed silent long enough, it is complete.
     private func trackTailSilence(left: UnsafePointer<Float>, right: UnsafePointer<Float>, count: Int) {
         var peak: Float = 0
         for i in 0..<count { peak = max(peak, abs(left[i]), abs(right[i])) }
         silentTailFrames = peak < LoopRecorder.silenceLevel ? silentTailFrames + count : 0
-        if silentTailFrames >= Int(LoopRecorder.silenceSeconds * sampleRate) {
-            endTail(cut: false)
+        if silentTailFrames >= Int(LoopRecorder.silenceSeconds * sampleRate) { endTail(fade: 0) }
+    }
+
+    /// Audio thread: the overlap is complete; fades its end (over its whole
+    /// length when it only de-clicks the loop point).
+    private func endTail(fade: Int) {
+        guard !tailDone, let l = left, let r = right else { return }
+        tailDone = true
+        let base = loopFrames
+        let n = declickOnly ? tailFrames : min(fade, tailFrames)
+        for i in 0..<n {
+            let g = Float(n - i) / Float(n + 1)
+            l[base + tailFrames - n + i] *= g
+            r[base + tailFrames - n + i] *= g
         }
     }
 
-    /// Audio thread: ends the tail at `framesWritten`. A cut (new note,
-    /// stop) fades the last captured frames so the fold has no click.
-    private func endTail(cut: Bool) {
-        guard let l = left, let r = right else { return }
-        let captured = framesWritten - loopFrames
-        if cut && captured > 0 {
-            let n = min(LoopRecorder.cutFadeFrames, captured)
-            for i in 0..<n {
-                let g = Float(n - i) / Float(n + 1)
-                l[framesWritten - n + i] *= g
-                r[framesWritten - n + i] *= g
-            }
-        }
-        // Zero what lies beyond, then mark the take complete.
-        let rest = totalFrames - framesWritten
-        if rest > 0 {
-            (l + framesWritten).initialize(repeating: 0, count: rest)
-            (r + framesWritten).initialize(repeating: 0, count: rest)
-        }
-        tailFrames = max(captured, 0)
-        totalFrames = framesWritten
-    }
-
-    /// Audio thread: folds the tail onto the loop start, in the take and in
-    /// the live pad's buffer (whose next pass then carries the ringing).
+    /// Audio thread: joins the overlap to the loop start, in the take and in
+    /// the live pad's buffer. It is at most half the loop long, and the live
+    /// pad is past it by now, so nothing it is about to play changes.
+    /// - The take began from silence: the overlap is added, so delay /
+    ///   reverb ring on into the next pass.
+    /// - Sound was already playing (e.g. a sequence with its reverb): the
+    ///   loop start already holds that ringing, so the overlap only
+    ///   cross-fades into it over 20 ms (adding it would double it).
+    /// Without any overlap (a note right on the loop end) the loop end fades
+    /// out briefly instead, so the jump to the start does not click.
     private func foldTail() {
         guard let l = left, let r = right, loopFrames > 0 else { return }
-        let tail = framesWritten - loopFrames
-        guard tail > 0 else { return }
-        for i in 0..<tail {
-            let j = i % loopFrames
+        let tail = min(tailFrames, loopFrames)
+        let crossfade = foldAdds ? 0 : min(tail, Int(0.02 * sampleRate))
+        for i in 0..<(foldAdds ? tail : crossfade) {
             let tl = l[loopFrames + i], tr = r[loopFrames + i]
-            l[j] += tl
-            r[j] += tr
+            if foldAdds {
+                l[i] += tl
+                r[i] += tr
+            } else {
+                let g = Float(i) / Float(crossfade)      // 0: overlap … 1: loop
+                l[i] = l[i] * g + tl * (1 - g)
+                r[i] = r[i] * g + tr * (1 - g)
+            }
             if let ll = liveLeft, let lr = liveRight {
-                ll[j] += tl
-                lr[j] += tr
+                ll[i] = l[i]
+                lr[i] = r[i]
+            }
+        }
+        if tail < 32 {
+            let n = min(Int(0.002 * sampleRate), loopFrames / 4)
+            for i in 0..<n {
+                let g = Float(n - i) / Float(n + 1)
+                let k = loopFrames - n + i
+                l[k] *= g
+                r[k] *= g
+                if let ll = liveLeft, let lr = liveRight {
+                    ll[k] *= g
+                    lr[k] *= g
+                }
             }
         }
     }
 
-    /// The bars are complete and the tail (effect / release ringing) is
-    /// being captured.
+    /// The bars are complete and the overlap past them is being captured.
     var capturingTail: Bool {
-        state == .recording && framesWritten >= loopFrames && framesWritten < totalFrames
+        state == .recording && loopDone && !tailDone
     }
 
     /// Progress through the recorded bars (0...1); the tail is not included.
     var progress: Double {
-        loopFrames > 0 ? min(Double(framesWritten) / Double(loopFrames), 1) : 0
+        if loopDone { return 1 }
+        return nominalFrames > 0 ? min(Double(loopFrames) / Double(nominalFrames), 1) : 0
     }
 }

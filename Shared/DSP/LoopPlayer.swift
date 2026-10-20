@@ -202,10 +202,11 @@ final class LoopPlayer {
 
     // MARK: Audio thread (recorder)
 
-    /// The live take in `slot` is complete: it plays from `anchor` on (the
-    /// beat right after its last frame).
-    func startLive(_ slot: Int, anchor: Double) {
-        guard (0..<LoopPlayer.slotCount).contains(slot), slots[slot].reserved else { return }
+    /// The live take in `slot` is complete with `frames` frames: it plays
+    /// from `anchor` on (the beat right after its last frame).
+    func startLive(_ slot: Int, anchor: Double, frames: Int) {
+        guard (0..<LoopPlayer.slotCount).contains(slot), slots[slot].reserved, frames > 0 else { return }
+        slots[slot].liveFrames = min(frames, slots[slot].liveFrames)
         slots[slot].liveAnchor = anchor
         liveStartMask |= 1 << slot
     }

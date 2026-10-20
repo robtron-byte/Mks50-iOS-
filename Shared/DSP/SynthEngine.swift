@@ -122,6 +122,20 @@ final class SynthEngine {
     }
 
     var currentSampleRate: Double { Double(sampleRate) }
+    /// Inside `render`: note-ons know their frame (`renderFrameOffset`);
+    /// MIDI events arrive between render calls, i.e. on frame 0.
+    private var isRendering = false
+    /// The loop recorder stopped arp / sequencer for a live take; the app
+    /// mirrors the switches into its UI (`consumePatternsStopped`).
+    private var patternsStoppedByLooper = false
+
+    /// Main thread: true once after arp / sequencer were switched off at the
+    /// end of a live take.
+    func consumePatternsStopped() -> Bool {
+        guard patternsStoppedByLooper else { return false }
+        patternsStoppedByLooper = false
+        return true
+    }
 
     @inline(__always) private var beatsPerFrame: Double {
         let rate = followingClock ? (clockRunning ? clockRate : 0) : 1
@@ -655,7 +669,7 @@ final class SynthEngine {
     private func noteOn(_ key: Int, velocity: Int) {
         syncKeyMode()
         refreshEnvelopeSettings()
-        recorder.noteTrigger = true
+        recorder.noteStarted(at: isRendering ? renderFrameOffset : 0)
         var legato = false
         for i in 0..<SynthEngine.maxVoices where voices[i].gate { legato = true }
         glideThisNote = portaMode == 1 || (portaMode == 2 && legato)
@@ -801,6 +815,16 @@ final class SynthEngine {
 
     /// Called once per control block with the beat position of its first frame.
     private func arpTick(beat: Double) {
+        // A live loop takes over: the pattern it recorded must not play on
+        // with it, so arp and sequencer stop right on the loop end.
+        if beat >= recorder.patternStopBeat - 1e-9 {
+            recorder.patternStopBeat = .infinity
+            if collectorOn {
+                params[Param.arpOn.rawValue] = 0
+                params[Param.seqOn.rawValue] = 0
+                patternsStoppedByLooper = true
+            }
+        }
         // Handle a key mode switch before the arp's note events.
         syncKeyMode()
         let on = collectorOn
@@ -1326,6 +1350,7 @@ final class SynthEngine {
             renderStartBeat = internalBeat
         }
         renderFrameOffset = 0
+        isRendering = true
         internalBeat = renderStartBeat + Double(frames) * bpf
         if framesSinceClockTick < Int.max / 2 { framesSinceClockTick += frames }
         if internalBeat > 1_000_000 {
@@ -1334,6 +1359,7 @@ final class SynthEngine {
         }
         cycleSamples += frames
         defer {
+            isRendering = false
             recorder.process(left: left, right: right, frames: frames,
                              beatStart: renderStartBeat, beatsPerFrame: bpf)
             loops.render(left: left, right: right, frames: frames,
