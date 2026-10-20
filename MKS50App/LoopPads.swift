@@ -160,15 +160,8 @@ struct LoopPadsRow: View {
             Text("LOOPS")
                 .font(Theme.pixel(9, .bold))
                 .foregroundColor(Theme.dimLabel)
-            TimelineView(.periodic(from: .now, by: 0.125)) { context in
-                let blink = Int(context.date.timeIntervalSinceReferenceDate * 4) % 2 == 0
-                let sounding = engine.loops.soundingMask
-                let pending = engine.loops.pendingMask
-                HStack(spacing: 4) {
-                    ForEach(0..<LoopPadsModel.padCount, id: \.self) { i in
-                        pad(i, lit: sounding & (1 << i) != 0 || (pending & (1 << i) != 0 && blink))
-                    }
-                }
+            HStack(spacing: 4) {
+                ForEach(0..<LoopPadsModel.padCount, id: \.self) { i in pad(i) }
             }
             BigButton(title: "AUTO", icon: "repeat", active: pads.autoPlay) { pads.autoPlay.toggle() }
                 .accessibilityHint("Play each new recording on a pad right away")
@@ -176,20 +169,8 @@ struct LoopPadsRow: View {
         }
     }
 
-    @ViewBuilder private func pad(_ i: Int, lit: Bool) -> some View {
-        let label = VStack(spacing: 0) {
-            Text("\(i + 1)").font(Theme.pixel(12, .bold))
-            Text(pads.label(i) ?? "+")
-                .font(Theme.pixel(8, .regular))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .foregroundColor(lit ? Theme.ink : (pads.isEmpty(i) ? Theme.dimLabel : Theme.label))
-        .frame(width: 50, height: 40)
-        .background(RoundedRectangle(cornerRadius: Theme.corner)
-            .fill(lit ? Theme.violet : (pads.isEmpty(i) ? Theme.cell.opacity(0.4) : Theme.cell)))
-        .overlay(RoundedRectangle(cornerRadius: Theme.corner)
-            .stroke(pads.isEmpty(i) ? Theme.hairline : .clear, lineWidth: 1))
+    @ViewBuilder private func pad(_ i: Int) -> some View {
+        let label = LoopPadFace(index: i, title: pads.label(i), engine: engine)
 
         if pads.isEmpty(i) {
             Menu { assignItems(i) } label: { label }
@@ -202,7 +183,6 @@ struct LoopPadsRow: View {
                 pads.toggle(i)
             }
             .accessibilityLabel("Loop pad \(i + 1)")
-            .accessibilityValue(lit ? "playing" : "stopped")
         }
     }
 
@@ -212,6 +192,36 @@ struct LoopPadsRow: View {
         }
         ForEach(recorder.recordings.prefix(30), id: \.self) { url in
             Button(url.deletingPathExtension().lastPathComponent) { pads.assign(url, to: i) }
+        }
+    }
+}
+
+/// Pad surface: lit while the loop sounds, blinking while it waits for
+/// the next bar. Only this part redraws with the timeline.
+private struct LoopPadFace: View {
+    let index: Int
+    let title: String?
+    let engine: SynthEngine
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.125)) { context in
+            let blink = Int(context.date.timeIntervalSinceReferenceDate * 4) % 2 == 0
+            let bit = 1 << index
+            let lit = engine.loops.soundingMask & bit != 0 || (engine.loops.pendingMask & bit != 0 && blink)
+            let empty = title == nil
+            VStack(spacing: 0) {
+                Text("\(index + 1)").font(Theme.pixel(12, .bold))
+                Text(title ?? "+")
+                    .font(Theme.pixel(8, .regular))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .foregroundColor(lit ? Theme.ink : (empty ? Theme.dimLabel : Theme.label))
+            .frame(width: 50, height: 40)
+            .background(RoundedRectangle(cornerRadius: Theme.corner)
+                .fill(lit ? Theme.violet : (empty ? Theme.cell.opacity(0.4) : Theme.cell)))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner)
+                .stroke(empty ? Theme.hairline : .clear, lineWidth: 1))
         }
     }
 }
