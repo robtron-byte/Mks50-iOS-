@@ -122,8 +122,6 @@ final class SynthEngine {
     }
 
     var currentSampleRate: Double { Double(sampleRate) }
-    /// True while the loop recorder captures its tail (no new notes).
-    private var recorderTailGate = false
 
     @inline(__always) private var beatsPerFrame: Double {
         let rate = followingClock ? (clockRunning ? clockRate : 0) : 1
@@ -311,6 +309,7 @@ final class SynthEngine {
 
     init() {
         let capacity = 4096
+        recorder.loops = loops
         params = .allocate(capacity: Param.storageSize)
         params.initialize(repeating: 0, count: Param.storageSize)
 
@@ -654,8 +653,6 @@ final class SynthEngine {
     }
 
     private func noteOn(_ key: Int, velocity: Int) {
-        // Loop recorder tail: only the decay of the loop may ring on.
-        guard !recorderTailGate else { return }
         syncKeyMode()
         refreshEnvelopeSettings()
         recorder.noteTrigger = true
@@ -1329,12 +1326,6 @@ final class SynthEngine {
             renderStartBeat = internalBeat
         }
         renderFrameOffset = 0
-        let tail = recorder.inTail
-        if tail && !recorderTailGate {
-            // Loop part done: release everything so the tail only rings out.
-            allNotesOff()
-        }
-        recorderTailGate = tail
         internalBeat = renderStartBeat + Double(frames) * bpf
         if framesSinceClockTick < Int.max / 2 { framesSinceClockTick += frames }
         if internalBeat > 1_000_000 {

@@ -32,9 +32,10 @@ final class RecorderModel: ObservableObject {
     private var player: AVAudioPlayer?
     /// Bars of the take being recorded (the BARS setting may change meanwhile).
     private var armedBars = 2
-    /// Called after a take was saved: file, loop samples, length in beats
-    /// and the beat it started on (loop pads AUTO).
-    var onLoopSaved: ((URL, [Float], [Float], Double, Double) -> Void)?
+    /// Loop pad a new take should go live on (loop pads AUTO), nil = none.
+    var liveTarget: (() -> Int?)?
+    /// Called after a take was saved: file and the pad it already plays on.
+    var onLoopSaved: ((URL, Int) -> Void)?
     /// Called when a recording file was deleted.
     var onDeleted: ((URL) -> Void)?
 
@@ -80,7 +81,8 @@ final class RecorderModel: ObservableObject {
                                      tempo: engine.tempoBPM,
                                      sampleRate: engine.currentSampleRate,
                                      startOnNote: startOnNote,
-                                     tailSeconds: wrapTails ? 4 : 0)
+                                     tailSeconds: wrapTails ? 4 : 0,
+                                     liveSlot: liveTarget?())
         guard ok else {
             synth.flash("Recorder busy – try again")
             return
@@ -94,10 +96,19 @@ final class RecorderModel: ObservableObject {
     }
 
     private func cancel() {
+        if phase == .tail {
+            // The loop is complete (and maybe already looping): just end the tail.
+            engine.recorder.cancel()
+            return
+        }
         engine.recorder.cancel()
         phase = .idle
         progress = 0
         stopPolling()
+        // Frees the loop pad reserved for the take once the audio side let go.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.engine.recorder.cleanUpAfterCancel()
+        }
         synth.flash("Recording cancelled")
     }
 
@@ -123,6 +134,7 @@ final class RecorderModel: ObservableObject {
         case .finished:
             finish()
         case .idle:
+            engine.recorder.cleanUpAfterCancel()
             if phase != .saving {
                 phase = .idle
                 stopPolling()
@@ -135,13 +147,11 @@ final class RecorderModel: ObservableObject {
         stopPolling()
         phase = .saving
         progress = 1
-        let wrap = wrapTails
-        let beats = Double(armedBars * 4)
         let name = fileName()
         let url = directory.appendingPathComponent(name)
         let fallback = Self.defaultDirectory.appendingPathComponent(name)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let loop = take.seamlessLoop(wrapTail: wrap)
+            let loop = (left: take.left, right: take.right)
             let write = { (target: URL) in
                 try RecorderModel.writeWAV(left: loop.left, right: loop.right,
                                            sampleRate: take.sampleRate, to: target)
@@ -163,8 +173,8 @@ final class RecorderModel: ObservableObject {
                 case .success: self.synth.flash("Folder not available – saved in the app folder")
                 case .failure(let error): self.synth.flash("Saving failed: \(error.localizedDescription)")
                 }
-                if case .success = result {
-                    self.onLoopSaved?(saved, loop.left, loop.right, beats, take.startBeat)
+                if case .success = result, let pad = take.liveSlot {
+                    self.onLoopSaved?(saved, pad)
                 }
             }
         }

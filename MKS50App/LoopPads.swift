@@ -54,6 +54,7 @@ final class LoopPadsModel: ObservableObject {
     }
 
     func assign(_ url: URL, to pad: Int) {
+        guard !busy(pad) else { return }
         let wasPlaying = engine.loops.isPlaying(pad)
         pads[pad] = url
         persist()
@@ -61,6 +62,7 @@ final class LoopPadsModel: ObservableObject {
     }
 
     func clear(_ pad: Int) {
+        guard !busy(pad) else { return }
         engine.loops.unload(pad)
         pads[pad] = nil
         persist()
@@ -76,16 +78,19 @@ final class LoopPadsModel: ObservableObject {
         return text.isEmpty ? String(name.prefix(6)) : text
     }
 
-    /// A recording was just saved: with AUTO it goes onto the first empty
-    /// pad (or the last one) and plays on at once, in time with the bar it
-    /// was recorded in.
-    func recordingSaved(_ url: URL, left: [Float], right: [Float], beats: Double, startBeat: Double) {
-        guard autoPlay else { return }
-        let pad = pads.firstIndex(where: { $0 == nil }) ?? LoopPadsModel.padCount - 1
+    /// Pad a new recording goes live on with AUTO: the first empty one (or
+    /// the last). The recorder fills it while recording and it plays on the
+    /// moment the bars are complete, without a gap.
+    func liveTarget() -> Int? {
+        guard autoPlay else { return nil }
+        return pads.firstIndex(where: { $0 == nil }) ?? LoopPadsModel.padCount - 1
+    }
+
+    /// A live take was saved: the pad already plays it, it just gets its file.
+    func recordingSaved(_ url: URL, pad: Int) {
         pads[pad] = url
         persist()
-        engine.loops.load(pad, left: left, right: right, beats: beats)
-        engine.loops.play(pad, anchor: startBeat)
+        objectWillChange.send()
         synth.flash("Loop on pad \(pad + 1)")
     }
 
@@ -95,6 +100,13 @@ final class LoopPadsModel: ObservableObject {
     }
 
     // MARK: Private
+
+    /// A take is being recorded onto the pad.
+    private func busy(_ pad: Int) -> Bool {
+        guard engine.loops.isReserved(pad) else { return false }
+        synth.flash("Pad \(pad + 1) is recording")
+        return true
+    }
 
     private func persist() {
         UserDefaults.standard.set(pads.map { $0?.path ?? "" }, forKey: LoopPadsModel.padsKey)

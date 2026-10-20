@@ -105,9 +105,8 @@ struct AppMainView: View {
     /// Recorder → loop pads: AUTO playback and deleted files.
     private func connectLoopPads() {
         let pads = loopPads
-        recorder.onLoopSaved = { [weak pads] url, left, right, beats, startBeat in
-            pads?.recordingSaved(url, left: left, right: right, beats: beats, startBeat: startBeat)
-        }
+        recorder.liveTarget = { [weak pads] in pads?.liveTarget() }
+        recorder.onLoopSaved = { [weak pads] url, pad in pads?.recordingSaved(url, pad: pad) }
         recorder.onDeleted = { [weak pads] url in pads?.fileDeleted(url) }
     }
 

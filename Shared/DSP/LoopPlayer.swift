@@ -10,6 +10,12 @@ import os
 ///
 /// Buffers are loaded and freed on the main thread under a lock; the audio
 /// thread only try-locks, so it never waits.
+///
+/// Live looping: `prepareLive` reserves a slot and hands its new (empty)
+/// buffer to the loop recorder, which records straight into it and calls
+/// `startLive` on the frame the bars are complete; the slot then switches
+/// to the new loop at once (the previous loop of that slot, if any, plays
+/// until then). While reserved, the slot cannot be loaded or cleared.
 final class LoopPlayer {
     static let slotCount = 4
 
@@ -22,6 +28,17 @@ final class LoopPlayer {
         var anchor: Double = 0
         var playing = false
         var gain: Float = 0
+        // Live take (see `prepareLive`).
+        var reserved = false
+        var liveLeft: UnsafeMutablePointer<Float>? = nil
+        var liveRight: UnsafeMutablePointer<Float>? = nil
+        var liveFrames = 0
+        var liveBeats: Double = 8
+        /// Set by the recorder (audio thread) when the take is complete.
+        var liveAnchor: Double = .nan
+        /// Buffers replaced by a live take, freed by the main thread.
+        var retiredLeft: UnsafeMutablePointer<Float>? = nil
+        var retiredRight: UnsafeMutablePointer<Float>? = nil
     }
 
     private let slots: UnsafeMutablePointer<Slot>
@@ -42,25 +59,43 @@ final class LoopPlayer {
         for i in 0..<LoopPlayer.slotCount {
             slots[i].left?.deallocate()
             slots[i].right?.deallocate()
+            slots[i].liveLeft?.deallocate()
+            slots[i].liveRight?.deallocate()
+            slots[i].retiredLeft?.deallocate()
+            slots[i].retiredRight?.deallocate()
         }
         slots.deallocate()
         lock.deallocate()
     }
 
-    /// Any slot playing or fading out.
-    var active: Bool { soundingMask != 0 || pendingMask != 0 }
+    /// A live take is about to start (audio thread).
+    private var liveStartMask = 0
+
+    /// Any slot playing, fading out or about to start a live take.
+    var active: Bool { soundingMask != 0 || pendingMask != 0 || liveStartMask != 0 }
+
+    /// True while a live take records into the slot.
+    func isReserved(_ slot: Int) -> Bool {
+        (0..<LoopPlayer.slotCount).contains(slot) && slots[slot].reserved
+    }
 
     // MARK: Main thread
 
     /// Loads a loop of `beats` beats into a slot (stopped).
     func load(_ slot: Int, left: [Float], right: [Float], beats: Double) {
-        guard (0..<LoopPlayer.slotCount).contains(slot), !left.isEmpty else { return }
+        guard (0..<LoopPlayer.slotCount).contains(slot), !left.isEmpty, !slots[slot].reserved else { return }
         let frames = min(left.count, right.count)
         let l = UnsafeMutablePointer<Float>.allocate(capacity: frames)
         let r = UnsafeMutablePointer<Float>.allocate(capacity: frames)
         left.withUnsafeBufferPointer { l.initialize(from: $0.baseAddress!, count: frames) }
         right.withUnsafeBufferPointer { r.initialize(from: $0.baseAddress!, count: frames) }
         os_unfair_lock_lock(lock)
+        guard !slots[slot].reserved else {
+            os_unfair_lock_unlock(lock)
+            l.deallocate()
+            r.deallocate()
+            return
+        }
         let oldL = slots[slot].left, oldR = slots[slot].right
         slots[slot] = Slot(left: l, right: r, frames: frames, beats: max(beats, 1))
         os_unfair_lock_unlock(lock)
@@ -71,6 +106,7 @@ final class LoopPlayer {
     func unload(_ slot: Int) {
         guard (0..<LoopPlayer.slotCount).contains(slot) else { return }
         os_unfair_lock_lock(lock)
+        guard !slots[slot].reserved else { os_unfair_lock_unlock(lock); return }
         let oldL = slots[slot].left, oldR = slots[slot].right
         slots[slot] = Slot()
         soundingMask &= ~(1 << slot)
@@ -100,6 +136,82 @@ final class LoopPlayer {
         os_unfair_lock_unlock(lock)
     }
 
+    /// Reserves a slot for a live take of `frames` frames / `beats` beats
+    /// and returns its zeroed buffers (the recorder writes into them until
+    /// `releaseLive`). nil if the slot is already reserved.
+    func prepareLive(_ slot: Int, frames: Int, beats: Double)
+        -> (UnsafeMutablePointer<Float>, UnsafeMutablePointer<Float>)? {
+        guard (0..<LoopPlayer.slotCount).contains(slot), frames > 0 else { return nil }
+        let l = UnsafeMutablePointer<Float>.allocate(capacity: frames)
+        let r = UnsafeMutablePointer<Float>.allocate(capacity: frames)
+        l.initialize(repeating: 0, count: frames)
+        r.initialize(repeating: 0, count: frames)
+        os_unfair_lock_lock(lock)
+        guard !slots[slot].reserved else {
+            os_unfair_lock_unlock(lock)
+            l.deallocate()
+            r.deallocate()
+            return nil
+        }
+        slots[slot].reserved = true
+        slots[slot].liveLeft = l
+        slots[slot].liveRight = r
+        slots[slot].liveFrames = frames
+        slots[slot].liveBeats = max(beats, 1)
+        slots[slot].liveAnchor = .nan
+        os_unfair_lock_unlock(lock)
+        return (l, r)
+    }
+
+    /// Ends the reservation once the recorder no longer writes. `started`:
+    /// the take went live; otherwise (cancelled) its buffers are dropped and
+    /// the slot keeps what it had.
+    func releaseLive(_ slot: Int, started: Bool) {
+        guard (0..<LoopPlayer.slotCount).contains(slot) else { return }
+        os_unfair_lock_lock(lock)
+        var free: [UnsafeMutablePointer<Float>?] = [slots[slot].retiredLeft, slots[slot].retiredRight]
+        slots[slot].retiredLeft = nil
+        slots[slot].retiredRight = nil
+        if started, !slots[slot].liveAnchor.isNaN, let ll = slots[slot].liveLeft, let lr = slots[slot].liveRight {
+            // Complete but not switched yet (e.g. transport halted): switch here.
+            free += [slots[slot].left, slots[slot].right]
+            slots[slot].left = ll
+            slots[slot].right = lr
+            slots[slot].frames = slots[slot].liveFrames
+            slots[slot].beats = slots[slot].liveBeats
+            slots[slot].anchor = slots[slot].liveAnchor
+            slots[slot].playing = true
+            slots[slot].gain = 1
+            slots[slot].liveLeft = nil
+            slots[slot].liveRight = nil
+            slots[slot].liveAnchor = .nan
+            liveStartMask &= ~(1 << slot)
+            pendingMask |= 1 << slot
+        } else if slots[slot].liveLeft != nil {
+            // Cancelled before the bars were complete: drop the live buffers.
+            free += [slots[slot].liveLeft, slots[slot].liveRight]
+            slots[slot].liveLeft = nil
+            slots[slot].liveRight = nil
+            slots[slot].liveAnchor = .nan
+            liveStartMask &= ~(1 << slot)
+        }
+        slots[slot].reserved = false
+        os_unfair_lock_unlock(lock)
+        for p in free { p?.deallocate() }
+    }
+
+    // MARK: Audio thread (recorder)
+
+    /// The live take in `slot` is complete: it plays from `anchor` on (the
+    /// beat right after its last frame).
+    func startLive(_ slot: Int, anchor: Double) {
+        guard (0..<LoopPlayer.slotCount).contains(slot), slots[slot].reserved else { return }
+        slots[slot].liveAnchor = anchor
+        liveStartMask |= 1 << slot
+    }
+
+    // MARK: Queries
+
     func isPlaying(_ slot: Int) -> Bool {
         (0..<LoopPlayer.slotCount).contains(slot) && slots[slot].playing
     }
@@ -119,6 +231,22 @@ final class LoopPlayer {
         var sounding = 0
         var pending = 0
         for i in 0..<LoopPlayer.slotCount {
+            if !slots[i].liveAnchor.isNaN, let ll = slots[i].liveLeft, let lr = slots[i].liveRight {
+                // Live take complete: switch to it on the spot, full level.
+                slots[i].retiredLeft = slots[i].left
+                slots[i].retiredRight = slots[i].right
+                slots[i].left = ll
+                slots[i].right = lr
+                slots[i].frames = slots[i].liveFrames
+                slots[i].beats = slots[i].liveBeats
+                slots[i].anchor = slots[i].liveAnchor
+                slots[i].playing = true
+                slots[i].gain = 1
+                slots[i].liveLeft = nil
+                slots[i].liveRight = nil
+                slots[i].liveAnchor = .nan
+                liveStartMask &= ~(1 << i)
+            }
             guard slots[i].frames > 0, let l = slots[i].left, let r = slots[i].right else { continue }
             // Start on the next bar line (4/4, or this one if we are right on
             // it); also when the beat jumped back (MIDI Start resets it to 0),
