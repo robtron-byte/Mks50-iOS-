@@ -124,7 +124,7 @@ struct SettingsView: View {
                         let status = AudioHost.bufferStatus
                         let load = model.audioUnit.engine.cpuLoad
                         LabeledContent("Now") {
-                            Text(String(format: "%d samples · %.1f ms · DSP %d %%",
+                            Text(String(format: "%ld samples · %.1f ms · DSP %ld %%",
                                         status.frames, status.milliseconds, Int((load * 100).rounded())))
                                 .monospacedDigit()
                                 .foregroundColor(load > 0.7 ? .orange : .secondary)
