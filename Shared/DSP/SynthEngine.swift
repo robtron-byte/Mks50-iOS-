@@ -89,6 +89,9 @@ final class SynthEngine {
 
     /// Bar-accurate loop recorder (fed with the final output).
     let recorder = LoopRecorder()
+    /// Recorded loops played back in time (app); mixed in after the
+    /// recorder, so new takes never contain the loops playing along.
+    let loops = LoopPlayer()
 
     /// Last applied chord (slot + notes) in CHORD mode, -1: not in CHORD mode.
     private var lastChordSignature = -1
@@ -1339,6 +1342,8 @@ final class SynthEngine {
         defer {
             recorder.process(left: left, right: right, frames: frames,
                              beatStart: renderStartBeat, beatsPerFrame: bpf)
+            loops.render(left: left, right: right, frames: frames,
+                         beatStart: renderStartBeat, beatsPerFrame: bpf, sampleRate: Double(sampleRate))
         }
 
         var anyActive = false
@@ -1347,7 +1352,7 @@ final class SynthEngine {
         // Idle once no voice sounds and the output (incl. delay / reverb
         // tails) has stayed below -100 dBFS for 100 ms.
         let tailFrames = Int(sampleRate * 0.1)
-        if !anyActive && idleFrames >= tailFrames && arp.isEmpty && collectorOn == arpWasOn {
+        if !anyActive && idleFrames >= tailFrames && arp.isEmpty && collectorOn == arpWasOn && !loops.active {
             left.update(repeating: 0, count: frames)
             right.update(repeating: 0, count: frames)
             return true

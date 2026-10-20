@@ -4,9 +4,21 @@ import SwiftUI
 struct RecorderStrip: View {
     @ObservedObject var recorder: RecorderModel
     let model: SynthViewModel
+    let loopPads: LoopPadsModel
     let onShowRecordings: () -> Void
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            controls
+            LoopPadsRow(pads: loopPads, recorder: recorder, engine: model.audioUnit.engine)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Theme.panel)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.panelEdge).frame(height: 1) }
+    }
+
+    private var controls: some View {
         // One row in landscape, two rows on an upright iPhone.
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
@@ -32,10 +44,6 @@ struct RecorderStrip: View {
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Theme.panel)
-        .overlay(alignment: .top) { Rectangle().fill(Theme.panelEdge).frame(height: 1) }
     }
 
     private var tailsButton: some View {

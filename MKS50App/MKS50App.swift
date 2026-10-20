@@ -83,6 +83,7 @@ struct AppMainView: View {
     let model: SynthViewModel
     @ObservedObject var midi: MIDIManager
     @StateObject private var recorder: RecorderModel
+    @StateObject private var loopPads: LoopPadsModel
 
     @AppStorage("showRecorder") private var showRecorder = false
     @State private var showRecordings = false
@@ -98,6 +99,16 @@ struct AppMainView: View {
         self.model = model
         self.midi = midi
         _recorder = StateObject(wrappedValue: RecorderModel(audioUnit: model.audioUnit, synth: model))
+        _loopPads = StateObject(wrappedValue: LoopPadsModel(engine: model.audioUnit.engine, synth: model))
+    }
+
+    /// Recorder → loop pads: AUTO playback and deleted files.
+    private func connectLoopPads() {
+        let pads = loopPads
+        recorder.onLoopSaved = { [weak pads] url, left, right, beats, startBeat in
+            pads?.recordingSaved(url, left: left, right: right, beats: beats, startBeat: startBeat)
+        }
+        recorder.onDeleted = { [weak pads] url in pads?.fileDeleted(url) }
     }
 
     private var sysexChannel: Int { max(0, model.intValue(.midiChannel) - 1) }
@@ -105,9 +116,10 @@ struct AppMainView: View {
     var body: some View {
         SynthMainView(model: model) { toolbar } accessory: {
             if showRecorder {
-                RecorderStrip(recorder: recorder, model: model) { showRecordings = true }
+                RecorderStrip(recorder: recorder, model: model, loopPads: loopPads) { showRecordings = true }
             }
         }
+            .onAppear(perform: connectLoopPads)
             .sheet(isPresented: $showRecordings) {
                 RecordingsSheet(recorder: recorder)
             }

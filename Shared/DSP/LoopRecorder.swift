@@ -23,6 +23,8 @@ final class LoopRecorder {
         let loopFrames: Int
         let tailFrames: Int
         let sampleRate: Double
+        /// Beat-clock position of the first recorded frame.
+        let startBeat: Double
     }
 
     private let lock: UnsafeMutablePointer<os_unfair_lock>
@@ -41,6 +43,7 @@ final class LoopRecorder {
     private var tailFrames = 0
     private var startOnNote = true
     private var sampleRate: Double = 44100
+    private var startBeat: Double = 0
 
     // Audio-thread private.
     private var latched = false
@@ -107,7 +110,8 @@ final class LoopRecorder {
         guard state == .finished, let l = left, let r = right else { return nil }
         let take = Take(left: Array(UnsafeBufferPointer(start: l, count: totalFrames)),
                         right: Array(UnsafeBufferPointer(start: r, count: totalFrames)),
-                        loopFrames: loopFrames, tailFrames: tailFrames, sampleRate: sampleRate)
+                        loopFrames: loopFrames, tailFrames: tailFrames, sampleRate: sampleRate,
+                        startBeat: startBeat)
         state = .idle
         return take
     }
@@ -156,6 +160,7 @@ final class LoopRecorder {
                 offset = max(0, delta)
             }
             noteTrigger = false
+            startBeat = beatStart + Double(offset) * beatsPerFrame
             state = .recording
         }
 

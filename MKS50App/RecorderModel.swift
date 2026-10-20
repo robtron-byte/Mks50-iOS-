@@ -30,6 +30,13 @@ final class RecorderModel: ObservableObject {
     private let synth: SynthViewModel
     private var timer: Timer?
     private var player: AVAudioPlayer?
+    /// Bars of the take being recorded (the BARS setting may change meanwhile).
+    private var armedBars = 2
+    /// Called after a take was saved: file, loop samples, length in beats
+    /// and the beat it started on (loop pads AUTO).
+    var onLoopSaved: ((URL, [Float], [Float], Double, Double) -> Void)?
+    /// Called when a recording file was deleted.
+    var onDeleted: ((URL) -> Void)?
 
     private var engine: SynthEngine { audioUnit.engine }
     var bars: Int { RecorderModel.barOptions[min(max(barsIndex, 0), RecorderModel.barOptions.count - 1)] }
@@ -74,6 +81,7 @@ final class RecorderModel: ObservableObject {
             synth.flash("Recorder busy – try again")
             return
         }
+        armedBars = bars
         phase = .armed
         progress = 0
         startPolling()
@@ -124,6 +132,7 @@ final class RecorderModel: ObservableObject {
         phase = .saving
         progress = 1
         let wrap = wrapTails
+        let beats = Double(armedBars * 4)
         let name = fileName()
         let url = directory.appendingPathComponent(name)
         let fallback = Self.defaultDirectory.appendingPathComponent(name)
@@ -150,6 +159,9 @@ final class RecorderModel: ObservableObject {
                 case .success: self.synth.flash("Folder not available – saved in the app folder")
                 case .failure(let error): self.synth.flash("Saving failed: \(error.localizedDescription)")
                 }
+                if case .success = result {
+                    self.onLoopSaved?(saved, loop.left, loop.right, beats, take.startBeat)
+                }
             }
         }
     }
@@ -160,7 +172,7 @@ final class RecorderModel: ObservableObject {
         let tone = synth.toneName.isEmpty ? "MKS50" : synth.toneName
         let safe = tone.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
         let bpm = Int(engine.tempoBPM.rounded())
-        return "MKS50 \(safe) \(bpm)BPM \(bars)bar \(formatter.string(from: Date())).wav"
+        return "MKS50 \(safe) \(bpm)BPM \(armedBars)bar \(formatter.string(from: Date())).wav"
     }
 
     // MARK: Files
@@ -228,6 +240,7 @@ final class RecorderModel: ObservableObject {
     func delete(_ url: URL) {
         if playing == url { stopPreview() }
         try? FileManager.default.removeItem(at: url)
+        onDeleted?(url)
         refreshRecordings()
     }
 
