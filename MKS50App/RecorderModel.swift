@@ -22,6 +22,9 @@ final class RecorderModel: ObservableObject {
     }
     /// File currently previewed (looped) in the recordings list.
     @Published private(set) var playing: URL?
+    /// Folder chosen in Settings (iCloud Drive, a USB drive, another app's
+    /// folder …), nil = the app's own Recordings folder.
+    @Published private(set) var customFolder: URL?
 
     private let audioUnit: MKS50AudioUnit
     private let synth: SynthViewModel
@@ -38,10 +41,17 @@ final class RecorderModel: ObservableObject {
         barsIndex = defaults.object(forKey: "recorderBars") as? Int ?? 1          // 2 bars
         startOnNote = defaults.object(forKey: "recorderStartOnNote") as? Bool ?? true
         wrapTails = defaults.object(forKey: "recorderWrapTails") as? Bool ?? true
+        customFolder = RecorderModel.resolveFolderBookmark()
+        if let folder = customFolder, !folder.startAccessingSecurityScopedResource() {
+            customFolder = nil                  // no longer reachable: back to the default
+        }
         refreshRecordings()
     }
 
-    deinit { timer?.invalidate() }
+    deinit {
+        timer?.invalidate()
+        customFolder?.stopAccessingSecurityScopedResource()
+    }
 
     // MARK: Recording
 
@@ -114,18 +124,30 @@ final class RecorderModel: ObservableObject {
         phase = .saving
         progress = 1
         let wrap = wrapTails
-        let url = Self.directory.appendingPathComponent(fileName())
+        let name = fileName()
+        let url = directory.appendingPathComponent(name)
+        let fallback = Self.defaultDirectory.appendingPathComponent(name)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let loop = take.seamlessLoop(wrapTail: wrap)
-            let result = Result { try RecorderModel.writeWAV(left: loop.left, right: loop.right,
-                                                             sampleRate: take.sampleRate, to: url) }
+            let write = { (target: URL) in
+                try RecorderModel.writeWAV(left: loop.left, right: loop.right,
+                                           sampleRate: take.sampleRate, to: target)
+            }
+            var saved = url
+            var result = Result { try write(url) }
+            if case .failure = result, url != fallback {
+                // Chosen folder not writable (e.g. drive unplugged): keep the take.
+                saved = fallback
+                result = Result { try write(fallback) }
+            }
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.phase = .idle
                 self.progress = 0
                 self.refreshRecordings()
                 switch result {
-                case .success: self.synth.flash("Saved \(url.lastPathComponent)")
+                case .success where saved == url: self.synth.flash("Saved \(name)")
+                case .success: self.synth.flash("Folder not available – saved in the app folder")
                 case .failure(let error): self.synth.flash("Saving failed: \(error.localizedDescription)")
                 }
             }
@@ -143,17 +165,61 @@ final class RecorderModel: ObservableObject {
 
     // MARK: Files
 
+    private static let folderBookmarkKey = "recordingsFolderBookmark"
+
     /// Documents/Recordings – visible in the Files app under "On My iPhone › MKS-50".
-    static var directory: URL {
+    static var defaultDirectory: URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dir = docs.appendingPathComponent("Recordings", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
 
+    /// Where new recordings go and which folder the list shows.
+    var directory: URL { customFolder ?? Self.defaultDirectory }
+
+    /// Name of the save location for Settings.
+    var folderName: String { customFolder?.lastPathComponent ?? "MKS50 › Recordings (default)" }
+
+    /// Uses a folder picked in the Files dialog. Its access permission is
+    /// stored as a bookmark, so it survives app restarts.
+    func setFolder(_ url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        guard let bookmark = try? url.bookmarkData() else {
+            if scoped { url.stopAccessingSecurityScopedResource() }
+            synth.flash("Could not use \(url.lastPathComponent)")
+            return
+        }
+        customFolder?.stopAccessingSecurityScopedResource()
+        UserDefaults.standard.set(bookmark, forKey: Self.folderBookmarkKey)
+        customFolder = url                      // stays accessed while in use
+        stopPreview()
+        refreshRecordings()
+        synth.flash("Recordings go to \(url.lastPathComponent)")
+    }
+
+    /// Back to the app's own Recordings folder.
+    func resetFolder() {
+        customFolder?.stopAccessingSecurityScopedResource()
+        customFolder = nil
+        UserDefaults.standard.removeObject(forKey: Self.folderBookmarkKey)
+        stopPreview()
+        refreshRecordings()
+    }
+
+    private static func resolveFolderBookmark() -> URL? {
+        guard let data = UserDefaults.standard.data(forKey: folderBookmarkKey) else { return nil }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else { return nil }
+        if stale, let fresh = try? url.bookmarkData() {
+            UserDefaults.standard.set(fresh, forKey: folderBookmarkKey)
+        }
+        return url
+    }
+
     func refreshRecordings() {
         let files = (try? FileManager.default.contentsOfDirectory(
-            at: Self.directory, includingPropertiesForKeys: [.creationDateKey])) ?? []
+            at: directory, includingPropertiesForKeys: [.creationDateKey])) ?? []
         recordings = files
             .filter { $0.pathExtension.lowercased() == "wav" }
             .sorted { $0.lastPathComponent > $1.lastPathComponent }

@@ -194,7 +194,9 @@ struct RecordingsSheet: View {
                                 offsets.map { recorder.recordings[$0] }.forEach(recorder.delete)
                             }
                         } footer: {
-                            Text("Files are also in the Files app: On My iPhone › MKS50 › Recordings.")
+                            Text(recorder.customFolder == nil
+                                 ? "Files are also in the Files app: On My iPhone › MKS50 › Recordings. Change the folder in Settings."
+                                 : "Saved to \(recorder.folderName). Change the folder in Settings.")
                         }
                     }
                 }

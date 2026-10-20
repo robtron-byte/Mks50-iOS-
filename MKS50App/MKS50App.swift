@@ -104,7 +104,7 @@ struct AppMainView: View {
                 RecordingsSheet(recorder: recorder)
             }
             .sheet(isPresented: $showSettings) {
-                SettingsView(model: model, midi: midi)
+                SettingsView(model: model, midi: midi, recorder: recorder)
             }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: SysExDocument.readableContentTypes) { result in
                 guard case .success(let url) = result else { return }

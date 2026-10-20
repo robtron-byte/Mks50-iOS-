@@ -1,9 +1,12 @@
 import CoreAudioKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject var model: SynthViewModel
     @ObservedObject var midi: MIDIManager
+    @ObservedObject var recorder: RecorderModel
+    @State private var pickFolder = false
     @Environment(\.dismiss) private var dismiss
     @AppStorage(AudioHost.backgroundAudioKey) private var backgroundAudio = true
     @AppStorage(AudioHost.clockSyncKey) private var clockSync = false
@@ -91,6 +94,22 @@ struct SettingsView: View {
                     Text("Sync to MIDI Clock: tempo, start and stop come from the selected MIDI inputs or another app (sending clock to \"MKS50 Synth\"). Arp and sequencer run only while the clock source is playing; Start restarts them on the first step. " + "Network MIDI makes the iPhone visible to a Mac (Audio MIDI Setup › Network). \"Run in Background\" keeps the synth playing while you use another app, e.g. a sequencer that sends to \"MKS50 Synth\".")
                 }
 
+                Section {
+                    LabeledContent("Save To") {
+                        Text(recorder.folderName).foregroundColor(.secondary).lineLimit(1)
+                    }
+                    Button("Choose Folder …") { pickFolder = true }
+                        .disabled(recorder.phase != .idle)
+                    if recorder.customFolder != nil {
+                        Button("Use Default Folder") { recorder.resetFolder() }
+                            .disabled(recorder.phase != .idle)
+                    }
+                } header: {
+                    Text("Recordings")
+                } footer: {
+                    Text("Loop recordings are saved as WAV files. Choose any folder from the Files app, e.g. in iCloud Drive, on a USB drive or in another app's folder. If the folder is not available when saving, the loop goes to the default folder (Files › On My iPhone › MKS50 › Recordings).")
+                }
+
                 Section("MIDI CC Assignments") {
                     let mapped = Param.allCases.compactMap { p in model.ccNumber(for: p).map { (p, $0) } }
                     if mapped.isEmpty {
@@ -128,6 +147,9 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .fileImporter(isPresented: $pickFolder, allowedContentTypes: [.folder]) { result in
+                if case .success(let url) = result { recorder.setFolder(url) }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
