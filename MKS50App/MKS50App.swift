@@ -20,9 +20,17 @@ struct MKS50App: App {
 struct RootView: View {
     @ObservedObject var host: AudioHost
     @Environment(\.scenePhase) private var scenePhase
+    @State private var showSplash = true
 
     var body: some View {
-        content
+        ZStack {
+            content
+            if showSplash {
+                SplashView { withAnimation(.easeOut(duration: 0.35)) { showSplash = false } }
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
+        }
             .onChangeCompat(of: scenePhase) { phase in
                 switch phase {
                 case .active: host.sceneDidChange(active: true)
