@@ -1,0 +1,307 @@
+{
+  "id": "d5c68354-85da-5810-b17a-77cd374c5b6a",
+  "name": "MKS50 PO16 Page 2 Perform",
+  "description": "MKS50 app, PO16 page 2: arp / sequencer, transpose, stutter, tempo, hold, REC, loop pads. Side button: page 1.",
+  "type": "PO16",
+  "version": {
+    "major": "1",
+    "minor": "7",
+    "patch": "5"
+  },
+  "configType": "profile",
+  "files": [],
+  "createdAt": "2026-10-21T20:49:42.827Z",
+  "modifiedAt": "2026-10-21T20:49:42.827Z",
+  "virtualPath": "",
+  "configs": [
+    {
+      "controlElementNumber": 0,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"ARP off|on\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{168,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,48,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 1,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"ARP RATE\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{168,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,49,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 2,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"SEQ off|on\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{168,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,50,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 3,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"SEQ RATE\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{168,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,51,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 4,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"SEQ GATE\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{28,204,120,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,52,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 5,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"SEQ G.VAR\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{28,204,120,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,53,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 6,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"TRANSPOSE\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{28,204,120,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,54,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 7,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"STUTTER\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{28,204,120,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,55,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 8,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"TEMPO\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{255,94,33,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,56,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 9,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"HOLD off|on\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{255,94,33,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,57,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 10,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"REC >\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{255,94,33,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,58,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 11,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"LOOPS\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{255,94,33,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,59,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 12,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"PAD 1\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{51,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,60,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 13,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"PAD 2\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{51,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,61,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 14,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"PAD 3\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{51,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,62,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 15,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@sn]] self:gen(\"PAD 4\")--[[@cb]] --[[Potmeter Init]]"
+        },
+        {
+          "event": 1,
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{51,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,63,-1)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 255,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] gms(15,176,96,gpc())"
+        },
+        {
+          "event": 4,
+          "config": "--[[@cb]] gpl((gpc()+1)%2)"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] print(\"tick\")"
+        }
+      ]
+    }
+  ]
+}

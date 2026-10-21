@@ -1,73 +1,67 @@
 import Foundation
-import SwiftUI
 
-/// Live control from an Intech Studio Grid EN16 (16 endless encoders with
-/// push buttons) on MIDI channel 16. The matching Grid Editor profiles are
-/// in Tools/EN16 (one per page, made by Tools/en16_profiles.py).
+/// Live control from an Intech Studio Grid PO16 (16 potentiometers, no
+/// buttons) on MIDI channel 16. The matching Grid Editor profiles are in
+/// Tools/PO16 (one per page, made by Tools/po16_profiles.py).
 ///
-/// Protocol (channel 16): encoders send relative values (binary offset,
-/// 64 ± steps), pushes 127 / 0.
-/// - Page 1 SOUND: encoder e → CC 32 + e, push → CC 64 + e
-/// - Page 2 PERFORM: encoder e → CC 48 + e, push → CC 80 + e
-/// - CC 96: the EN16 loaded a page; all LED states are sent again
-/// Feedback to the EN16 uses the push CC numbers: 0 off, 64 half
-/// (armed / waiting / loaded), 127 on.
+/// Protocol (channel 16, absolute 0...127):
+/// - Page 1 SOUND: pot p → CC 32 + p
+/// - Page 2 PERFORM: pot p → CC 48 + p
+/// - CC 96: the PO16 loaded a page (the side button switches pages)
 ///
-/// Page 1: the 16 most useful sound parameters; a push resets one to the
-/// value of the loaded preset, and its LED shows whether it was changed.
-/// Page 2: arp / sequencer, transpose, tempo, stutter, recorder, presets
-/// and the four loop pads (encoders: pad levels).
-final class GridController: ObservableObject {
-    static let enabledKey = "gridEN16Enabled"
+/// Pickup: a pot only takes over a parameter once it reaches the current
+/// value (after a preset change, a page switch or a change on screen), so
+/// nothing jumps. Switches (ARP, SEQ, HOLD) follow the pot crossing the
+/// middle; REC starts a take when turned past the middle; a loop pad pot
+/// sets the pad's level and stops the pad at zero / starts it from zero.
+/// DELAY TIME sets the note value while the delay is tempo-synced (the
+/// default), else the free time.
+final class GridController {
+    static let enabledKey = "gridControllerEnabled"
 
-    // MARK: Layout (keep in sync with Tools/en16_profiles.py)
+    // MARK: Layout (keep in sync with Tools/po16_profiles.py)
 
     /// Page 1, left to right, top to bottom.
     static let soundPage: [Param] = [
         .vcfCutoff, .vcfResonance, .vcfEnvDepth, .hpfFreq,            // filter
         .lfoRate, .vcfLfoDepth, .dcoLfoDepth, .dcoPwDepth,            // modulation
         .envT1, .envT2, .envL3, .envT4,                               // envelope (attack, decay, sustain, release)
-        .delayMix, .delayFeedback, .reverbMix, .distDrive,            // effects
+        .delayMix, .delayFeedback, .delayTime, .reverbMix,            // effects
     ]
 
     private enum Perform: Int {
-        case arpRate, arpMode, seqRate, seqGate
-        case seqGateVar, transpose, tempo, stutterRate
-        case recBars, preset, volume, loopsMaster
+        case arp, arpRate, seq, seqRate
+        case seqGate, seqGateVar, transpose, stutter
+        case tempo, hold, rec, loopsMaster
         case pad1, pad2, pad3, pad4
     }
 
     private let synth: SynthViewModel
-    private let midi: MIDIManager
     private let recorder: RecorderModel
     private let pads: LoopPadsModel
     private var engine: SynthEngine { synth.audioUnit.engine }
 
-    /// Values of the loaded preset, for "push = back to the preset".
-    private var presetValues: [Param: Float] = [:]
+    /// Last position per CC, and whether it has picked up its parameter
+    /// (with the value it last set, to notice changes made elsewhere).
+    private var lastPosition: [Int: Int] = [:]
+    private var pickedUp: [Int: Float] = [:]
     private var presetStamp = ""
-    private var sentFeedback: [UInt8: UInt8] = [:]
-    private var timer: Timer?
-    private var tapTimes: [Date] = []
-    /// Discrete parameters move one step per detent; fast turns send bigger
-    /// steps, which are limited so a list is never skipped through.
     private var masterLevel: Float = 1
-
-    var enabled: Bool { UserDefaults.standard.object(forKey: GridController.enabledKey) as? Bool ?? true }
+    private var timer: Timer?
 
     init(synth: SynthViewModel, midi: MIDIManager, recorder: RecorderModel, pads: LoopPadsModel) {
         self.synth = synth
-        self.midi = midi
         self.recorder = recorder
         self.pads = pads
         midi.onControllerCC = { [weak self] cc, value in
-            // MIDI thread: claim the EN16's CCs, handle them on main.
-            guard (32...96).contains(cc),
+            // MIDI thread: claim the PO16's CCs, handle them on main.
+            guard (32...63).contains(cc) || cc == 96,
                   UserDefaults.standard.object(forKey: GridController.enabledKey) as? Bool ?? true else { return false }
             DispatchQueue.main.async { self?.handle(cc: Int(cc), value: Int(value)) }
             return true
         }
-        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in self?.tick() }
+        // A new preset: every pot has to pick its parameter up again.
+        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in self?.watchPreset() }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }
@@ -77,155 +71,132 @@ final class GridController: ObservableObject {
     // MARK: Input (main thread)
 
     private func handle(cc: Int, value: Int) {
-        let delta = value - 64
         switch cc {
-        case 32..<48: turnSound(cc - 32, delta)
-        case 48..<64: turnPerform(cc - 48, delta)
-        case 64..<80: if value > 63 { resetSound(cc - 64) }
-        case 80..<96: pushPerform(cc - 80, pressed: value > 63)
-        case 96: sentFeedback.removeAll()          // page loaded: resend all LEDs
-        default: break
+        case 32..<48:
+            let p = effective(GridController.soundPage[cc - 32])
+            if p.maxValue <= 24 { list(cc, p, value) } else { continuous(cc, p, value) }
+        case 48..<64:
+            perform(cc, Perform(rawValue: cc - 48)!, value)
+        case 96:
+            pickedUp.removeAll()                    // other page: pick up anew
+            lastPosition.removeAll()
+        default:
+            break
+        }
+        lastPosition[cc] = value
+    }
+
+    /// Applies `value` once the pot has reached `current` (both 0...127):
+    /// within 3 steps of it, or crossing it since the last position.
+    private func pickUp(_ cc: Int, _ value: Int, current: Float, apply: () -> Float) {
+        if let set = pickedUp[cc], abs(set - currentParameterValue(cc)) > 0.01 {
+            pickedUp[cc] = nil                      // changed elsewhere (screen, MIDI learn)
+        }
+        if pickedUp[cc] == nil {
+            let v = Float(value)
+            let crossed = lastPosition[cc].map { (Float($0) - current) * (v - current) <= 0 } ?? false
+            guard abs(v - current) <= 3 || crossed else { return }
+        }
+        pickedUp[cc] = apply()
+    }
+
+    /// The parameter value a picked-up pot last set, for change detection.
+    private func currentParameterValue(_ cc: Int) -> Float {
+        switch cc {
+        case 32..<48: return synth.value(effective(GridController.soundPage[cc - 32]))
+        case 48..<64:
+            switch Perform(rawValue: cc - 48)! {
+            case .arpRate: return synth.value(.arpRate)
+            case .seqRate: return synth.value(.seqRate)
+            case .seqGate: return synth.value(.seqGate)
+            case .seqGateVar: return synth.value(.seqGateVar)
+            case .transpose: return synth.value(.keyShift)
+            case .tempo: return synth.value(.tempo)
+            default: return 0
+            }
+        default: return 0
         }
     }
 
-    private func turnSound(_ index: Int, _ delta: Int) {
-        guard GridController.soundPage.indices.contains(index) else { return }
-        nudge(GridController.soundPage[index], delta)
+    /// The parameter a pot really moves: DELAY TIME is the note value while
+    /// the delay is tempo-synced.
+    private func effective(_ p: Param) -> Param {
+        p == .delayTime && synth.intValue(.delaySync) == 1 ? .delayDivision : p
     }
 
-    /// Relative change of a parameter: 1 per detent for 0...127 ranges,
-    /// one step at a time for switches and lists.
-    private func nudge(_ p: Param, _ delta: Int) {
-        guard delta != 0 else { return }
-        let step: Float
-        if p.maxValue <= 24 {
-            step = delta > 0 ? 1 : -1
-        } else {
-            step = Float(max(-12, min(12, delta)))
+    /// List parameter: the pot range split into equal zones.
+    private func list(_ cc: Int, _ p: Param, _ value: Int) {
+        let count = p.maxValue + 1
+        let current = (Float(synth.intValue(p)) + 0.5) / Float(count) * 128
+        pickUp(cc, value, current: current) {
+            synth.set(p, Float(min(value * count / 128, p.maxValue)))
+            return synth.value(p)
         }
-        synth.set(p, synth.value(p) + step)
     }
 
-    private func resetSound(_ index: Int) {
-        guard GridController.soundPage.indices.contains(index) else { return }
-        let p = GridController.soundPage[index]
-        if let v = presetValues[p] { synth.set(p, v) }
+    /// 0...127 parameter.
+    private func continuous(_ cc: Int, _ p: Param, _ value: Int) {
+        pickUp(cc, value, current: synth.value(p) / Float(p.maxValue) * 127) {
+            synth.set(p, Float(value) / 127 * Float(p.maxValue))
+            return synth.value(p)
+        }
     }
 
-    private func turnPerform(_ index: Int, _ delta: Int) {
-        guard let control = Perform(rawValue: index), delta != 0 else { return }
-        let one = delta > 0 ? 1 : -1
+    private func perform(_ cc: Int, _ control: Perform, _ value: Int) {
+        let last = lastPosition[cc]
+        // Switch: follows the pot crossing the middle (first touch: its side).
+        func switched(_ p: Param) {
+            let on = value >= 64
+            if let last, (last >= 64) == on { return }
+            if (synth.intValue(p) == 1) != on { synth.set(p, on ? 1 : 0) }
+        }
+
         switch control {
-        case .arpRate: nudge(.arpRate, one)
-        case .arpMode: nudge(.arpMode, one)
-        case .seqRate: nudge(.seqRate, one)
-        case .seqGate: nudge(.seqGate, delta)
-        case .seqGateVar: nudge(.seqGateVar, delta)
-        case .transpose: nudge(.keyShift, one)
+        case .arp: switched(.arpOn)
+        case .arpRate: list(cc, .arpRate, value)
+        case .seq: switched(.seqOn)
+        case .seqRate: list(cc, .seqRate, value)
+        case .seqGate: continuous(cc, .seqGate, value)
+        case .seqGateVar: continuous(cc, .seqGateVar, value)
+        case .transpose: list(cc, .keyShift, value)
+        case .stutter:
+            // Left quarter off, then faster to the right: 1/4, 1/8, 1/16, 1/32.
+            if value < 32 {
+                if synth.intValue(.stutterOn) == 1 { synth.set(.stutterOn, 0) }
+            } else {
+                let rate = 3 - min((value - 32) * 4 / 96, 3)
+                if synth.intValue(.stutterRate) != rate { synth.set(.stutterRate, Float(rate)) }
+                if synth.intValue(.stutterOn) == 0 { synth.set(.stutterOn, 1) }
+            }
         case .tempo:
-            if !engine.nudgeFreeTempo(by: one) { nudge(.tempo, one) }
-        case .stutterRate: nudge(.stutterRate, one)
-        case .recBars:
-            guard recorder.phase == .idle else { return }
-            recorder.barsIndex = min(max(recorder.barsIndex + one, 0), RecorderModel.barOptions.count - 1)
-        case .preset: synth.stepFactoryPreset(one)
-        case .volume: nudge(.volume, delta)
+            // 60 ... 187 BPM (TEMPO stores BPM - 40).
+            pickUp(cc, value, current: synth.value(.tempo) + 40 - 60) {
+                synth.set(.tempo, Float(value + 60 - 40))
+                return synth.value(.tempo)
+            }
+        case .hold: switched(.arpHold)
+        case .rec:
+            // Turned past the middle: start a take (once per turn).
+            if let last, last < 64, value >= 64, recorder.phase == .idle { recorder.toggleRecord() }
         case .loopsMaster:
-            masterLevel = min(max(masterLevel + Float(delta) / 64, 0), 1)
+            masterLevel = Float(value) / 127
             for i in 0..<LoopPadsModel.padCount { pads.applyLevel(i, master: masterLevel) }
         case .pad1, .pad2, .pad3, .pad4:
-            let pad = index - Perform.pad1.rawValue
-            pads.setLevel(pad, pads.level(pad) + Float(delta) / 64, master: masterLevel)
+            let pad = control.rawValue - Perform.pad1.rawValue
+            pads.setLevel(pad, Float(value) / 127, master: masterLevel)
+            let playing = engine.loops.isPlaying(pad)
+            if value == 0, playing {
+                pads.toggle(pad)                    // down to zero: stop
+            } else if value > 0, last == 0 || last == nil, !playing, !pads.isEmpty(pad) {
+                pads.toggle(pad)                    // up from zero: start on the next bar
+            }
         }
     }
 
-    private func pushPerform(_ index: Int, pressed: Bool) {
-        guard let control = Perform(rawValue: index) else { return }
-        // Stutter is momentary: on while held.
-        if control == .stutterRate {
-            synth.set(.stutterOn, pressed ? 1 : 0)
-            return
-        }
-        guard pressed else { return }
-        switch control {
-        case .arpRate: synth.set(.arpOn, synth.intValue(.arpOn) == 1 ? 0 : 1)
-        case .arpMode: synth.set(.arpHold, synth.intValue(.arpHold) == 1 ? 0 : 1)
-        case .seqRate: synth.set(.seqOn, synth.intValue(.seqOn) == 1 ? 0 : 1)
-        case .seqGate: synth.generateSequence()
-        case .seqGateVar: synth.varySequence()
-        case .transpose: synth.set(.keyShift, Float(Param.keyShift.defaultValue))
-        case .tempo: tapTempo()
-        case .stutterRate: break
-        case .recBars: recorder.toggleRecord()
-        case .preset: recorder.wrapTails.toggle()
-        case .volume: pads.autoPlay.toggle()
-        case .loopsMaster: pads.stopAll()
-        case .pad1, .pad2, .pad3, .pad4: pads.toggle(index - Perform.pad1.rawValue)
-        }
-    }
-
-    /// Tap tempo: the average of the last taps (within 2 s of each other).
-    private func tapTempo() {
-        let now = Date()
-        if let last = tapTimes.last, now.timeIntervalSince(last) > 2 { tapTimes.removeAll() }
-        tapTimes.append(now)
-        tapTimes = Array(tapTimes.suffix(5))
-        guard tapTimes.count >= 2, let first = tapTimes.first else { return }
-        let beat = now.timeIntervalSince(first) / Double(tapTimes.count - 1)
-        let bpm = (60 / beat).rounded()
-        guard (40...240).contains(bpm) else { return }
-        synth.set(.tempo, Float(bpm - 40))
-        synth.flash("Tap tempo \(Int(bpm)) BPM")
-    }
-
-    // MARK: Feedback (main thread, 10 per second)
-
-    private func tick() {
-        guard enabled else { return }
-        snapshotPresetIfChanged()
-        var state: [UInt8: UInt8] = [:]
-        // Page 1: lit while a parameter differs from the preset.
-        for (i, p) in GridController.soundPage.enumerated() {
-            let changed = presetValues[p].map { abs($0 - synth.value(p)) > 0.5 } ?? false
-            state[UInt8(64 + i)] = changed ? 127 : 0
-        }
-        // Page 2.
-        func set(_ c: Perform, _ v: UInt8) { state[UInt8(80 + c.rawValue)] = v }
-        set(.arpRate, synth.intValue(.arpOn) == 1 ? 127 : 0)
-        set(.arpMode, synth.intValue(.arpHold) == 1 ? 127 : 0)
-        set(.seqRate, synth.intValue(.seqOn) == 1 ? 127 : 0)
-        set(.seqGate, 0)
-        set(.seqGateVar, 0)
-        set(.transpose, synth.intValue(.keyShift) != Param.keyShift.defaultValue ? 127 : 0)
-        set(.tempo, 0)
-        set(.stutterRate, synth.intValue(.stutterOn) == 1 ? 127 : 0)
-        switch recorder.phase {
-        case .idle: set(.recBars, 0)
-        case .armed: set(.recBars, 64)
-        default: set(.recBars, 127)
-        }
-        set(.preset, recorder.wrapTails ? 127 : 0)
-        set(.volume, pads.autoPlay ? 127 : 0)
-        let loops = engine.loops
-        set(.loopsMaster, loops.soundingMask != 0 ? 127 : 0)
-        for pad in 0..<LoopPadsModel.padCount {
-            let bit = 1 << pad
-            let v: UInt8 = loops.soundingMask & bit != 0 ? 127
-                : (loops.pendingMask & bit != 0 || loops.isReserved(pad)) ? 64
-                : pads.isEmpty(pad) ? 0 : 20
-            set(Perform(rawValue: Perform.pad1.rawValue + pad)!, v)
-        }
-        let changes = state.filter { sentFeedback[$0.key] != $0.value }
-        guard !changes.isEmpty else { return }
-        midi.sendControllerFeedback(changes.sorted { $0.key < $1.key }.map { (cc: $0.key, value: $0.value) })
-        for (k, v) in changes { sentFeedback[k] = v }
-    }
-
-    /// A new preset was loaded: remember its values for the reset pushes.
-    private func snapshotPresetIfChanged() {
+    private func watchPreset() {
         let stamp = "\(synth.currentPreset?.number ?? -999)|\(synth.toneName)"
         guard stamp != presetStamp else { return }
         presetStamp = stamp
-        for p in GridController.soundPage { presetValues[p] = synth.value(p) }
+        pickedUp.removeAll()
     }
 }

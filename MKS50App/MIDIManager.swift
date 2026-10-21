@@ -49,7 +49,7 @@ final class MIDIManager: ObservableObject {
     var onChannelMessage: ((UInt8, UInt8, UInt8) -> Void)?
     /// Called on the CoreMIDI thread for every control change on MIDI channel
     /// 16 (status 0xBF) before it reaches the synth; returning true consumes
-    /// it (Grid EN16 controller, see GridController).
+    /// it (Grid PO16 controller, see GridController).
     var onControllerCC: ((UInt8, UInt8) -> Bool)?
     /// Called on the CoreMIDI thread with the tempo measured from MIDI clock.
     var onClockTempo: ((Double) -> Void)?
@@ -447,28 +447,6 @@ final class MIDIManager: ObservableObject {
     }
 
     // MARK: Output
-
-    /// Sends control changes on MIDI channel 16 to connected Intech Grid
-    /// modules only (LED feedback for the EN16 controller), whether or not
-    /// they are switched on as tone-dump outputs.
-    func sendControllerFeedback(_ messages: [(cc: UInt8, value: UInt8)]) {
-        guard !messages.isEmpty else { return }
-        var targets: [MIDIEndpointRef] = []
-        for i in 0..<MIDIGetNumberOfDestinations() {
-            let dest = MIDIGetDestination(i)
-            guard dest != 0, dest != virtualDestination else { continue }
-            let name = displayName(dest).lowercased()
-            if name.contains("grid") || name.contains("intech") { targets.append(dest) }
-        }
-        guard !targets.isEmpty else { return }
-        var list = MIDIEventList()
-        var packet = MIDIEventListInit(&list, ._1_0)
-        for m in messages {
-            var word = UInt32(0x2) << 28 | UInt32(0xBF) << 16 | UInt32(m.cc & 0x7F) << 8 | UInt32(m.value & 0x7F)
-            packet = MIDIEventListAdd(&list, MemoryLayout<MIDIEventList>.size, packet, 0, 1, &word)
-        }
-        for dest in targets { MIDISendEventList(outputPort, dest, &list) }
-    }
 
     /// Sends a complete F0 ... F7 message to all destinations.
     func sendSysEx(_ message: [UInt8]) {

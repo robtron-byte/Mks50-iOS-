@@ -48,7 +48,7 @@ final class LoopPadsModel: ObservableObject {
         objectWillChange.send()
     }
 
-    // MARK: Levels (EN16 controller)
+    // MARK: Levels (PO16 controller)
 
     /// Level of each pad (0...1), before the controller's master level.
     private var levels = [Float](repeating: 1, count: LoopPadsModel.padCount)

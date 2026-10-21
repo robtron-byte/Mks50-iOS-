@@ -28,7 +28,6 @@ final class ClockSimulator: ObservableObject {
     private var client = MIDIClientRef()
     private var sourceA = MIDIEndpointRef()
     private var sourceB = MIDIEndpointRef()
-    private var feedbackDestination = MIDIEndpointRef()
     private var thread: Thread?
     private let bpm = 120.0
 
@@ -115,10 +114,10 @@ final class ClockSimulator: ObservableObject {
         }
     }
 
-    // MARK: EN16 controller test (launch argument "-gridTest")
+    // MARK: PO16 controller test (launch argument "-gridTest")
 
     /// Sends a control change on MIDI channel 16 from "Clock Sim A", like
-    /// the EN16 profiles do.
+    /// the PO16 profiles do.
     func sendCC(_ cc: UInt8, _ value: UInt8) {
         var list = MIDIEventList()
         let packet = MIDIEventListInit(&list, ._1_0)
@@ -127,33 +126,26 @@ final class ClockSimulator: ObservableObject {
         MIDIReceivedEventList(sourceA, &list)
     }
 
-    /// Turns cutoff down 3 detents (relative), pushes ARP and HOLD, turns the
-    /// arp rate up, then logs the results.
+    /// Cutoff pot far from the value (no pickup), then at it (pickup) and
+    /// moved on; ARP and HOLD pots turned right; logs the results.
     func runGridTest(synth: SynthViewModel) {
         guard ProcessInfo.processInfo.arguments.contains("-gridTest") else { return }
-        // A destination named like a Grid module: logs the LED feedback.
-        MIDIDestinationCreateWithProtocol(client, "Intech Grid (Sim)" as CFString, ._1_0, &feedbackDestination) { list, _ in
-            for packet in list.unsafeSequence() {
-                let word = packet.pointee.words.0
-                print(String(format: "GRIDTEST feedback CC %d = %d", (word >> 8) & 0x7F, word & 0x7F))
-            }
-        }
-        let before = synth.value(.vcfCutoff)
         let steps: [(Double, UInt8, UInt8)] = [
-            (3.0, 32, 63), (3.1, 32, 63), (3.2, 32, 63),      // cutoff -3
-            (3.4, 80, 127), (3.5, 80, 0),                      // ARP on
-            (3.6, 81, 127), (3.7, 81, 0),                      // HOLD on
-            (3.8, 48, 65),                                     // arp rate +1
-            (4.0, 64, 127), (4.1, 64, 0),                      // push: cutoff back to preset
+            (3.0, 32, 40),                          // cutoff pot at 40: not picked up yet
+            (3.4, 32, 125), (3.5, 32, 110),         // reaches the value: follows
+            (3.7, 48, 100),                         // ARP pot right: on
+            (3.8, 57, 100),                         // HOLD pot right: on
+            (3.9, 49, 127),                         // ARP RATE pot: picks up only near its value
+            (4.0, 46, 69), (4.1, 46, 100),          // DELAY TIME (synced): note value 1/8. -> 1/4.
         ]
         for (t, cc, v) in steps {
             DispatchQueue.main.asyncAfter(deadline: .now() + t) { self.sendCC(cc, v) }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.35) {
-            print("GRIDTEST cutoff \(before) -> \(synth.value(.vcfCutoff))")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+            print("GRIDTEST after pot 40: cutoff=\(synth.value(.vcfCutoff))")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
-            print("GRIDTEST arpOn=\(synth.intValue(.arpOn)) hold=\(synth.intValue(.arpHold)) arpRate=\(synth.intValue(.arpRate)) cutoff after reset=\(synth.value(.vcfCutoff))")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.3) {
+            print("GRIDTEST after 125, 110: cutoff=\(synth.value(.vcfCutoff)) arpOn=\(synth.intValue(.arpOn)) hold=\(synth.intValue(.arpHold)) arpRate=\(synth.intValue(.arpRate)) delayDivision=\(DelayDivision.names[synth.intValue(.delayDivision)])")
         }
     }
 

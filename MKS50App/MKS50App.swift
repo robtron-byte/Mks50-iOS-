@@ -84,7 +84,7 @@ struct AppMainView: View {
     @ObservedObject var midi: MIDIManager
     @StateObject private var recorder: RecorderModel
     @StateObject private var loopPads: LoopPadsModel
-    /// Grid EN16 live controller (MIDI channel 16), created once on appear.
+    /// Grid PO16 live controller (MIDI channel 16), created once on appear.
     @State private var gridController: GridController?
 
     @AppStorage("showRecorder") private var showRecorder = false
@@ -104,7 +104,7 @@ struct AppMainView: View {
         _loopPads = StateObject(wrappedValue: LoopPadsModel(engine: model.audioUnit.engine, synth: model))
     }
 
-    /// Recorder → loop pads: AUTO playback and deleted files; EN16 controller.
+    /// Recorder → loop pads: AUTO playback and deleted files; PO16 controller.
     private func connectLoopPads() {
         let pads = loopPads
         if gridController == nil {
