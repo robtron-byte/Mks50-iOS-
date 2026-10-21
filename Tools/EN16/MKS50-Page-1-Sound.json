@@ -1,0 +1,373 @@
+{
+  "id": "937f8eb2-8767-58dd-adc0-2851ddfacdb4",
+  "name": "MKS50 Page 1 Sound",
+  "description": "MKS50 app, EN16 page 1: filter, modulation, envelope, effects. Push: back to the preset value (LED lit = changed). Side button: page 2.",
+  "type": "EN16",
+  "version": {
+    "major": "1",
+    "minor": "6",
+    "patch": "2"
+  },
+  "configType": "profile",
+  "createdAt": "2026-10-21T19:43:13.813Z",
+  "modifiedAt": "2026-10-21T19:43:13.813Z",
+  "configs": [
+    {
+      "controlElementNumber": 0,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[CUTOFF]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{255,94,33,1}}) self:glc(2,{{255,94,33,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,32,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,64,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 1,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[RESO]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{255,94,33,1}}) self:glc(2,{{255,94,33,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,33,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,65,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 2,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[VCF ENV]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{255,94,33,1}}) self:glc(2,{{255,94,33,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,34,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,66,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 3,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[HPF]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{255,94,33,1}}) self:glc(2,{{255,94,33,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,35,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,67,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 4,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[LFO RATE]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{28,204,120,1}}) self:glc(2,{{28,204,120,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,36,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,68,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 5,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[LFO>VCF]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{28,204,120,1}}) self:glc(2,{{28,204,120,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,37,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,69,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 6,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[VIBRATO]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{28,204,120,1}}) self:glc(2,{{28,204,120,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,38,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,70,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 7,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[PW/PWM]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{28,204,120,1}}) self:glc(2,{{28,204,120,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,39,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,71,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 8,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[ATTACK T1]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{232,232,227,1}}) self:glc(2,{{232,232,227,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,40,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,72,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 9,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[DECAY T2]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{232,232,227,1}}) self:glc(2,{{232,232,227,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,41,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,73,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 10,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[SUSTAIN L3]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{232,232,227,1}}) self:glc(2,{{232,232,227,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,42,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,74,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 11,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[RELEASE T4]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{232,232,227,1}}) self:glc(2,{{232,232,227,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,43,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,75,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 12,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[DLY MIX]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{168,120,255,1}}) self:glc(2,{{168,120,255,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,44,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,76,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 13,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[DLY FB]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{168,120,255,1}}) self:glc(2,{{168,120,255,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,45,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,77,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 14,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[REV MIX]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{168,120,255,1}}) self:glc(2,{{168,120,255,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,46,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,78,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 15,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] --[[DRIVE]] self:emo(1) self:ev0(50) self:ese(100) self:emi(0) self:ema(127) self:eva(64) self:glc(1,{{168,120,255,1}}) self:glc(2,{{168,120,255,1}}) self:glp(2,40) self:glp(1,0)"
+        },
+        {
+          "event": 2,
+          "config": "--[[@cb]] self:gms(15,176,47,self:eva()) self:eva(64)"
+        },
+        {
+          "event": 3,
+          "config": "--[[@cb]] self:gms(15,176,79,self:bst())"
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    },
+    {
+      "controlElementNumber": 255,
+      "events": [
+        {
+          "event": 0,
+          "config": "--[[@cb]] self.midirx_cb=function(self,h,d) if (d[1]==15 or d[1]==16) and (d[2]==176 or d[2]==191) then local i=d[3]-64 if i>=0 and i<16 then glp(i,1,d[4]*2) end end end gms(15,176,96,gpc())"
+        },
+        {
+          "event": 4,
+          "config": "--[[@cb]] gpl((gpc()+1)%2)"
+        },
+        {
+          "event": 5,
+          "config": "--[[@cb]] "
+        },
+        {
+          "event": 6,
+          "config": "--[[@cb]] "
+        }
+      ]
+    }
+  ]
+}

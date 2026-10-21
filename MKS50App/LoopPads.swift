@@ -48,6 +48,24 @@ final class LoopPadsModel: ObservableObject {
         objectWillChange.send()
     }
 
+    // MARK: Levels (EN16 controller)
+
+    /// Level of each pad (0...1), before the controller's master level.
+    private var levels = [Float](repeating: 1, count: LoopPadsModel.padCount)
+
+    func level(_ pad: Int) -> Float { levels.indices.contains(pad) ? levels[pad] : 1 }
+
+    func setLevel(_ pad: Int, _ level: Float, master: Float) {
+        guard levels.indices.contains(pad) else { return }
+        levels[pad] = min(max(level, 0), 1)
+        applyLevel(pad, master: master)
+    }
+
+    func applyLevel(_ pad: Int, master: Float) {
+        guard levels.indices.contains(pad) else { return }
+        engine.loops.setLevel(pad, levels[pad] * master)
+    }
+
     func stopAll() {
         for i in 0..<LoopPadsModel.padCount { engine.loops.stop(i) }
         objectWillChange.send()

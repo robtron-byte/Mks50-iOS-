@@ -42,6 +42,10 @@ final class LoopPlayer {
     }
 
     private let slots: UnsafeMutablePointer<Slot>
+    /// Level per slot (0...1, set by the main thread, e.g. from a controller)
+    /// and its smoothed value on the audio thread, so turning it never zips.
+    private let levels: UnsafeMutablePointer<Float>
+    private let smoothedLevels: UnsafeMutablePointer<Float>
     private let lock: UnsafeMutablePointer<os_unfair_lock>
     /// Bit i set while slot i sounds (racy read for the UI).
     private(set) var soundingMask: Int = 0
@@ -49,6 +53,10 @@ final class LoopPlayer {
     private(set) var pendingMask: Int = 0
 
     init() {
+        levels = .allocate(capacity: LoopPlayer.slotCount)
+        levels.initialize(repeating: 1, count: LoopPlayer.slotCount)
+        smoothedLevels = .allocate(capacity: LoopPlayer.slotCount)
+        smoothedLevels.initialize(repeating: 1, count: LoopPlayer.slotCount)
         slots = .allocate(capacity: LoopPlayer.slotCount)
         slots.initialize(repeating: Slot(), count: LoopPlayer.slotCount)
         lock = .allocate(capacity: 1)
@@ -65,6 +73,8 @@ final class LoopPlayer {
             slots[i].retiredRight?.deallocate()
         }
         slots.deallocate()
+        levels.deallocate()
+        smoothedLevels.deallocate()
         lock.deallocate()
     }
 
@@ -213,6 +223,16 @@ final class LoopPlayer {
 
     // MARK: Queries
 
+    /// Level of a slot, 0...1 (main thread).
+    func setLevel(_ slot: Int, _ level: Float) {
+        guard (0..<LoopPlayer.slotCount).contains(slot) else { return }
+        levels[slot] = min(max(level, 0), 1)
+    }
+
+    func level(_ slot: Int) -> Float {
+        (0..<LoopPlayer.slotCount).contains(slot) ? levels[slot] : 1
+    }
+
     func isPlaying(_ slot: Int) -> Bool {
         (0..<LoopPlayer.slotCount).contains(slot) && slots[slot].playing
     }
@@ -261,6 +281,8 @@ final class LoopPlayer {
             let anchor = slots[i].anchor
             let target: Float = slots[i].playing ? 1 : 0
             var gain = slots[i].gain
+            var level = smoothedLevels[i]
+            let levelTarget = levels[i]
             var waiting = false
             for n in 0..<frames {
                 let beat = beatStart + Double(n) * beatsPerFrame
@@ -270,15 +292,17 @@ final class LoopPlayer {
                 }
                 gain += max(-fade, min(fade, target - gain))
                 if gain <= 0 { break }
+                level += (levelTarget - level) * 0.002     // ~10 ms
                 var pos = (beat - anchor) / beats
                 pos -= pos.rounded(.down)
                 let x = pos * Double(count)
                 let i0 = min(Int(x), count - 1)
                 let i1 = i0 + 1 < count ? i0 + 1 : 0
                 let t = Float(x - Double(i0))
-                left[n] += (l[i0] + (l[i1] - l[i0]) * t) * gain
-                right[n] += (r[i0] + (r[i1] - r[i0]) * t) * gain
+                left[n] += (l[i0] + (l[i1] - l[i0]) * t) * gain * level
+                right[n] += (r[i0] + (r[i1] - r[i0]) * t) * gain * level
             }
+            smoothedLevels[i] = level
             slots[i].gain = gain
             if slots[i].playing && waiting && gain <= 0 { pending |= 1 << i }
             if gain > 0 { sounding |= 1 << i }
