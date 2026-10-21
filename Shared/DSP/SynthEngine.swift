@@ -332,6 +332,27 @@ final class SynthEngine {
     /// Written on the audio thread, read on main.
     private let heldKeyFlags: UnsafeMutablePointer<UInt8>
 
+    // HOLD (latch) for every note: keyboard, other apps and the play button.
+    /// Set from main: notes keep sounding after their key is released.
+    var noteLatch = false
+    private var latchWasOn = false
+    /// Keys physically down (audio thread).
+    private let keyDown: UnsafeMutablePointer<UInt8>
+    /// Keys held by the latch (audio thread).
+    private let latchedKeys: UnsafeMutablePointer<UInt8>
+    /// The release of a key that just stopped its latched note is ignored.
+    private let swallowRelease: UnsafeMutablePointer<UInt8>
+
+    /// Last note played from outside the app's play button (keyboard, other
+    /// apps), for the play button to follow; the stamp changes per note.
+    private(set) var lastPlayedNote = -1
+    private(set) var lastPlayedStamp: UInt32 = 0
+
+    /// Flags for `enqueueMIDI`: the play button's own notes, and a release
+    /// that bypasses the latch (the play button moving to a new note).
+    static let fromPlayButton: UInt32 = 1 << 24
+    static let bypassLatch: UInt32 = 1 << 25
+
     /// MIDI CC → parameter address (-1 = not mapped). Written on main
     /// (single aligned Int16 stores), read on the audio thread.
     private let ccTargets: UnsafeMutablePointer<Int16>
@@ -375,6 +396,12 @@ final class SynthEngine {
 
         heldKeyFlags = .allocate(capacity: 128)
         heldKeyFlags.initialize(repeating: 0, count: 128)
+        keyDown = .allocate(capacity: 128)
+        keyDown.initialize(repeating: 0, count: 128)
+        latchedKeys = .allocate(capacity: 128)
+        latchedKeys.initialize(repeating: 0, count: 128)
+        swallowRelease = .allocate(capacity: 128)
+        swallowRelease.initialize(repeating: 0, count: 128)
         ccTargets = .allocate(capacity: 128)
         ccTargets.initialize(repeating: -1, count: 128)
 
@@ -395,6 +422,9 @@ final class SynthEngine {
         queueLock.deallocate()
         queue.deallocate()
         heldKeyFlags.deallocate()
+        keyDown.deallocate()
+        latchedKeys.deallocate()
+        swallowRelease.deallocate()
         ccTargets.deallocate()
     }
 
@@ -489,10 +519,10 @@ final class SynthEngine {
     // MARK: MIDI input
 
     /// Thread-safe entry point for MIDI from non-audio threads.
-    func enqueueMIDI(_ status: UInt8, _ data1: UInt8, _ data2: UInt8) {
+    func enqueueMIDI(_ status: UInt8, _ data1: UInt8, _ data2: UInt8, flags: UInt32 = 0) {
         os_unfair_lock_lock(queueLock)
         if queueCount < SynthEngine.queueCapacity {
-            queue[queueCount] = UInt32(status) << 16 | UInt32(data1) << 8 | UInt32(data2)
+            queue[queueCount] = flags | UInt32(status) << 16 | UInt32(data1) << 8 | UInt32(data2)
             queueCount += 1
         }
         os_unfair_lock_unlock(queueLock)
@@ -500,17 +530,72 @@ final class SynthEngine {
 
     /// Audio thread: applies queued MIDI without ever blocking.
     func drainMIDIQueue() {
+        applyLatchSwitch()
         guard os_unfair_lock_trylock(queueLock) else { return }
         for i in 0..<queueCount {
             let m = queue[i]
-            handleMIDI(UInt8((m >> 16) & 0xFF), UInt8((m >> 8) & 0xFF), UInt8(m & 0xFF))
+            handleMIDI(UInt8((m >> 16) & 0xFF), UInt8((m >> 8) & 0xFF), UInt8(m & 0xFF), flags: m & 0xFF00_0000)
         }
         queueCount = 0
         os_unfair_lock_unlock(queueLock)
     }
 
-    /// Audio thread: handles one MIDI 1.0 channel message.
-    func handleMIDI(_ status: UInt8, _ data1: UInt8, _ data2: UInt8) {
+    // MARK: HOLD (latch)
+
+    /// Audio thread: HOLD switched on → keys down now stay held when
+    /// released; switched off → every held note not still down is released.
+    private func applyLatchSwitch() {
+        let on = noteLatch
+        guard on != latchWasOn else { return }
+        latchWasOn = on
+        if on {
+            for k in 0..<128 where keyDown[k] != 0 { latchedKeys[k] = 1 }
+        } else {
+            releaseLatched()
+        }
+    }
+
+    /// Releases the latched notes (keys still down keep sounding).
+    private func releaseLatched() {
+        for k in 0..<128 where latchedKeys[k] != 0 {
+            latchedKeys[k] = 0
+            if keyDown[k] == 0 { keyReleased(k) }
+        }
+    }
+
+    /// Audio thread: a key goes down. With HOLD, a new note or chord after
+    /// all keys were released replaces the held notes; the held single note
+    /// played again stops instead. Returns false if the note must not play.
+    private func latchKeyDown(_ key: Int) -> Bool {
+        var othersDown = false
+        for k in 0..<128 where k != key && keyDown[k] != 0 { othersDown = true; break }
+        keyDown[key] = 1
+        guard latchWasOn else { return true }
+        if !othersDown {
+            var held = 0
+            for k in 0..<128 where latchedKeys[k] != 0 { held += 1 }
+            if held == 1 && latchedKeys[key] != 0 {
+                latchedKeys[key] = 0
+                keyReleased(key)                    // same single note: stop
+                swallowRelease[key] = 1
+                return false
+            }
+            if held > 0 { releaseLatched() }        // new gesture: replace
+        }
+        latchedKeys[key] = 1
+        return true
+    }
+
+    /// Audio thread: a key goes up. Returns false while HOLD keeps it.
+    private func latchKeyUp(_ key: Int) -> Bool {
+        keyDown[key] = 0
+        if swallowRelease[key] != 0 { swallowRelease[key] = 0; return false }
+        return !(latchWasOn && latchedKeys[key] != 0)
+    }
+
+    /// Audio thread: handles one MIDI 1.0 channel message. `flags`:
+    /// `fromPlayButton` / `bypassLatch` (see `enqueueMIDI`).
+    func handleMIDI(_ status: UInt8, _ data1: UInt8, _ data2: UInt8, flags: UInt32 = 0) {
         if status >= 0xF0 {
             handleClock(status, Int(data1 & 0x7F), Int(data2 & 0x7F))
             return
@@ -524,23 +609,20 @@ final class SynthEngine {
         let d2 = Int(data2 & 0x7F)
         switch status & 0xF0 {
         case 0x90 where d2 > 0:
-            heldKeyFlags[d1] = 1
-            // Clock source stopped or silent: a key starts arp / sequencer
-            // on their own at the last received tempo (Start re-syncs).
-            if clockSyncEnabled && hostTempo <= 0 && !clockRunning { localRun = true }
-            clockStoppedBySource = false
-            if collectorOn {
-                arpKeyDown(d1, velocity: d2)
-            } else {
-                noteOn(d1, velocity: d2)
+            if flags & SynthEngine.fromPlayButton == 0 {
+                lastPlayedNote = d1
+                lastPlayedStamp &+= 1
             }
+            guard latchKeyDown(d1) else { return }
+            keyPressed(d1, velocity: d2)
         case 0x80, 0x90:
-            heldKeyFlags[d1] = 0
-            if collectorOn && arpWasOn {
-                if pi(.arpHold) == 0 { arp.remove(d1) }
-            } else {
-                noteOff(d1)
+            if flags & SynthEngine.bypassLatch != 0 {
+                keyDown[d1] = 0
+                latchedKeys[d1] = 0
+            } else if !latchKeyUp(d1) {
+                return
             }
+            keyReleased(d1)
         case 0xB0:
             controlChange(d1, d2)
         case 0xD0:
@@ -552,6 +634,35 @@ final class SynthEngine {
         default:
             break
         }
+    }
+
+    /// Note on after the latch: to the arp / sequencer or a voice.
+    private func keyPressed(_ d1: Int, velocity d2: Int) {
+        heldKeyFlags[d1] = 1
+        // Clock source stopped or silent: a key starts arp / sequencer
+        // on their own at the last received tempo (Start re-syncs).
+        if clockSyncEnabled && hostTempo <= 0 && !clockRunning { localRun = true }
+        clockStoppedBySource = false
+        if collectorOn {
+            arpKeyDown(d1, velocity: d2)
+        } else {
+            noteOn(d1, velocity: d2)
+        }
+    }
+
+    /// Note off after the latch.
+    private func keyReleased(_ d1: Int) {
+        heldKeyFlags[d1] = 0
+        if collectorOn && arpWasOn {
+            if pi(.arpHold) == 0 { arp.remove(d1) }
+        } else {
+            noteOff(d1)
+        }
+    }
+
+    /// Main thread: the key is sounding (down or held by HOLD).
+    func isKeyHeld(_ key: Int) -> Bool {
+        (0..<128).contains(key) && heldKeyFlags[key] != 0
     }
 
     private func controlChange(_ cc: Int, _ value: Int) {
@@ -592,6 +703,9 @@ final class SynthEngine {
             if sustainPedal { sustainPedal = false; releaseSustained() }
         case 123:
             heldKeyFlags.update(repeating: 0, count: 128)
+            keyDown.update(repeating: 0, count: 128)
+            latchedKeys.update(repeating: 0, count: 128)
+            swallowRelease.update(repeating: 0, count: 128)
             allNotesOff()
             arp.reset()
             _ = seq.stop()

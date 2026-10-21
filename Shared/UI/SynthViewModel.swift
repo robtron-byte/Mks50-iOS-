@@ -36,13 +36,21 @@ final class SynthViewModel: ObservableObject {
     @Published private(set) var userPresets: [AUAudioUnitPreset] = []
     @Published var statusMessage: String?
 
-    // Play button ("pad"): one assignable MIDI note instead of a keyboard.
+    // Play button ("pad"): one MIDI note instead of a keyboard. It follows the
+    // last note played on a keyboard or from another app.
     @Published private(set) var padNote: Int
     @Published private(set) var padSounding = false
+    /// HOLD: every note keeps sounding after its key is released, from the
+    /// play button, a keyboard or another app (the engine latches them).
     @Published var padLatch = false {
-        didSet { if !padLatch && padSounding && !padTouching { padStop() } }
+        didSet { audioUnit.engine.noteLatch = padLatch }
     }
     private var padTouching = false
+    /// Note sent by the current touch (its release must match it).
+    private var padTouchNote = -1
+    private var lastPlayedStamp: UInt32 = 0
+    /// Keys sounding right now (down or held by HOLD), for the note readout.
+    @Published private(set) var liveNotes: [Int] = []
 
     // MIDI CC learn: tap a control, then move a knob on the controller.
     var ccLearnActive: Bool { learn.active }
@@ -97,6 +105,18 @@ final class SynthViewModel: ObservableObject {
             if model.value != v { model.value = v }
         }
         if toneName != audioUnit.toneName { toneName = audioUnit.toneName }
+
+        // Play button: follow the last note played from outside, show whether
+        // its note sounds (held by a finger or by HOLD).
+        let engine = audioUnit.engine
+        if engine.lastPlayedStamp != lastPlayedStamp {
+            lastPlayedStamp = engine.lastPlayedStamp
+            followNote(engine.lastPlayedNote)
+        }
+        let sounding = engine.isKeyHeld(padNote)
+        if padSounding != sounding { padSounding = sounding }
+        let live = engine.heldKeys
+        if liveNotes != live { liveNotes = live }
 
         // CC learn: the next incoming control change is assigned to the armed control.
         let ccStamp = audioUnit.engine.lastControlChange
@@ -154,30 +174,57 @@ final class SynthViewModel: ObservableObject {
 
     var padNoteName: String { SynthViewModel.noteName(padNote) }
 
+    /// Note readout: what sounds right now, a single note ("C4"), a chord
+    /// by root and name ("C m7") or its notes ("C E G#"); the play button's
+    /// note while nothing is held.
+    var liveNoteLabel: String {
+        switch liveNotes.count {
+        case 0: return padNoteName
+        case 1: return SynthViewModel.noteName(liveNotes[0])
+        default:
+            let names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+            let root = names[liveNotes[0] % 12]
+            let name = ChordMemory.name(ChordMemory.chord(fromHeld: liveNotes))
+            if !name.contains("·") && name != "ROOT" { return "\(root) \(name)" }
+            return liveNotes.prefix(6).map { names[$0 % 12] }.joined(separator: " ")
+        }
+    }
+
     /// UI MIDI goes out on the receive channel so it is not filtered away.
     private func status(_ base: UInt8) -> UInt8 {
         base | UInt8(max(0, min(15, intValue(.midiChannel) - 1)))
     }
 
+    /// The play button is a key: with HOLD its note keeps sounding, and a
+    /// second tap stops it (the engine's latch does both).
     func padTouchDown() {
+        guard !padTouching else { return }
         padTouching = true
-        if padLatch && padSounding {
-            padStop()                     // second tap releases a latched note
-        } else if !padSounding {
-            audioUnit.sendMIDI(status(0x90), UInt8(padNote), 100)
-            padSounding = true
-        }
+        padTouchNote = padNote
+        audioUnit.sendMIDI(status(0x90), UInt8(padNote), 100, flags: SynthEngine.fromPlayButton)
+        padSounding = !padLatch || !padSounding
     }
 
     func padTouchUp() {
+        guard padTouching else { return }
         padTouching = false
-        if !padLatch { padStop() }
+        audioUnit.sendMIDI(status(0x80), UInt8(padTouchNote), 0, flags: SynthEngine.fromPlayButton)
+        if !padLatch { padSounding = false }
     }
 
     private func padStop() {
         guard padSounding else { return }
-        audioUnit.sendMIDI(status(0x80), UInt8(padNote), 0)
+        audioUnit.sendMIDI(status(0x80), UInt8(padNote), 0,
+                           flags: SynthEngine.fromPlayButton | SynthEngine.bypassLatch)
         padSounding = false
+    }
+
+    /// The last note played on a keyboard / from another app becomes the
+    /// play button's note (nothing is sent: that note is already playing).
+    private func followNote(_ note: Int) {
+        guard (0...127).contains(note), note != padNote else { return }
+        padNote = note
+        UserDefaults.standard.set(note, forKey: SynthViewModel.padNoteKey)
     }
 
     func setPadNote(_ note: Int) {
@@ -192,10 +239,13 @@ final class SynthViewModel: ObservableObject {
         if keepSounding {
             // New note first, then release the old one: played legato, so
             // mono modes bind the notes (and portamento AUTO glides).
-            audioUnit.sendMIDI(status(0x90), UInt8(padNote), 100)
-            audioUnit.sendMIDI(status(0x80), UInt8(oldNote), 0)
+            audioUnit.sendMIDI(status(0x90), UInt8(padNote), 100, flags: SynthEngine.fromPlayButton)
+            audioUnit.sendMIDI(status(0x80), UInt8(oldNote), 0,
+                               flags: SynthEngine.fromPlayButton | SynthEngine.bypassLatch)
+            if padTouching { padTouchNote = padNote }
         } else {
-            audioUnit.sendMIDI(status(0x80), UInt8(oldNote), 0)
+            audioUnit.sendMIDI(status(0x80), UInt8(oldNote), 0,
+                               flags: SynthEngine.fromPlayButton | SynthEngine.bypassLatch)
             padSounding = false
         }
     }
@@ -205,6 +255,7 @@ final class SynthViewModel: ObservableObject {
     func panic() {
         padStop()
         padTouching = false
+        padLatch = false
         audioUnit.sendMIDI(status(0xB0), 123, 0)
         audioUnit.sendMIDI(status(0xB0), 120, 0)
     }

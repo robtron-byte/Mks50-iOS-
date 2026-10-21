@@ -708,13 +708,16 @@ struct PlayBar: View {
     /// Note readout (black screen) with octave / semitone steppers: stacked
     /// above them in portrait, beside them in landscape.
     @ViewBuilder private func noteSelector(stacked: Bool) -> some View {
-        let readout = Text(model.padNoteName.lowercased())
+        // Live: the note or chord sounding now, else the play button's note.
+        let readout = Text(model.liveNoteLabel.lowercased())
             .font(Theme.pixel(18, .bold))
-            .foregroundColor(Theme.displayText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+            .foregroundColor(model.liveNotes.isEmpty ? Theme.displayText : Theme.readout)
             .frame(minWidth: 64, maxWidth: .infinity, minHeight: 36)
             .background(RoundedRectangle(cornerRadius: Theme.corner).fill(Theme.display))
             .overlay(RoundedRectangle(cornerRadius: Theme.corner).stroke(Theme.hairline, lineWidth: 1))
-            .accessibilityLabel("Pad note \(model.padNoteName)")
+            .accessibilityLabel("Note \(model.liveNoteLabel)")
         let steppers = HStack(spacing: 6) {
             StepButton(symbol: "chevron.left.2", label: "Octave down") { model.transposePad(-12) }
             StepButton(symbol: "chevron.left", label: "Semitone down") { model.transposePad(-1) }

@@ -95,6 +95,7 @@ final class AudioHost: ObservableObject {
                 #if DEBUG
                 ClockSimulator.shared.runLaunchTest(midi: self.midi, engine: unit.engine)
                 ClockSimulator.shared.runGridTest(synth: model)
+                ClockSimulator.shared.runNoteTest(synth: model)
                 #endif
             }
         }

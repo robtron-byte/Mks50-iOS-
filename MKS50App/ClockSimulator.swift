@@ -153,6 +153,44 @@ final class ClockSimulator: ObservableObject {
         }
     }
 
+    // MARK: HOLD / play button test (launch argument "-noteTest")
+
+    /// Sends a note on / off on channel 1 from "Clock Sim A" (an external keyboard).
+    func sendNote(_ note: UInt8, on: Bool) {
+        var list = MIDIEventList()
+        let packet = MIDIEventListInit(&list, ._1_0)
+        var word = UInt32(0x2) << 28 | UInt32(on ? 0x90 : 0x80) << 16 | UInt32(note) << 8 | UInt32(on ? 100 : 0)
+        MIDIEventListAdd(&list, MemoryLayout<MIDIEventList>.size, packet, 0, 1, &word)
+        MIDIReceivedEventList(sourceA, &list)
+    }
+
+    /// External C4: the play button follows. HOLD on, C-E-G played and
+    /// released: still sounding ("C MAJ"). D played: replaces the chord.
+    /// D again: stops. Logs each state.
+    func runNoteTest(synth: SynthViewModel) {
+        guard ProcessInfo.processInfo.arguments.contains("-noteTest") else { return }
+        let engine = synth.audioUnit.engine
+        func log(_ label: String) {
+            print("NOTETEST \(label): sounding=\(engine.heldKeys) readout=\(synth.liveNoteLabel) padNote=\(synth.padNoteName)")
+        }
+        let steps: [(Double, () -> Void)] = [
+            (3.0, { self.sendNote(60, on: true) }), (3.2, { log("C4 down") }),
+            (3.3, { self.sendNote(60, on: false) }), (3.5, { log("C4 up, HOLD off") }),
+            (3.6, { synth.padLatch = true }),
+            (3.7, { self.sendNote(60, on: true); self.sendNote(64, on: true); self.sendNote(67, on: true) }),
+            (3.9, { self.sendNote(60, on: false); self.sendNote(64, on: false); self.sendNote(67, on: false) }),
+            (4.1, { log("HOLD, C-E-G up") }),
+            (4.2, { self.sendNote(62, on: true) }), (4.3, { self.sendNote(62, on: false) }),
+            (4.5, { log("D played") }),
+            (4.6, { self.sendNote(62, on: true) }), (4.7, { self.sendNote(62, on: false) }),
+            (4.9, { log("D again") }),
+            (5.0, { synth.padTouchDown() }), (5.1, { synth.padTouchUp() }),
+            (5.3, { log("play button tapped") }),
+            (5.4, { synth.padLatch = false }), (5.6, { log("HOLD off") }),
+        ]
+        for (t, action) in steps { DispatchQueue.main.asyncAfter(deadline: .now() + t, execute: action) }
+    }
+
     private static let ticksPerSecond: Double = {
         var info = mach_timebase_info_data_t()
         mach_timebase_info(&info)

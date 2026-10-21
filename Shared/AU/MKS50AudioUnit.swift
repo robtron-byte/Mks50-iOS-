@@ -334,8 +334,8 @@ final class MKS50AudioUnit: AUAudioUnit {
     // MARK: Sound handling
 
     /// Thread-safe MIDI input for the on-screen keyboard and CoreMIDI.
-    func sendMIDI(_ status: UInt8, _ data1: UInt8, _ data2: UInt8) {
-        engine.enqueueMIDI(status, data1, data2)
+    func sendMIDI(_ status: UInt8, _ data1: UInt8, _ data2: UInt8, flags: UInt32 = 0) {
+        engine.enqueueMIDI(status, data1, data2, flags: flags)
     }
 
     func value(_ p: Param) -> Int {
