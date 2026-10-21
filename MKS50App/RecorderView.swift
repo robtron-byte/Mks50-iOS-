@@ -145,7 +145,8 @@ private struct BPMControl: View {
                         Text(String(format: "%.1f", engine.displayTempo))
                             .font(.system(size: 16, weight: .bold, design: .monospaced))
                             .foregroundColor(Theme.readout)
-                        Text(free ? "int ▶" : (engine.clockRunning ? "ext ▶" : "ext ■"))
+                        // "no clk": Start received, but no clock ticks arrive.
+                        Text(engine.clockStatusLabel)
                             .font(Theme.pixel(9, .regular))
                             .foregroundColor(free || engine.clockRunning ? Theme.readout : Theme.dimLabel)
                     }

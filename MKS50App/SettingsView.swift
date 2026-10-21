@@ -12,6 +12,9 @@ struct SettingsView: View {
     @AppStorage(AudioHost.clockSyncKey) private var clockSync = false
     @AppStorage(AudioHost.sleepMinutesKey) private var sleepMinutes = 10
     @AppStorage(AudioHost.bufferFramesKey) private var bufferFrames = 256
+    #if DEBUG
+    @ObservedObject private var clockSim = ClockSimulator.shared
+    #endif
 
     private func endpointRow(_ endpoint: MIDIManager.Endpoint, toggle: @escaping (Bool) -> Void) -> some View {
         Button { toggle(!endpoint.enabled) } label: {
@@ -81,6 +84,14 @@ struct SettingsView: View {
                                 .foregroundColor(.secondary)
                                 .monospacedDigit()
                         }
+                        if !midi.clockDiagnostics.isEmpty {
+                            // What arrives: source, ticks per second (48 at
+                            // 120 BPM), last transport message.
+                            Text(midi.clockDiagnostics)
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
+                                .monospacedDigit()
+                        }
                     }
                     Toggle("Network MIDI (Wi-Fi)", isOn: $midi.networkEnabled)
                     Toggle("Run in Background", isOn: $backgroundAudio)
@@ -96,6 +107,21 @@ struct SettingsView: View {
                 } footer: {
                     Text("Sync to MIDI Clock: tempo, start and stop come from the selected MIDI inputs or another app (sending clock to \"MKS50 Synth\"). Arp and sequencer run only while the clock source is playing; Start restarts them on the first step. " + "Network MIDI makes the iPhone visible to a Mac (Audio MIDI Setup › Network). \"Run in Background\" keeps the synth playing while you use another app, e.g. a sequencer that sends to \"MKS50 Synth\". \"Sleep When Idle\": in the background, after this long without sound and without MIDI notes the app goes to sleep to save battery; it then no longer receives MIDI until you open it again.")
                 }
+
+                #if DEBUG
+                Section {
+                    Picker("Mode", selection: $clockSim.mode) {
+                        ForEach(ClockSimulator.Mode.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    Button(clockSim.running ? "Stop Clock" : "Start Clock (120 BPM)") {
+                        if clockSim.running { clockSim.stop() } else { clockSim.start() }
+                    }
+                } header: {
+                    Text("Debug: Clock Simulator")
+                } footer: {
+                    Text("Virtual sources \"Clock Sim A\" / \"Clock Sim B\" send Start and 24 ppqn at 120 BPM: normal, on two sources at once, in bursts of 4 ticks per packet, or Start only. Debug builds only.")
+                }
+                #endif
 
                 Section {
                     LabeledContent("Save To") {

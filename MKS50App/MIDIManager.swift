@@ -52,6 +52,30 @@ final class MIDIManager: ObservableObject {
     /// Main thread: tempo and running state of the incoming MIDI clock.
     @Published private(set) var clockTempo: Double = 0
     @Published private(set) var clockRunning = false
+    /// Transport state on the MIDI thread (mirrored to `clockRunning`).
+    private var clockRunningFlag = false
+    /// Stop received: ticks alone do not count as running until Start / Continue.
+    private var stoppedBySource = false
+
+    // Clock source lock (CoreMIDI thread): clock and transport are taken
+    // from one source at a time. A USB device often sends its clock on
+    // several ports (or USB plus Bluetooth / network); doubled ticks would
+    // run the beat clock at twice the speed and spoil the tempo measurement.
+    private var clockSource: Int = 0
+    private var clockSourceTime: UInt64 = 0
+
+    // Diagnostics (Settings › Clock). The MIDI thread only counts; a main
+    // thread timer turns the counts into a line once a second, so it also
+    // updates when nothing arrives (e.g. Start without clock: 0 ticks/s).
+    private var diagTicks = 0          // running totals (MIDI thread)
+    private var diagIgnored = 0
+    /// Last transport message: 0 none, else 0xFA / 0xFB / 0xFC.
+    private var diagLastTransport: UInt8 = 0
+    private var diagReadTicks = 0      // totals at the last update (main thread)
+    private var diagReadIgnored = 0
+    private var diagTimer: Timer?
+    /// Main thread: what arrives, e.g. "Digitakt · 48 ticks/s · Start".
+    @Published private(set) var clockDiagnostics = ""
 
     // Clock tempo measurement (CoreMIDI thread only).
     // Single ticks jitter by a millisecond or more (USB, Bluetooth, app
@@ -97,17 +121,22 @@ final class MIDIManager: ObservableObject {
         }
         guard status == noErr else { return }
 
-        MIDIInputPortCreateWithProtocol(client, "Input" as CFString, ._1_0, &inputPort) { [weak self] list, _ in
-            self?.receive(list, input: 0)
+        MIDIInputPortCreateWithProtocol(client, "Input" as CFString, ._1_0, &inputPort) { [weak self] list, refCon in
+            // The connection refCon carries the source's unique ID.
+            self?.receive(list, input: 0, source: Int(bitPattern: refCon))
         }
         MIDIOutputPortCreate(client, "Output" as CFString, &outputPort)
         MIDIDestinationCreateWithProtocol(client, "MKS50 Synth" as CFString, ._1_0, &virtualDestination) { [weak self] list, _ in
-            self?.receive(list, input: 1)
+            self?.receive(list, input: 1, source: MIDIManager.virtualSourceID)
         }
         refreshConnections()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.updateDiagnostics() }
+        RunLoop.main.add(timer, forMode: .common)
+        diagTimer = timer
     }
 
     deinit {
+        diagTimer?.invalidate()
         MIDIClientDispose(client)
     }
 
@@ -123,7 +152,10 @@ final class MIDIManager: ObservableObject {
             guard source != 0 else { continue }
             let id = uniqueID(source)
             let enabled = !disabledInputs.contains(id)
-            if enabled, MIDIPortConnectSource(inputPort, source, nil) == noErr {
+            // refCon: the unique ID (never 0 for a real endpoint, so it is
+            // told apart from the virtual input).
+            let refCon = UnsafeMutableRawPointer(bitPattern: Int(id) == 0 ? -2 : Int(id))
+            if enabled, MIDIPortConnectSource(inputPort, source, refCon) == noErr {
                 connected.append(source)
             }
             foundSources.append(Endpoint(id: id, name: displayName(source), enabled: enabled))
@@ -173,7 +205,10 @@ final class MIDIManager: ObservableObject {
 
     // MARK: Input (CoreMIDI thread)
 
-    private func receive(_ list: UnsafePointer<MIDIEventList>, input: Int) {
+    /// Pseudo source ID of the virtual input (other apps sending to "MKS50 Synth").
+    private static let virtualSourceID = -1
+
+    private func receive(_ list: UnsafePointer<MIDIEventList>, input: Int, source: Int) {
         for packet in list.unsafeSequence() {
             let count = min(Int(packet.pointee.wordCount), 64)
             // Read only the valid words in place (the last packet of a list is
@@ -196,7 +231,7 @@ final class MIDIManager: ObservableObject {
                         // System real time / common: MIDI clock and transport.
                         let status = UInt8((word >> 16) & 0xFF)
                         handleSystem(status, UInt8((word >> 8) & 0x7F), UInt8(word & 0x7F),
-                                     time: packet.pointee.timeStamp)
+                                     time: packet.pointee.timeStamp, source: source)
                     case 0x3 where i + 1 < count:
                         handleSysEx7(word, words[i + 1], input: input)
                     default:
@@ -256,31 +291,93 @@ final class MIDIManager: ObservableObject {
         DispatchQueue.main.async { [weak self] in self?.clockTempo = shown }
     }
 
-    private func handleSystem(_ status: UInt8, _ d1: UInt8, _ d2: UInt8, time: MIDITimeStamp) {
+    private func handleSystem(_ status: UInt8, _ d1: UInt8, _ d2: UInt8, time: MIDITimeStamp, source: Int) {
+        guard status == 0xF8 || status == 0xFA || status == 0xFB || status == 0xFC || status == 0xF2 else {
+            return                          // other system messages are not used
+        }
+        // One clock source at a time: a second source is ignored while the
+        // current one sent anything within the last half second.
+        let arrival = mach_absolute_time()
+        if source != clockSource {
+            let stale = clockSourceTime == 0
+                || Double(arrival &- clockSourceTime) / MIDIManager.ticksPerSecond > 0.5
+            guard stale else {
+                diagIgnored += 1
+                return
+            }
+            clockSource = source
+        }
+        clockSourceTime = arrival
+
         switch status {
         case 0xF8:
-            let now = time != 0 ? time : mach_absolute_time()
-            if lastTickTime != 0 && (now <= lastTickTime
-                || Double(now - lastTickTime) / MIDIManager.ticksPerSecond > 0.25) {
-                tickCount = 0               // gap: clock restarted
-                lastPublishedTempo = 0      // publish the new measurement
+            diagTicks += 1
+            // Packet time stamp of the device (USB / Bluetooth), else now.
+            // Ticks from one USB transfer can share a time stamp; only a
+            // real gap or a jump backwards restarts the measurement.
+            var now = time != 0 ? time : arrival
+            if lastTickTime != 0 {
+                let back = now < lastTickTime ? Double(lastTickTime - now) / MIDIManager.ticksPerSecond : 0
+                let gap = now > lastTickTime ? Double(now - lastTickTime) / MIDIManager.ticksPerSecond : 0
+                if back > 0.005 || gap > 0.25 {
+                    tickCount = 0               // clock restarted
+                    lastPublishedTempo = 0      // publish the new measurement
+                } else if now <= lastTickTime {
+                    now = lastTickTime &+ 1     // same transfer: keep the order
+                }
             }
             lastTickTime = now
             measureTempo(tick: now)
+            if !clockRunningFlag && !stoppedBySource {
+                // Ticks without Start (source already playing): running.
+                clockRunningFlag = true
+                DispatchQueue.main.async { [weak self] in self?.clockRunning = true }
+            }
         case 0xFA, 0xFB:
+            diagLastTransport = status
+            clockRunningFlag = true
+            stoppedBySource = false
             DispatchQueue.main.async { [weak self] in self?.clockRunning = true }
         case 0xFC:
+            diagLastTransport = status
             lastTickTime = 0
             tickCount = 0
             tempoChangeTicks = 0
             lastPublishedTempo = 0
+            clockRunningFlag = false
+            stoppedBySource = true
             DispatchQueue.main.async { [weak self] in self?.clockRunning = false }
-        case 0xF2:
-            break
         default:
-            return                          // other system messages are not used
+            break                           // F2 song position
         }
         onChannelMessage?(status, d1, d2)
+    }
+
+    /// Main thread, once a second: clock source name, ticks per second (24
+    /// per beat: 48/s at 120 BPM) and the last transport message. Empty
+    /// until the first clock / transport message arrives.
+    private func updateDiagnostics() {
+        // Racy reads of the MIDI thread's counters are fine for a display.
+        let ticks = diagTicks, ignoredTotal = diagIgnored
+        let rate = ticks - diagReadTicks
+        let ignored = ignoredTotal - diagReadIgnored
+        diagReadTicks = ticks
+        diagReadIgnored = ignoredTotal
+        let source = clockSource
+        guard source != 0 else { return }                   // nothing received yet
+        let name = source == MIDIManager.virtualSourceID
+            ? "MKS50 Synth (virtual)"
+            : sources.first { Int($0.id) == source }?.name ?? "MIDI"
+        let transport: String
+        switch diagLastTransport {
+        case 0xFA: transport = "Start"
+        case 0xFB: transport = "Continue"
+        case 0xFC: transport = "Stop"
+        default: transport = "no Start / Stop yet"
+        }
+        var text = "\(name) · \(rate) ticks/s · \(transport)"
+        if ignored > 0 { text += " · \(ignored) from other inputs ignored" }
+        if clockDiagnostics != text { clockDiagnostics = text }
     }
 
     private static func wordCount(forMessageType type: UInt32) -> Int {

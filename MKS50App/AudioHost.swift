@@ -92,6 +92,9 @@ final class AudioHost: ObservableObject {
                     model?.handleSysEx(message)
                 }
                 self.model = model
+                #if DEBUG
+                ClockSimulator.shared.runLaunchTest(midi: self.midi, engine: unit.engine)
+                #endif
             }
         }
     }

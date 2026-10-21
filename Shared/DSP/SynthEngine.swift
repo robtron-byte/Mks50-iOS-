@@ -170,8 +170,9 @@ final class SynthEngine {
     /// the source sends Start / Continue / Stop.
     private var localRun = false
 
-    /// No clock arriving for half a second.
-    private var clockSilent: Bool { framesSinceClockTick > Int(sampleRate / 2) }
+    /// No clock arriving for a second (a tick comes every 21 ms at 120 BPM,
+    /// every 83 ms at 30 BPM; USB and Bluetooth can bunch them up).
+    private var clockSilent: Bool { framesSinceClockTick > Int(sampleRate) }
 
     /// Clock sync is on and no host, but no clock arrives (nothing
     /// connected, or the source went quiet), or a key started the patterns
@@ -180,6 +181,18 @@ final class SynthEngine {
     var clockFreeRunning: Bool {
         clockSyncEnabled && hostTempo <= 0
             && (localRun || (!clockStoppedBySource && clockSilent))
+    }
+
+    /// The source sent Start / Continue but no clock ticks arrive (e.g. a
+    /// device set to send transport only): the synth follows its start and
+    /// stop and runs on the last measured tempo or the TEMPO setting.
+    var clockTransportOnly: Bool { clockFreeRunning && clockRunning && !localRun }
+
+    /// Clock state for the recorder strip: "ext ▶" / "ext ■" following the
+    /// clock, "int ▶" running free, "no clk ▶" Start without clock ticks.
+    var clockStatusLabel: String {
+        if clockFreeRunning { return clockTransportOnly ? "no clk ▶" : "int ▶" }
+        return clockRunning ? "ext ▶" : "ext ■"
     }
 
     /// Tempo ± while running free without clock: changes the last received
@@ -204,9 +217,15 @@ final class SynthEngine {
             let wasFree = clockFreeRunning && !localRun
             framesSinceClockTick = 0
             if wasFree {
-                // Clock (re)appeared while running free: wait for Start.
-                clockRunning = false
+                // Clock (re)appeared after silence and the source has not
+                // sent Stop: it is playing (it may have started before we
+                // listened, or never send Start at all). Join it from this
+                // tick on; a Start that follows re-syncs to its first step.
                 stopPatterns()
+                clockTicks = 0
+                internalBeat = 0
+                clockRate = 1
+                clockRunning = true
             }
             guard clockRunning else { return }
             // Position of this tick: the first tick after Start is beat 0.
