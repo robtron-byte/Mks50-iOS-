@@ -94,7 +94,7 @@ struct SettingsView: View {
                                 .monospacedDigit()
                         }
                     }
-                    Toggle("Grid PO16 Controller (Ch 16)", isOn: $gridController)
+                    Toggle("Grid PO16 Controller (Ch 15)", isOn: $gridController)
                     Toggle("Network MIDI (Wi-Fi)", isOn: $midi.networkEnabled)
                     Toggle("Run in Background", isOn: $backgroundAudio)
                     if backgroundAudio {
@@ -107,7 +107,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Connectivity")
                 } footer: {
-                    Text("Sync to MIDI Clock: tempo, start and stop come from the selected MIDI inputs or another app (sending clock to \"MKS50 Synth\"). Arp and sequencer run only while the clock source is playing; Start restarts them on the first step. " + "Grid PO16 Controller: an Intech Grid PO16 with the MKS50 profiles from Tools/PO16 controls sound, arp / sequencer, recorder and loop pads on MIDI channel 16 (those control changes no longer reach MIDI learn). " + "Network MIDI makes the iPhone visible to a Mac (Audio MIDI Setup › Network). \"Run in Background\" keeps the synth playing while you use another app, e.g. a sequencer that sends to \"MKS50 Synth\". \"Sleep When Idle\": in the background, after this long without sound and without MIDI notes the app goes to sleep to save battery; it then no longer receives MIDI until you open it again.")
+                    Text("Sync to MIDI Clock: tempo, start and stop come from the selected MIDI inputs or another app (sending clock to \"MKS50 Synth\"). Arp and sequencer run only while the clock source is playing; Start restarts them on the first step. " + "Grid PO16 Controller: an Intech Grid PO16 with the MKS50 profiles from Tools/PO16 controls sound, arp / sequencer, recorder and loop pads on MIDI channel 15, PO16 pages 3–4 (those control changes no longer reach MIDI learn). " + "Network MIDI makes the iPhone visible to a Mac (Audio MIDI Setup › Network). \"Run in Background\" keeps the synth playing while you use another app, e.g. a sequencer that sends to \"MKS50 Synth\". \"Sleep When Idle\": in the background, after this long without sound and without MIDI notes the app goes to sleep to save battery; it then no longer receives MIDI until you open it again.")
                 }
 
                 #if DEBUG

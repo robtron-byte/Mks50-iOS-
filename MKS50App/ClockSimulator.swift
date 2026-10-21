@@ -116,12 +116,12 @@ final class ClockSimulator: ObservableObject {
 
     // MARK: PO16 controller test (launch argument "-gridTest")
 
-    /// Sends a control change on MIDI channel 16 from "Clock Sim A", like
-    /// the PO16 profiles do.
-    func sendCC(_ cc: UInt8, _ value: UInt8) {
+    /// Sends a control change on the PO16 channel of this app from
+    /// "Clock Sim A", like the PO16 profiles do.
+    func sendCC(_ cc: UInt8, _ value: UInt8, status: UInt8 = GridController.ccStatus) {
         var list = MIDIEventList()
         let packet = MIDIEventListInit(&list, ._1_0)
-        var word = UInt32(0x2) << 28 | UInt32(0xBF) << 16 | UInt32(cc) << 8 | UInt32(value)
+        var word = UInt32(0x2) << 28 | UInt32(status) << 16 | UInt32(cc) << 8 | UInt32(value)
         MIDIEventListAdd(&list, MemoryLayout<MIDIEventList>.size, packet, 0, 1, &word)
         MIDIReceivedEventList(sourceA, &list)
     }
@@ -130,16 +130,20 @@ final class ClockSimulator: ObservableObject {
     /// moved on; ARP and HOLD pots turned right; logs the results.
     func runGridTest(synth: SynthViewModel) {
         guard ProcessInfo.processInfo.arguments.contains("-gridTest") else { return }
-        let steps: [(Double, UInt8, UInt8)] = [
-            (3.0, 32, 40),                          // cutoff pot at 40: not picked up yet
-            (3.4, 32, 125), (3.5, 32, 110),         // reaches the value: follows
-            (3.7, 48, 100),                         // ARP pot right: on
-            (3.8, 57, 100),                         // HOLD pot right: on
-            (3.9, 49, 127),                         // ARP RATE pot: picks up only near its value
-            (4.0, 46, 69), (4.1, 46, 100),          // DELAY TIME (synced): note value 1/8. -> 1/4.
+        let steps: [(Double, UInt8, UInt8, Bool)] = [
+            (3.0, 32, 40, false),                          // cutoff pot at 40: not picked up yet
+            (3.4, 32, 125, false), (3.5, 32, 110, false),         // reaches the value: follows
+            (3.6, 32, 0, true),                     // other app's channel: ignored
+            (3.7, 48, 100, false),                         // ARP pot right: on
+            (3.8, 57, 100, false),                         // HOLD pot right: on
+            (3.9, 49, 127, false),                         // ARP RATE pot: picks up only near its value
+            (4.0, 46, 69, false), (4.1, 46, 100, false),          // DELAY TIME (synced): note value 1/8. -> 1/4.
         ]
-        for (t, cc, v) in steps {
-            DispatchQueue.main.asyncAfter(deadline: .now() + t) { self.sendCC(cc, v) }
+        let otherApp: UInt8 = GridController.ccStatus == 0xBF ? 0xBE : 0xBF
+        for (t, cc, v, foreign) in steps {
+            DispatchQueue.main.asyncAfter(deadline: .now() + t) {
+                self.sendCC(cc, v, status: foreign ? otherApp : GridController.ccStatus)
+            }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
             print("GRIDTEST after pot 40: cutoff=\(synth.value(.vcfCutoff))")

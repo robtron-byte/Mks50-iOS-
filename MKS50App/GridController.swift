@@ -1,13 +1,15 @@
 import Foundation
 
 /// Live control from an Intech Studio Grid PO16 (16 potentiometers, no
-/// buttons) on MIDI channel 16. The matching Grid Editor profiles are in
-/// Tools/PO16 (one per page, made by Tools/po16_profiles.py).
+/// buttons) on MIDI channel 15, PO16 pages 3-4. The matching Grid Editor
+/// profiles are in Tools/PO16 (one per page, made by Tools/po16_profiles.py).
+/// The JP6 app on pages 1-2, channel 16, so one PO16 plays both apps: the side button
+/// steps through pages 1 → 2 → 3 → 4.
 ///
-/// Protocol (channel 16, absolute 0...127):
-/// - Page 1 SOUND: pot p → CC 32 + p
-/// - Page 2 PERFORM: pot p → CC 48 + p
-/// - CC 96: the PO16 loaded a page (the side button switches pages)
+/// Protocol (channel 15, absolute 0...127):
+/// - Page 3 SOUND: pot p → CC 32 + p
+/// - Page 4 PERFORM: pot p → CC 48 + p
+/// - CC 96: the PO16 loaded one of these pages
 ///
 /// Pickup: a pot only takes over a parameter once it reaches the current
 /// value (after a preset change, a page switch or a change on screen), so
@@ -18,6 +20,9 @@ import Foundation
 /// default), else the free time.
 final class GridController {
     static let enabledKey = "gridControllerEnabled"
+    /// MIDI channel of this app's PO16 pages (1...16).
+    static let channel = 15
+    static var ccStatus: UInt8 { UInt8(0xB0 + channel - 1) }
 
     // MARK: Layout (keep in sync with Tools/po16_profiles.py)
 
@@ -53,9 +58,9 @@ final class GridController {
         self.synth = synth
         self.recorder = recorder
         self.pads = pads
-        midi.onControllerCC = { [weak self] cc, value in
-            // MIDI thread: claim the PO16's CCs, handle them on main.
-            guard (32...63).contains(cc) || cc == 96,
+        midi.onControllerCC = { [weak self] status, cc, value in
+            // MIDI thread: claim this app's PO16 CCs, handle them on main.
+            guard status == GridController.ccStatus, (32...63).contains(cc) || cc == 96,
                   UserDefaults.standard.object(forKey: GridController.enabledKey) as? Bool ?? true else { return false }
             DispatchQueue.main.async { self?.handle(cc: Int(cc), value: Int(value)) }
             return true

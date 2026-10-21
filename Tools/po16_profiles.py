@@ -40,12 +40,19 @@ PERFORM = [
 
 VERSION = {"major": "1", "minor": "7", "patch": "5"}
 
+# This app's PO16 pages and MIDI channel (the other app uses the other two
+# pages and its own channel, so one PO16 plays both).
+CHANNEL = 15                  # 1...16 (Grid counts 0...15)
+SOUND_PAGE, PERFORM_PAGE = 3, 4
+
 # Mapping version: part of every profile name, so versions are told apart
 # in Grid Editor. Raise it whenever the layout changes (and note why).
 #   v1  first PO16 layout (effects row with Drive)
 #   v2  effects row: Delay Mix, Delay Feedback, Delay Time, Reverb Mix
-MAPPING_VERSION = "v2"
-MAPPING_NOTE = "v2: Delay Time instead of Drive, Reverb Mix last"
+#   v3  both apps on one PO16: JP6 pages 1-2 (channel 16), MKS-50 pages 3-4
+#       (channel 15); the side button steps through all four pages
+MAPPING_VERSION = "v3"
+MAPPING_NOTE = "v3: JP6 pages 1-2 (ch 16), MKS-50 pages 3-4 (ch 15)"
 
 
 def pot(index, name, colour, cc):
@@ -56,7 +63,7 @@ def pot(index, name, colour, cc):
             {"event": 0, "config": f'--[[@sn]] self:gen("{name}")--[[@cb]] --[[Potmeter Init]]'},
             {"event": 1, "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)"
                                    f"--[[@sglc]] self:glc(-1,{{{{{r},{g},{b},1}}}}) self:glp(-1,-1)"
-                                   f"--[[@gms]] self:gms(15,176,{cc},-1)"},
+                                   f"--[[@gms]] self:gms({CHANNEL - 1},176,{cc},-1)"},
             {"event": 6, "config": '--[[@cb]] print("tick")'},
         ],
     }
@@ -67,9 +74,9 @@ def system():
         "controlElementNumber": 255,
         "events": [
             # Tell the app which page is active (CC 96), so pots pick up anew.
-            {"event": 0, "config": "--[[@cb]] gms(15,176,96,gpc())"},
-            # Side button: page 1 <-> page 2.
-            {"event": 4, "config": "--[[@cb]] gpl((gpc()+1)%2)"},
+            {"event": 0, "config": f"--[[@cb]] gms({CHANNEL - 1},176,96,gpc())"},
+            # Side button: next page, 1 -> 2 -> 3 -> 4 -> 1 (JP6 and MKS-50).
+            {"event": 4, "config": "--[[@cb]] gpl((gpc()+1)%4)"},
             {"event": 6, "config": '--[[@cb]] print("tick")'},
         ],
     }
@@ -97,14 +104,14 @@ def profile(name, description, layout, base_cc):
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
     profiles = [
-        (f"{APP} PO16 {MAPPING_VERSION} Page 1 Sound",
-         f"{APP} app, PO16 page 1: filter, modulation, envelope, effects. "
-         "Pots pick up at the current value. Side button: page 2. "
+        (f"{APP} PO16 {MAPPING_VERSION} Page {SOUND_PAGE} Sound",
+         f"{APP} app, PO16 page {SOUND_PAGE}, MIDI ch {CHANNEL}: filter, modulation, envelope, effects. "
+         "Pots pick up at the current value. Side button: next page. "
          f"Mapping {MAPPING_NOTE}.",
          SOUND, 32),
-        (f"{APP} PO16 {MAPPING_VERSION} Page 2 Perform",
-         f"{APP} app, PO16 page 2: arp / sequencer, transpose, stutter, tempo, "
-         "hold, REC, loop pads. Side button: page 1. "
+        (f"{APP} PO16 {MAPPING_VERSION} Page {PERFORM_PAGE} Perform",
+         f"{APP} app, PO16 page {PERFORM_PAGE}, MIDI ch {CHANNEL}: arp / sequencer, transpose, stutter, tempo, "
+         "hold, REC, loop pads. Side button: next page. "
          f"Mapping {MAPPING_NOTE}.",
          PERFORM, 48),
     ]

@@ -47,10 +47,10 @@ final class MIDIManager: ObservableObject {
     /// Called on the CoreMIDI thread for channel voice messages and for MIDI
     /// clock / transport (F8, FA, FB, FC, F2).
     var onChannelMessage: ((UInt8, UInt8, UInt8) -> Void)?
-    /// Called on the CoreMIDI thread for every control change on MIDI channel
-    /// 16 (status 0xBF) before it reaches the synth; returning true consumes
-    /// it (Grid PO16 controller, see GridController).
-    var onControllerCC: ((UInt8, UInt8) -> Bool)?
+    /// Called on the CoreMIDI thread for every control change (status, CC,
+    /// value) before it reaches the synth; returning true consumes it (Grid
+    /// PO16 controller, see GridController).
+    var onControllerCC: ((UInt8, UInt8, UInt8) -> Bool)?
     /// Called on the CoreMIDI thread with the tempo measured from MIDI clock.
     var onClockTempo: ((Double) -> Void)?
     /// Main thread: tempo and running state of the incoming MIDI clock.
@@ -230,7 +230,7 @@ final class MIDIManager: ObservableObject {
                         // MIDI 1.0 channel voice message
                         let status = UInt8((word >> 16) & 0xFF)
                         let d1 = UInt8((word >> 8) & 0x7F), d2 = UInt8(word & 0x7F)
-                        if status == 0xBF, onControllerCC?(d1, d2) == true {
+                        if status & 0xF0 == 0xB0, onControllerCC?(status, d1, d2) == true {
                             noteActivity()
                             break
                         }
