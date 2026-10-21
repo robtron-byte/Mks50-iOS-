@@ -9,8 +9,8 @@ Zwei Grid-Editor-Profile für das Intech Studio **Grid PO16** (16 Drehregler). D
    python3 Tools/po16_profiles.py --install
    ```
    Ohne `--install` landen sie nur hier in `Tools/PO16`.
-2. Im Grid Editor am PO16 **Seite 1** wählen, **MKS50 PO16 Page 1 Sound** daraufziehen und *Store* drücken.
-3. **Seite 2** wählen, **MKS50 PO16 Page 2 Perform** daraufziehen, *Store*.
+2. Im Grid Editor am PO16 **Seite 1** wählen, **MKS50 PO16 v2 Page 1 Sound** daraufziehen und *Store* drücken.
+3. **Seite 2** wählen, **MKS50 PO16 v2 Page 2 Perform** daraufziehen, *Store*.
 4. PO16 per USB an das iPhone (oder an den Mac mit Network MIDI) anschließen. In der App unter *Einstellungen* ist **Grid PO16 Controller (Ch 16)** standardmäßig an.
 
 Die **Seitentaste** des PO16 schaltet zwischen Seite 1 und 2.
@@ -38,6 +38,15 @@ Die **Seitentaste** des PO16 schaltet zwischen Seite 1 und 2.
 - **Schalter** (ARP, SEQ, HOLD) schalten, wenn der Regler die Mitte überquert.
 - **REC** startet die Aufnahme beim Drehen über die Mitte. Für die nächste Aufnahme erst wieder nach links drehen. Takte, START und TAILS stellst du in der App ein.
 - **Pad-Regler** sind Pegel und Start/Stop zugleich: ganz links stoppt das Pad, von ganz links aufgedreht startet es auf dem nächsten Takt.
+
+## Versionen
+
+Die Version steht im Profilnamen (z. B. *MKS50 PO16 v2 Page 1 Sound*) und auf dem Ausdruck.
+
+- **v2** (aktuell): Effekt-Reihe Delay Mix, Delay Feedback, Delay Time, Reverb Mix.
+- **v1**: erste PO16-Fassung, Effekt-Reihe mit Drive statt Delay Time.
+
+Bei jeder Änderung der Belegung `MAPPING_VERSION` in `Tools/po16_profiles.py` erhöhen.
 
 ## Technik
 

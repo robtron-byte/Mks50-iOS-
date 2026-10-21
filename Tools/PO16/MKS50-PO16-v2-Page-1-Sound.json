@@ -1,7 +1,7 @@
 {
-  "id": "d5c68354-85da-5810-b17a-77cd374c5b6a",
-  "name": "MKS50 PO16 Page 2 Perform",
-  "description": "MKS50 app, PO16 page 2: arp / sequencer, transpose, stutter, tempo, hold, REC, loop pads. Side button: page 1.",
+  "id": "50f9f306-e9c8-5dca-b606-c5f64f738302",
+  "name": "MKS50 PO16 v2 Page 1 Sound",
+  "description": "MKS50 app, PO16 page 1: filter, modulation, envelope, effects. Pots pick up at the current value. Side button: page 2. Mapping v2: Delay Time instead of Drive, Reverb Mix last.",
   "type": "PO16",
   "version": {
     "major": "1",
@@ -10,8 +10,8 @@
   },
   "configType": "profile",
   "files": [],
-  "createdAt": "2026-10-21T20:49:42.827Z",
-  "modifiedAt": "2026-10-21T20:49:42.827Z",
+  "createdAt": "2026-10-21T20:52:02.924Z",
+  "modifiedAt": "2026-10-21T20:52:02.924Z",
   "virtualPath": "",
   "configs": [
     {
@@ -19,11 +19,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"ARP off|on\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"CUTOFF\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{168,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,48,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{255,94,33,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,32,-1)"
         },
         {
           "event": 6,
@@ -36,11 +36,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"ARP RATE\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"RESO\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{168,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,49,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{255,94,33,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,33,-1)"
         },
         {
           "event": 6,
@@ -53,11 +53,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"SEQ off|on\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"VCF ENV\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{168,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,50,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{255,94,33,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,34,-1)"
         },
         {
           "event": 6,
@@ -70,11 +70,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"SEQ RATE\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"HPF\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{168,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,51,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{255,94,33,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,35,-1)"
         },
         {
           "event": 6,
@@ -87,11 +87,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"SEQ GATE\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"LFO RATE\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{28,204,120,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,52,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{28,204,120,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,36,-1)"
         },
         {
           "event": 6,
@@ -104,11 +104,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"SEQ G.VAR\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"LFO>VCF\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{28,204,120,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,53,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{28,204,120,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,37,-1)"
         },
         {
           "event": 6,
@@ -121,11 +121,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"TRANSPOSE\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"VIBRATO\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{28,204,120,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,54,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{28,204,120,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,38,-1)"
         },
         {
           "event": 6,
@@ -138,11 +138,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"STUTTER\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"PW/PWM\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{28,204,120,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,55,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{28,204,120,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,39,-1)"
         },
         {
           "event": 6,
@@ -155,11 +155,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"TEMPO\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"ATTACK T1\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{255,94,33,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,56,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{232,232,227,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,40,-1)"
         },
         {
           "event": 6,
@@ -172,11 +172,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"HOLD off|on\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"DECAY T2\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{255,94,33,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,57,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{232,232,227,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,41,-1)"
         },
         {
           "event": 6,
@@ -189,11 +189,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"REC >\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"SUSTAIN L3\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{255,94,33,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,58,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{232,232,227,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,42,-1)"
         },
         {
           "event": 6,
@@ -206,11 +206,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"LOOPS\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"RELEASE T4\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{255,94,33,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,59,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{232,232,227,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,43,-1)"
         },
         {
           "event": 6,
@@ -223,11 +223,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"PAD 1\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"DLY MIX\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{51,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,60,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{168,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,44,-1)"
         },
         {
           "event": 6,
@@ -240,11 +240,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"PAD 2\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"DLY FB\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{51,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,61,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{168,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,45,-1)"
         },
         {
           "event": 6,
@@ -257,11 +257,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"PAD 3\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"DLY TIME\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{51,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,62,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{168,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,46,-1)"
         },
         {
           "event": 6,
@@ -274,11 +274,11 @@
       "events": [
         {
           "event": 0,
-          "config": "--[[@sn]] self:gen(\"PAD 4\")--[[@cb]] --[[Potmeter Init]]"
+          "config": "--[[@sn]] self:gen(\"REV MIX\")--[[@cb]] --[[Potmeter Init]]"
         },
         {
           "event": 1,
-          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{51,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,63,-1)"
+          "config": "--[[@spc]] self:pmo(7) self:pmi(0) self:pma(127)--[[@sglc]] self:glc(-1,{{168,120,255,1}}) self:glp(-1,-1)--[[@gms]] self:gms(15,176,47,-1)"
         },
         {
           "event": 6,

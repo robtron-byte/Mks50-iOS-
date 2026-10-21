@@ -40,6 +40,13 @@ PERFORM = [
 
 VERSION = {"major": "1", "minor": "7", "patch": "5"}
 
+# Mapping version: part of every profile name, so versions are told apart
+# in Grid Editor. Raise it whenever the layout changes (and note why).
+#   v1  first PO16 layout (effects row with Drive)
+#   v2  effects row: Delay Mix, Delay Feedback, Delay Time, Reverb Mix
+MAPPING_VERSION = "v2"
+MAPPING_NOTE = "v2: Delay Time instead of Drive, Reverb Mix last"
+
 
 def pot(index, name, colour, cc):
     r, g, b = colour
@@ -90,13 +97,15 @@ def profile(name, description, layout, base_cc):
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
     profiles = [
-        (f"{APP} PO16 Page 1 Sound",
+        (f"{APP} PO16 {MAPPING_VERSION} Page 1 Sound",
          f"{APP} app, PO16 page 1: filter, modulation, envelope, effects. "
-         "Pots pick up at the current value. Side button: page 2.",
+         "Pots pick up at the current value. Side button: page 2. "
+         f"Mapping {MAPPING_NOTE}.",
          SOUND, 32),
-        (f"{APP} PO16 Page 2 Perform",
+        (f"{APP} PO16 {MAPPING_VERSION} Page 2 Perform",
          f"{APP} app, PO16 page 2: arp / sequencer, transpose, stutter, tempo, "
-         "hold, REC, loop pads. Side button: page 1.",
+         "hold, REC, loop pads. Side button: page 1. "
+         f"Mapping {MAPPING_NOTE}.",
          PERFORM, 48),
     ]
     targets = [os.path.join(here, "PO16")]
