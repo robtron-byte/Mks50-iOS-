@@ -266,7 +266,12 @@ final class MKS50AudioUnit: AUAudioUnit {
             let startTicks = mach_absolute_time()
             let abl = UnsafeMutableAudioBufferListPointer(outputData)
             guard abl.count > 0 else { return kAudioUnitErr_FormatNotSupported }
-            guard Int(frameCount) <= buffers.capacity else { return kAudioUnitErr_TooManyFramesToProcess }
+            // Own buffers are only needed when the host passes none; the
+            // engine renders any length in chunks.
+            let needsOwnBuffers = abl.contains { $0.mData == nil } || abl.count < 2
+            guard !needsOwnBuffers || Int(frameCount) <= buffers.capacity else {
+                return kAudioUnitErr_TooManyFramesToProcess
+            }
 
             for i in 0..<abl.count where abl[i].mData == nil {
                 abl[i].mData = UnsafeMutableRawPointer(i % 2 == 0 ? buffers.left : buffers.right)

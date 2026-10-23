@@ -43,13 +43,27 @@ final class AudioHost: ObservableObject {
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification,
                                             object: nil, queue: .main) { [weak self] note in
-            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-                  AVAudioSession.InterruptionType(rawValue: raw) == .ended else { return }
-            self?.restart()
+            guard let self, let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            switch type {
+            case .began:
+                // Phone call, alarm, Siri: iOS stops the audio. Release all
+                // notes (applied when rendering resumes) so nothing hangs.
+                self.interrupted = true
+                self.model?.panic()
+            case .ended:
+                self.interrupted = false
+                self.recover()
+            @unknown default:
+                break
+            }
         })
         observers.append(center.addObserver(forName: .AVAudioEngineConfigurationChange,
                                             object: engine, queue: .main) { [weak self] _ in
-            self?.reconnect()
+            guard let self else { return }
+            // During a call the hardware runs at the call's sample rate (and
+            // route); rebuilding then would keep that format afterwards.
+            if self.interrupted { self.needsRebuild = true } else { self.reconnect() }
         })
         observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification,
                                             object: nil, queue: .main) { [weak self] _ in
@@ -101,11 +115,21 @@ final class AudioHost: ObservableObject {
         }
     }
 
+    /// Hardware output rate right now (the synth renders at this rate, so
+    /// the mixer never has to convert).
+    private var hardwareRate: Double {
+        let output = engine.outputNode.outputFormat(forBus: 0).sampleRate
+        if output > 0 { return output }
+        let session = AVAudioSession.sharedInstance().sampleRate
+        return session > 0 ? session : 48000
+    }
+
     private func connect() {
         guard let node = unitNode else { return }
-        let sampleRate = AVAudioSession.sharedInstance().sampleRate
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate > 0 ? sampleRate : 48000, channels: 2)
+        let sampleRate = hardwareRate
+        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)
         engine.connect(node, to: engine.mainMixerNode, format: format)
+        connectedRate = sampleRate
     }
 
     private func start() {
@@ -165,6 +189,13 @@ final class AudioHost: ObservableObject {
             sleepTimer?.invalidate()
             sleepTimer = nil
             if sleeping { sleeping = false }
+            // iOS does not always deliver "interruption ended" (e.g. a call
+            // answered and ended while the app was in the background):
+            // coming back to the foreground always ends it.
+            if interrupted {
+                interrupted = false
+                needsRebuild = true
+            }
             restart()
             return
         }
@@ -181,6 +212,12 @@ final class AudioHost: ObservableObject {
     // MARK: Sleep
 
     private var inBackground = false
+    /// Audio interrupted (phone call, alarm, Siri) and not yet ended.
+    private var interrupted = false
+    /// The configuration changed during the interruption: rebuild after it.
+    private var needsRebuild = false
+    /// Sample rate the synth is connected with.
+    private var connectedRate: Double = 0
     /// Engine paused and audio session released after the idle time; the
     /// app wakes up when it comes back to the foreground.
     private var sleeping = false
@@ -232,7 +269,36 @@ final class AudioHost: ObservableObject {
     private func restart() {
         sessionQueue.async { [weak self] in
             try? AVAudioSession.sharedInstance().setActive(true)
-            DispatchQueue.main.async { self?.start() }
+            DispatchQueue.main.async { self?.startOrRebuild() }
+        }
+    }
+
+    /// After a phone call (or another interruption): set the session up
+    /// again (category, buffer size), then rebuild the connection at the
+    /// current hardware rate. The call may have changed the sample rate and
+    /// route; resuming with the stale format gives silence or crackles.
+    /// A call that ends while the app is in the background is handled the
+    /// same way when it comes back (`restart`).
+    private func recover() {
+        sessionQueue.async { [weak self] in
+            self?.configureSession()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.needsRebuild = false
+                self.reconnect()
+            }
+        }
+    }
+
+    /// Starts the engine, or rebuilds it if the hardware format changed or
+    /// a change arrived during an interruption.
+    private func startOrRebuild() {
+        guard !interrupted else { return }
+        if needsRebuild || (connectedRate > 0 && hardwareRate != connectedRate) {
+            needsRebuild = false
+            reconnect()
+        } else {
+            start()
         }
     }
 
