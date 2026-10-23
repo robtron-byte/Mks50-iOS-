@@ -24,13 +24,13 @@ enum FactoryPresets {
         make(.lead, "HOOVER",
              [1, 0, 0,  2, 5, 3,  1, 2, 0,  1, 1,
               0, 38, 20, 88, 92,  112, 8, 0, 0, 40, 0,  118, 0,  70, 0,
-              0, 127, 34, 96, 60, 84, 46, 0,  98, 2],
+              0, 127, 34, 96, 60, 100, 46, 0,  98, 2],
              keyMode: 2, porta: 1, portaTime: 46),
 
         make(.stringsBrass, "JUNO BRASS",
              [0, 0, 2,  0, 1, 0,  1, 0, 0,  1, 1,
               0, 0, 0, 0, 0,  38, 18, 0, 86, 64, 20,  112, 10,  64, 0,
-              34, 127, 62, 92, 60, 88, 42, 20,  52, 2]),
+              34, 127, 62, 92, 60, 100, 42, 20,  52, 2]),
 
         make(.pad, "WARM PAD",
              [0, 0, 0,  3, 1, 0,  1, 0, 0,  2, 1,
@@ -40,19 +40,19 @@ enum FactoryPresets {
         make(.bass, "FAT BASS",
              [0, 0, 2,  0, 1, 1,  2, 3, 0,  0, 0,
               0, 0, 0, 0, 0,  28, 52, 0, 74, 40, 0,  124, 0,  64, 0,
-              0, 127, 52, 36, 54, 30, 16, 0,  60, 2],
+              0, 127, 52, 36, 54, 96, 16, 0,  60, 2],
              keyMode: 2),
 
         make(.bass, "SUB BASS",
              [0, 0, 0,  1, 0, 3,  1, 3, 0,  0, 0,
-              0, 0, 0, 0, 0,  24, 10, 0, 40, 30, 0,  126, 0,  64, 0,
-              0, 127, 60, 80, 60, 80, 14, 0,  60, 2],
+              0, 0, 0, 0, 0,  28, 10, 0, 40, 30, 0,  126, 0,  64, 0,
+              0, 127, 60, 80, 60, 96, 14, 0,  60, 2],
              keyMode: 2, porta: 1, portaTime: 18),
 
         make(.keys, "PLUCK KEYS",
              [0, 2, 2,  1, 1, 0,  1, 0, 0,  1, 1,
               0, 0, 0, 0, 0,  46, 26, 0, 80, 96, 0,  116, 0,  64, 0,
-              0, 127, 46, 20, 50, 0, 40, 40,  70, 2]),
+              0, 127, 68, 20, 50, 0, 40, 40,  70, 2]),
 
         make(.stringsBrass, "STRINGS",
              [0, 0, 0,  0, 2, 0,  1, 0, 0,  2, 1,
@@ -65,7 +65,7 @@ enum FactoryPresets {
         // Hold a key (or HOLD + play) to run the line.
         make(.bass, "ACID LINE",
              [0, 0, 3,  0, 1, 0,  1, 0, 0,  1, 0,
-              0, 0, 0, 0, 0,  22, 116, 0, 92, 50, 0,  118, 0,  64, 0,
+              0, 0, 0, 0, 0,  50, 116, 0, 92, 50, 0,  118, 0,  64, 0,
               0, 127, 58, 18, 45, 10, 14, 0,  60, 2],
              keyMode: 2, porta: 2, portaTime: 14,
              extra: [.envRetrigger: 1,
@@ -87,7 +87,7 @@ enum FactoryPresets {
 
         make(.fxPerc, "NOISE SWP",
              [0, 0, 0,  0, 0, 0,  1, 0, 3,  1, 1,
-              0, 0, 0, 0, 0,  14, 96, 74, 50, 0, 0,  108, 0,  22, 0,
+              0, 0, 0, 0, 0,  34, 96, 74, 50, 0, 0,  122, 0,  22, 0,
               104, 127, 80, 110, 80, 110, 96, 0,  30, 2]),
 
         make(.keys, "ORGAN",
@@ -103,14 +103,14 @@ enum FactoryPresets {
 
         make(.bass, "WOBBLE",
              [0, 0, 0,  0, 4, 1,  1, 2, 0,  1, 0,
-              0, 0, 0, 56, 70,  48, 70, 84, 0, 40, 0,  120, 0,  70, 0,
+              0, 0, 0, 56, 70,  56, 70, 84, 0, 40, 0,  120, 0,  70, 0,
               0, 127, 0, 127, 0, 127, 20, 0,  60, 2],
              keyMode: 2),
 
         make(.lead, "SYNC SWEEP",
              [0, 0, 0,  1, 0, 0,  1, 0, 0,  1, 1,
               20, 0, 20, 0, 0,  100, 20, 0, 20, 40, 0,  112, 0,  76, 70,
-              0, 127, 70, 60, 70, 40, 30, 0,  66, 2],
+              0, 127, 70, 60, 70, 100, 30, 0,  66, 2],
              keyMode: 2, porta: 1, portaTime: 26,
              extra: [.pulseSync: 1, .pulseDetune: 76, .pulseEnvMod: 70]),
 
@@ -123,27 +123,27 @@ enum FactoryPresets {
 
         make(.pad, "DARK DRONE",
              [0, 1, 0,  3, 5, 5,  2, 2, 1,  0, 1,
-              4, 0, 0, 100, 18,  36, 62, 12, 24, 20, 0,  110, 0,  18, 90,
+              4, 0, 0, 100, 18,  56, 62, 12, 24, 20, 0,  122, 0,  18, 90,
               100, 127, 90, 100, 90, 100, 110, 0,  24, 2]),
 
         // MARK: Electro funk (in the spirit of Kraftwerk / Anthony Rother)
 
         make(.bass, "ROBO BASS",
              [0, 0, 2,  1, 1, 0,  2, 2, 0,  1, 0,
-              0, 0, 0, 30, 0,  30, 64, 0, 78, 50, 0,  122, 0,  64, 0,
-              0, 127, 38, 20, 40, 10, 12, 0,  60, 2],
+              0, 0, 0, 30, 0,  42, 64, 0, 78, 50, 0,  122, 0,  64, 0,
+              0, 127, 64, 20, 40, 10, 12, 0,  60, 2],
              keyMode: 2, porta: 1, portaTime: 8),
 
         make(.sequence, "NUMBERS",
              [0, 0, 0,  1, 0, 0,  0, 0, 0,  2, 0,
-              0, 0, 0, 0, 0,  40, 105, 0, 90, 127, 0,  112, 0,  64, 0,
-              0, 127, 26, 0, 30, 0, 22, 30,  60, 2],
+              0, 0, 0, 0, 0,  62, 105, 0, 90, 127, 0,  122, 0,  64, 0,
+              0, 127, 56, 0, 30, 0, 22, 30,  60, 2],
              extra: [.delayMix: 50, .delayFeedback: 45, .delayDivision: 5, .delayPingPong: 1, .reverbMix: 30]),
 
         make(.sequence, "CALCULATR",
              [0, 0, 2,  3, 0, 0,  0, 0, 0,  2, 0,
-              0, 0, 0, 100, 0,  100, 20, 0, 20, 60, 0,  104, 0,  64, 0,
-              0, 127, 20, 0, 20, 0, 14, 0,  60, 2],
+              0, 0, 0, 100, 0,  114, 20, 0, 20, 60, 0,  122, 0,  64, 0,
+              0, 127, 56, 0, 20, 0, 14, 0,  60, 2],
              extra: [.keyShift: 24, .delayMix: 40, .delayFeedback: 30, .delayDivision: 2, .reverbMix: 25]),
 
         make(.stringsBrass, "TRANS EURO",
@@ -162,27 +162,27 @@ enum FactoryPresets {
         make(.bass, "AUTO BASS",
              [0, 0, 0,  0, 2, 0,  2, 2, 0,  1, 0,
               0, 0, 0, 0, 0,  36, 40, 0, 64, 50, 0,  122, 0,  64, 0,
-              0, 127, 50, 40, 50, 35, 20, 0,  60, 2],
+              0, 127, 50, 40, 50, 96, 20, 0,  60, 2],
              keyMode: 2, porta: 1, portaTime: 14,
              extra: [.delayMix: 20, .delayDivision: 6, .delayFeedback: 30]),
 
         make(.stab, "ELEC STAB",
              [0, 0, 2,  3, 1, 0,  1, 0, 0,  2, 1,
-              0, 0, 0, 40, 0,  50, 40, 0, 70, 50, 0,  112, 0,  64, 0,
+              0, 0, 0, 40, 0,  50, 40, 0, 70, 50, 0,  122, 0,  64, 0,
               0, 127, 34, 30, 40, 0, 26, 0,  56, 2],
              keyMode: 1, chord: 2,
              extra: [.delayMix: 45, .delayDivision: 6, .delayFeedback: 45, .delayPingPong: 1, .reverbMix: 40]),
 
         make(.bass, "ACID ELEC",
              [0, 0, 2,  0, 1, 0,  1, 0, 0,  1, 0,
-              0, 0, 0, 0, 0,  26, 112, 0, 84, 60, 0,  120, 0,  64, 0,
-              0, 127, 34, 10, 40, 0, 14, 0,  60, 2],
+              0, 0, 0, 0, 0,  54, 112, 0, 84, 60, 0,  122, 0,  64, 0,
+              0, 127, 64, 10, 40, 0, 14, 0,  60, 2],
              keyMode: 2, porta: 1, portaTime: 18,
              extra: [.delayMix: 30, .delayDivision: 2, .delayFeedback: 40]),
 
         make(.pad, "MACHINE PD",
              [0, 1, 0,  3, 5, 4,  1, 2, 0,  0, 1,
-              0, 0, 0, 90, 22,  40, 50, 20, 30, 30, 0,  108, 0,  22, 0,
+              0, 0, 0, 90, 22,  60, 50, 20, 30, 30, 0,  122, 0,  22, 0,
               100, 127, 90, 100, 90, 100, 100, 0,  30, 2],
              extra: [.reverbMix: 70, .reverbSize: 110, .reverbDamp: 70, .delayMix: 30, .delayDivision: 9]),
 
@@ -195,7 +195,7 @@ enum FactoryPresets {
         make(.fxPerc, "ELEC HAT",
              [0, 0, 0,  0, 0, 0,  1, 0, 3,  3, 0,
               0, 0, 0, 0, 0,  110, 20, 0, 0, 0, 0,  110, 0,  64, 0,
-              0, 127, 14, 0, 14, 0, 10, 0,  60, 2],
+              0, 127, 50, 0, 14, 0, 10, 0,  60, 2],
              extra: [.reverbMix: 25, .reverbSize: 40]),
 
         make(.fxPerc, "BOOM 808",
@@ -223,8 +223,8 @@ enum FactoryPresets {
         // Step-sequencer patterns: hold one key (or use HOLD), it transposes.
         make(.sequence, "SEQ KRAFT",
              [0, 0, 0,  1, 0, 0,  0, 0, 0,  2, 0,
-              0, 0, 0, 0, 0,  40, 105, 0, 90, 127, 0,  112, 0,  64, 0,
-              0, 127, 22, 0, 26, 0, 18, 20,  60, 2],
+              0, 0, 0, 0, 0,  62, 105, 0, 90, 127, 0,  122, 0,  64, 0,
+              0, 127, 56, 0, 26, 0, 18, 20,  60, 2],
              keyMode: 2,
              extra: [.seqOn: 1, .seqStyle: 0, .seqGate: 38,
                      .delayMix: 35, .delayFeedback: 35, .delayDivision: 6, .delayPingPong: 1, .reverbMix: 20,
@@ -232,7 +232,7 @@ enum FactoryPresets {
 
         make(.sequence, "SEQ ROTHER",
              [0, 0, 2,  0, 1, 0,  2, 2, 0,  1, 0,
-              0, 0, 0, 0, 0,  34, 92, 0, 70, 60, 0,  120, 0,  64, 0,
+              0, 0, 0, 0, 0,  34, 92, 0, 70, 60, 0,  122, 0,  64, 0,
               0, 127, 30, 40, 30, 40, 12, 0,  60, 2],
              keyMode: 2, porta: 2, portaTime: 10,
              extra: [.seqOn: 1, .seqStyle: 1, .seqGate: 35,
@@ -242,21 +242,21 @@ enum FactoryPresets {
         // Arpeggiator sequences: hold a chord (or use HOLD) and play.
         make(.sequence, "ARP ROBOT",
              [0, 0, 0,  1, 0, 0,  0, 0, 0,  2, 0,
-              0, 0, 0, 0, 0,  40, 105, 0, 90, 127, 0,  112, 0,  64, 0,
-              0, 127, 22, 0, 26, 0, 18, 20,  60, 2],
+              0, 0, 0, 0, 0,  62, 105, 0, 90, 127, 0,  122, 0,  64, 0,
+              0, 127, 56, 0, 26, 0, 18, 20,  60, 2],
              extra: [.arpOn: 1, .arpMode: 0, .arpRate: 2, .arpOctaves: 1, .arpGate: 60,
                      .delayMix: 45, .delayFeedback: 40, .delayDivision: 6, .delayPingPong: 1, .reverbMix: 25]),
 
         make(.sequence, "ARP UPDOWN",
              [0, 0, 2,  3, 0, 0,  0, 0, 0,  2, 0,
-              0, 0, 0, 100, 0,  70, 60, 0, 60, 70, 0,  104, 0,  64, 0,
-              0, 127, 20, 0, 20, 0, 14, 0,  60, 2],
+              0, 0, 0, 100, 0,  76, 60, 0, 60, 70, 0,  122, 0,  64, 0,
+              0, 127, 56, 0, 20, 0, 14, 0,  60, 2],
              extra: [.keyShift: 24, .arpOn: 1, .arpMode: 2, .arpRate: 2, .arpOctaves: 2, .arpGate: 90,
                      .delayMix: 35, .delayDivision: 5, .delayFeedback: 35, .reverbMix: 30]),
 
         make(.sequence, "ARP BASS",
              [0, 0, 2,  0, 1, 0,  2, 2, 0,  1, 0,
-              0, 0, 0, 0, 0,  34, 92, 0, 70, 60, 0,  120, 0,  64, 0,
+              0, 0, 0, 0, 0,  34, 92, 0, 70, 60, 0,  122, 0,  64, 0,
               0, 127, 30, 40, 30, 40, 12, 0,  60, 2],
              keyMode: 2,
              extra: [.arpOn: 1, .arpMode: 4, .arpRate: 2, .arpOctaves: 1, .arpGate: 70,
@@ -264,14 +264,14 @@ enum FactoryPresets {
 
         make(.sequence, "S&H BLEEP",
              [0, 0, 0,  1, 0, 0,  0, 0, 0,  2, 0,
-              0, 0, 0, 0, 0,  46, 104, 92, 40, 90, 0,  112, 0,  64, 0,
+              0, 0, 0, 0, 0,  56, 104, 92, 40, 90, 0,  112, 0,  64, 0,
               0, 127, 30, 40, 40, 30, 24, 0,  60, 2],
              extra: [.lfoWave: 5, .lfoSync: 1, .lfoDivision: 2, .lfoKeySync: 1,
                      .delayMix: 40, .delayDivision: 6, .delayFeedback: 45, .delayPingPong: 1, .reverbMix: 20]),
 
         make(.sequence, "S&H BASS",
              [0, 0, 2,  0, 1, 0,  2, 2, 0,  1, 0,
-              0, 0, 0, 0, 0,  34, 92, 70, 50, 50, 0,  120, 0,  64, 0,
+              0, 0, 0, 0, 0,  36, 92, 70, 50, 50, 0,  120, 0,  64, 0,
               0, 127, 40, 50, 40, 45, 12, 0,  60, 2],
              keyMode: 2, porta: 1, portaTime: 8,
              extra: [.lfoWave: 5, .lfoSync: 1, .lfoDivision: 2, .lfoKeySync: 1,
@@ -287,14 +287,14 @@ enum FactoryPresets {
 
         make(.sequence, "SAW SWEEP",
              [0, 0, 2,  0, 1, 0,  1, 0, 0,  2, 1,
-              0, 0, 0, 0, 0,  40, 60, 80, 40, 60, 0,  112, 0,  64, 0,
+              0, 0, 0, 0, 0,  48, 60, 80, 40, 60, 0,  122, 0,  64, 0,
               0, 127, 40, 30, 40, 20, 30, 0,  56, 2],
              extra: [.lfoWave: 3, .lfoSync: 1, .lfoDivision: 8,
                      .delayMix: 30, .delayDivision: 6, .reverbMix: 25]),
 
         make(.sequence, "TRIPLETZAP",
              [0, 0, 0,  3, 2, 0,  1, 0, 0,  1, 0,
-              0, 0, 0, 50, 40,  36, 100, 86, 30, 60, 0,  116, 0,  64, 0,
+              0, 0, 0, 50, 40,  40, 100, 86, 30, 60, 0,  116, 0,  64, 0,
               0, 127, 30, 60, 40, 50, 20, 0,  60, 2],
              keyMode: 2,
              extra: [.lfoWave: 2, .lfoSync: 1, .lfoDivision: 4, .lfoKeySync: 1,
@@ -302,7 +302,7 @@ enum FactoryPresets {
 
         make(.stab, "GATE CHORD",
              [0, 0, 0,  3, 1, 0,  1, 0, 0,  2, 1,
-              0, 0, 0, 40, 0,  30, 40, 127, 10, 40, 0,  112, 0,  64, 0,
+              0, 0, 0, 40, 0,  42, 40, 127, 10, 40, 0,  112, 0,  64, 0,
               0, 127, 0, 127, 0, 127, 20, 0,  50, 2],
              keyMode: 1, chord: 0,
              extra: [.lfoWave: 4, .lfoSync: 1, .lfoDivision: 2, .lfoKeySync: 1,
@@ -310,7 +310,7 @@ enum FactoryPresets {
 
         make(.bass, "WOBBLE 1/8",
              [0, 0, 0,  0, 1, 0,  2, 2, 0,  1, 0,
-              0, 0, 0, 0, 0,  40, 80, 96, 0, 40, 0,  122, 0,  64, 0,
+              0, 0, 0, 0, 0,  52, 80, 96, 0, 40, 0,  122, 0,  64, 0,
               0, 127, 0, 127, 0, 127, 14, 0,  60, 2],
              keyMode: 2,
              extra: [.lfoWave: 1, .lfoSync: 1, .lfoDivision: 5, .lfoKeySync: 1]),
@@ -325,7 +325,7 @@ enum FactoryPresets {
         make(.fxPerc, "S&H NOISE",
              [0, 0, 0,  0, 0, 0,  1, 0, 3,  3, 0,
               0, 0, 0, 0, 0,  90, 60, 70, 0, 0, 0,  108, 0,  64, 0,
-              0, 127, 14, 0, 14, 0, 12, 0,  60, 2],
+              0, 127, 50, 0, 14, 0, 12, 0,  60, 2],
              extra: [.lfoWave: 5, .lfoSync: 1, .lfoDivision: 2, .reverbMix: 20]),
 
         make(.pad, "DRIFT PAD",
@@ -359,7 +359,7 @@ enum FactoryPresets {
 
         make(.zap, "PEW PEW",
              [0, 0, 0,  3, 0, 0,  0, 0, 0,  3, 0,
-              0, 100, 0, 100, 0,  100, 10, 0, 0, 40, 0,  116, 0,  64, 0,
+              0, 100, 0, 100, 0,  122, 10, 0, 0, 40, 0,  122, 0,  64, 0,
               0, 127, 42, 30, 34, 0, 30, 0,  60, 2],
              extra: [.delayMix: 45, .delayDivision: 2, .delayFeedback: 55, .delayPingPong: 1]),
 
@@ -377,13 +377,13 @@ enum FactoryPresets {
 
         make(.zap, "NOISE ZAP",
              [0, 0, 0,  0, 0, 0,  1, 0, 3,  2, 0,
-              0, 0, 0, 0, 0,  20, 115, 0, 127, 0, 0,  116, 0,  64, 0,
+              0, 0, 0, 0, 0,  60, 115, 0, 127, 0, 0,  121, 0,  64, 0,
               0, 127, 46, 30, 40, 0, 34, 0,  60, 2],
              extra: [.reverbMix: 25]),
 
         make(.zap, "RES ZAP",
              [0, 0, 0,  0, 0, 0,  1, 0, 1,  1, 0,
-              0, 0, 0, 0, 0,  30, 127, 0, 127, 100, 0,  120, 0,  64, 0,
+              0, 0, 0, 0, 0,  70, 127, 0, 127, 100, 0,  122, 0,  64, 0,
               0, 127, 48, 35, 40, 0, 36, 0,  60, 2],
              extra: [.delayMix: 20, .delayDivision: 2]),
 
