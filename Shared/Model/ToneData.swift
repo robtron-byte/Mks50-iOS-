@@ -46,6 +46,9 @@ enum PresetCategory: String, CaseIterable, Codable {
     case stringsBrass = "Strings & Brass"
     case pad = "Pad"
     case fxPerc = "FX & Perc"
+    /// Build-ups: slow attack, getting brighter and more complex while the
+    /// key is held, short release. Last, so earlier program numbers stay.
+    case riser = "Risers"
 
     var icon: String {
         switch self {
@@ -59,6 +62,7 @@ enum PresetCategory: String, CaseIterable, Codable {
         case .stringsBrass: return "music.quarternote.3"
         case .pad: return "cloud.fill"
         case .fxPerc: return "sparkles"
+        case .riser: return "arrow.up.right"
         }
     }
 
@@ -75,6 +79,7 @@ enum PresetCategory: String, CaseIterable, Codable {
         case .stringsBrass: return "STR"
         case .pad: return "PAD"
         case .fxPerc: return "FX"
+        case .riser: return "RISE"
         }
     }
 }

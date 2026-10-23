@@ -444,6 +444,45 @@ enum FactoryPresets {
               8, 0, 0, 60, 30,  64, 10, 0, 12, 40, 0,  104, 0,  64, 80,
               104, 127, 90, 120, 90, 118, 104, 0,  40, 2],
              extra: [.pulseDetune: 65, .voiceDrift: 35, .reverbMix: 70, .reverbSize: 120]),
+        // Risers: the sound builds while the key is held (slow T1 opens the
+        // filter and the VCA, pulse sync / pitch sweep up, the LFO fades in)
+        // and stops quickly on release (short T4; only delay / reverb ring on).
+        make(.riser, "SYNC RISER",
+             [0, 0, 0,  1, 1, 0,  1, 0, 0,  1, 1,
+              10, 0, 0, 0, 0,  50, 40, 0, 50, 40, 0,  116, 0,  90, 95,
+              106, 127, 60, 127, 60, 127, 20, 0,  60, 2],
+             extra: [.pulseSync: 1, .pulseEnvMod: 110, .delayMix: 28, .delayDivision: 5, .delayPingPong: 1,
+                     .reverbMix: 34]),
+
+        make(.riser, "NOISE RISE",
+             [0, 0, 0,  0, 0, 0,  1, 0, 3,  2, 0,
+              0, 0, 0, 0, 0,  24, 110, 18, 96, 0, 0,  120, 0,  96, 100,
+              108, 127, 60, 127, 60, 127, 20, 0,  60, 2],
+             extra: [.reverbMix: 56, .reverbSize: 110, .reverbDecay: 70, .delayMix: 20, .delayDivision: 6]),
+
+        make(.riser, "PWM SURGE",
+             [0, 0, 0,  3, 1, 0,  1, 0, 0,  1, 1,
+              0, 0, 0, 100, 110,  40, 30, 40, 80, 40, 0,  116, 0,  0, 100,
+              104, 127, 60, 127, 60, 127, 20, 0,  60, 2],
+             keyMode: 3,
+             extra: [.unisonDetune: 60, .lfoWave: 4, .lfoSync: 1, .lfoDivision: 2, .lfoKeySync: 1,
+                     .reverbMix: 30]),
+
+        make(.riser, "SIREN UP",
+             [0, 0, 0,  1, 1, 0,  1, 0, 0,  1, 1,
+              8, 127, 0, 0, 0,  60, 70, 0, 40, 40, 0,  116, 0,  100, 100,
+              108, 127, 60, 127, 60, 127, 16, 0,  60, 2],
+             keyMode: 2,
+             extra: [.delayMix: 34, .delayDivision: 6, .delayFeedback: 55, .delayPingPong: 1, .reverbMix: 40]),
+
+        // Arp rising over 4 octaves, the filter opened by a 4-bar saw LFO
+        // (key-synced: it starts low at the first key).
+        make(.riser, "ARP RISER",
+             [0, 0, 0,  0, 1, 0,  1, 0, 0,  1, 0,
+              0, 0, 0, 0, 0,  46, 60, 90, 40, 40, 0,  116, 0,  0, 0,
+              0, 127, 60, 110, 60, 100, 20, 0,  60, 2],
+             extra: [.arpOn: 1, .arpMode: 0, .arpOctaves: 3, .arpRate: 2, .arpGate: 60, .lfoWave: 2,
+                     .lfoSync: 1, .lfoDivision: 13, .lfoKeySync: 1, .delayMix: 26, .delayDivision: 5]),
     ]
 
     private static func make(_ category: PresetCategory, _ name: String, _ tone: [Int],
