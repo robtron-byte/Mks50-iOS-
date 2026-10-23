@@ -393,6 +393,12 @@ final class MKS50AudioUnit: AUAudioUnit {
     // MARK: MIDI CC learn
 
     private static let ccMapKey = "mks50.midiCCMap"
+    /// Parameter (raw value) → MIDI channel 0...15 the CC was learned on.
+    private static let ccChannelKey = "mks50.midiCCChannels"
+    private(set) var ccChannels: [Int: Int] = [:]
+
+    /// Channel (0...15) a parameter's CC was learned on; nil = receive channel.
+    func ccChannel(for p: Param) -> Int? { ccChannels[p.rawValue] }
 
     /// Parameter (raw value) → MIDI CC. A device setting, independent of presets.
     private(set) var ccMap: [Int: Int] = [:]
@@ -401,22 +407,29 @@ final class MKS50AudioUnit: AUAudioUnit {
 
     /// One CC controls one parameter and vice versa. The receive channel is
     /// not learnable (a CC on it would cut off its own controller).
-    func assignCC(_ cc: Int, to p: Param) {
+    /// - Parameter channel: 0...15, the channel the CC came in on; it then
+    ///   works on that channel whatever the receive channel is.
+    func assignCC(_ cc: Int, channel: Int? = nil, to p: Param) {
         guard (0..<120).contains(cc), p != .midiChannel else { return }
         reloadCCMap()
+        let freed = ccMap.filter { $0.value == cc || $0.key == p.rawValue }.keys
+        for raw in freed { ccChannels.removeValue(forKey: raw) }
         ccMap = ccMap.filter { $0.value != cc && $0.key != p.rawValue }
         ccMap[p.rawValue] = cc
+        if let channel, (0...15).contains(channel) { ccChannels[p.rawValue] = channel }
         applyCCMap()
     }
 
     func removeCC(for p: Param) {
         reloadCCMap()
         ccMap.removeValue(forKey: p.rawValue)
+        ccChannels.removeValue(forKey: p.rawValue)
         applyCCMap()
     }
 
     func removeAllCCs() {
         ccMap.removeAll()
+        ccChannels.removeAll()
         applyCCMap()
     }
 
@@ -431,8 +444,9 @@ final class MKS50AudioUnit: AUAudioUnit {
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
             let before = self.ccMap
+            let beforeChannels = self.ccChannels
             self.reloadCCMap()
-            if self.ccMap != before { self.applyCCMap(save: false) }
+            if self.ccMap != before || self.ccChannels != beforeChannels { self.applyCCMap(save: false) }
         }
     }
 
@@ -445,6 +459,12 @@ final class MKS50AudioUnit: AUAudioUnit {
             }
         }
         ccMap = map
+        let storedChannels = UserDefaults.standard.dictionary(forKey: MKS50AudioUnit.ccChannelKey) as? [String: Int] ?? [:]
+        var channels: [Int: Int] = [:]
+        for (key, channel) in storedChannels {
+            if let raw = Int(key), map[raw] != nil, (0...15).contains(channel) { channels[raw] = channel }
+        }
+        ccChannels = channels
     }
 
     /// Mirrors CC-driven parameter changes into the parameter tree so host
@@ -461,10 +481,12 @@ final class MKS50AudioUnit: AUAudioUnit {
 
     private func applyCCMap(save: Bool = true) {
         for cc in 0..<120 { engine.setCCTarget(cc, nil) }
-        for (raw, cc) in ccMap { engine.setCCTarget(cc, Param(rawValue: raw)) }
+        for (raw, cc) in ccMap { engine.setCCTarget(cc, Param(rawValue: raw), channel: ccChannels[raw] ?? -1) }
         if save {
             let stored = Dictionary(uniqueKeysWithValues: ccMap.map { (String($0.key), $0.value) })
             UserDefaults.standard.set(stored, forKey: MKS50AudioUnit.ccMapKey)
+            let channels = Dictionary(uniqueKeysWithValues: ccChannels.map { (String($0.key), $0.value) })
+            UserDefaults.standard.set(channels, forKey: MKS50AudioUnit.ccChannelKey)
         }
     }
 

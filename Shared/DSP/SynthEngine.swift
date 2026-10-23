@@ -365,7 +365,11 @@ final class SynthEngine {
     /// MIDI CC → parameter address (-1 = not mapped). Written on main
     /// (single aligned Int16 stores), read on the audio thread.
     private let ccTargets: UnsafeMutablePointer<Int16>
-    /// Last control change, packed as `counter << 16 | cc << 8 | value`
+    /// MIDI channel (0...15) a CC was learned on, -1 = the receive channel.
+    /// A CC learned on its own channel works whatever the receive channel is.
+    private let ccChannels: UnsafeMutablePointer<Int8>
+    /// Last control change (any channel), packed as
+    /// `counter << 20 | channel << 16 | cc << 8 | value`
     /// so the UI can read a consistent snapshot for CC learn.
     private(set) var lastControlChange: UInt32 = 0
     private var ccCounter: UInt32 = 0
@@ -413,6 +417,8 @@ final class SynthEngine {
         swallowRelease.initialize(repeating: 0, count: 128)
         ccTargets = .allocate(capacity: 128)
         ccTargets.initialize(repeating: -1, count: 128)
+        ccChannels = .allocate(capacity: 128)
+        ccChannels.initialize(repeating: -1, count: 128)
 
         for p in Param.allCases { params[p.rawValue] = Float(p.defaultValue) }
         for (i, chord) in ChordMemory.defaultChords.enumerated() { setChord(i, chord) }
@@ -435,6 +441,7 @@ final class SynthEngine {
         latchedKeys.deallocate()
         swallowRelease.deallocate()
         ccTargets.deallocate()
+        ccChannels.deallocate()
     }
 
     // MARK: Setup (not real-time)
@@ -515,9 +522,12 @@ final class SynthEngine {
     }
 
     /// Assigns a MIDI CC (0...119) to a parameter, or clears it with `nil`.
-    func setCCTarget(_ cc: Int, _ param: Param?) {
+    /// - Parameter channel: 0...15, the channel it was learned on; -1 = the
+    ///   receive channel (assignments from before channels were stored).
+    func setCCTarget(_ cc: Int, _ param: Param?, channel: Int = -1) {
         guard (0..<120).contains(cc) else { return }
         ccTargets[cc] = Int16(param?.rawValue ?? -1)
+        ccChannels[cc] = param == nil ? -1 : Int8(clamping: (-1...15).contains(channel) ? channel : -1)
     }
 
     /// Keys currently held (main thread snapshot).
@@ -617,6 +627,17 @@ final class SynthEngine {
         }
         guard status >= 0x80 else { return }
         let channel = Int(status & 0x0F)
+        if status & 0xF0 == 0xB0 {
+            // Every CC is recorded for MIDI learn, on any channel.
+            let cc = Int(data1 & 0x7F)
+            ccCounter &+= 1
+            lastControlChange = (ccCounter << 20) | UInt32(channel) << 16 | UInt32(cc) << 8 | UInt32(data2 & 0x7F)
+            // Learned on this channel: works whatever the receive channel is.
+            if cc < 120, ccTargets[cc] >= 0, Int(ccChannels[cc]) == channel {
+                applyLearnedCC(cc, Int(data2 & 0x7F))
+                return
+            }
+        }
         let wanted = pi(.midiChannel)
         if wanted > 0 && channel != wanted - 1 {
             // Notes / CCs on another channel are ignored; tell the UI (a
@@ -691,22 +712,24 @@ final class SynthEngine {
         (0..<128).contains(key) && heldKeyFlags[key] != 0
     }
 
-    private func controlChange(_ cc: Int, _ value: Int) {
-        ccCounter &+= 1
-        lastControlChange = (ccCounter << 16) | UInt32(cc) << 8 | UInt32(value)
+    /// Sets the parameter a CC was learned for.
+    private func applyLearnedCC(_ cc: Int, _ value: Int) {
+        let target = Int(ccTargets[cc])
+        guard let p = Param(rawValue: target) else { return }
+        let maxValue = Float(p.maxValue)
+        var v = Float(value) / 127 * maxValue
+        if p.maxValue < 127 { v = v.rounded() }
+        params[target] = v
+        ccParametersDirty = true
+    }
 
+    private func controlChange(_ cc: Int, _ value: Int) {
         // User assignments (MIDI learn) take priority over the fixed CCs;
-        // channel mode messages 120...127 can never be reassigned.
-        if cc < 120 {
-            let target = Int(ccTargets[cc])
-            if target >= 0, let p = Param(rawValue: target) {
-                let maxValue = Float(p.maxValue)
-                var v = Float(value) / 127 * maxValue
-                if p.maxValue < 127 { v = v.rounded() }
-                params[target] = v
-                ccParametersDirty = true
-                return
-            }
+        // channel mode messages 120...127 can never be reassigned. CCs
+        // learned on a channel of their own were handled in `handleMIDI`.
+        if cc < 120, ccTargets[cc] >= 0, ccChannels[cc] < 0 {
+            applyLearnedCC(cc, value)
+            return
         }
 
         switch cc {

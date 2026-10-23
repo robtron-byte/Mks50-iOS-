@@ -176,7 +176,8 @@ struct SettingsView: View {
                         HStack {
                             Text(param.displayName)
                             Spacer()
-                            Text("CC \(cc)").foregroundColor(.secondary).monospacedDigit()
+                            Text(model.ccChannel(for: param).map { "CC \(cc) · ch \($0)" } ?? "CC \(cc)")
+                                .foregroundColor(.secondary).monospacedDigit()
                             Button(role: .destructive) { model.removeCC(for: param) } label: {
                                 Image(systemName: "minus.circle.fill")
                             }

@@ -137,11 +137,14 @@ final class SynthViewModel: ObservableObject {
         if learn.active, let target = learn.target, ccStamp != ccLearnStamp {
             ccLearnStamp = ccStamp
             let cc = Int((ccStamp >> 8) & 0x7F)
+            let channel = Int((ccStamp >> 16) & 0x0F)
             if cc < 120 {
-                audioUnit.assignCC(cc, to: target)
+                // Learned with its channel: it then works on that channel
+                // whatever the receive channel is set to.
+                audioUnit.assignCC(cc, channel: channel, to: target)
                 learn.map = audioUnit.ccMap
                 learn.target = nil
-                flash("CC \(cc) → \(target.displayName)")
+                flash("CC \(cc) ch \(channel + 1) → \(target.displayName)")
             }
         }
     }
@@ -294,6 +297,9 @@ final class SynthViewModel: ObservableObject {
     }
 
     func ccNumber(for p: Param) -> Int? { learn.map[p.rawValue] }
+
+    /// Channel 1...16 a parameter's CC was learned on, nil = receive channel.
+    func ccChannel(for p: Param) -> Int? { audioUnit.ccChannel(for: p).map { $0 + 1 } }
 
     func removeCC(for p: Param) {
         audioUnit.removeCC(for: p)
