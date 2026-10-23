@@ -23,6 +23,13 @@ enum ChordMemory {
     /// Short name of a chord (for the buttons): known shapes by name, a
     /// learned one as its intervals.
     static func name(_ chord: [Int]) -> String {
+        if let name = knownName(chord) { return name }
+        return chord.count == 1 ? "ROOT" : chord.dropFirst().map(String.init).joined(separator: "·")
+    }
+
+    /// Name of a default or common chord, nil for any other interval set
+    /// (e.g. two notes 15 semitones apart).
+    static func knownName(_ chord: [Int]) -> String? {
         if let i = defaultChords.firstIndex(of: chord) { return defaultNames[i] }
         let known: [[Int]: String] = [
             [0, 4, 7]: "MAJ", [0, 4, 7, 10]: "7TH", [0, 5, 7]: "SUS4", [0, 2, 7]: "SUS2",
@@ -30,8 +37,7 @@ enum ChordMemory {
             [0, 3, 7, 14]: "m ADD9", [0, 3, 6]: "DIM", [0, 4, 8]: "AUG", [0, 4, 7, 9]: "6TH",
             [0, 3, 7, 10, 14, 17]: "m11", [0, 3, 7, 10, 17]: "m11",
         ]
-        if let name = known[chord] { return name }
-        return chord.count == 1 ? "ROOT" : chord.dropFirst().map(String.init).joined(separator: "·")
+        return known[chord]
     }
 
     /// Turns a set of held MIDI notes into offsets relative to the lowest note.

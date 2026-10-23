@@ -184,8 +184,11 @@ final class SynthViewModel: ObservableObject {
         default:
             let names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
             let root = names[liveNotes[0] % 12]
-            let name = ChordMemory.name(ChordMemory.chord(fromHeld: liveNotes))
-            if !name.contains("·") && name != "ROOT" { return "\(root) \(name)" }
+            // Only real chord names; an unknown interval set (e.g. two keys
+            // 15 semitones apart, which showed as "C 15") lists the notes.
+            if let name = ChordMemory.knownName(ChordMemory.chord(fromHeld: liveNotes)) {
+                return "\(root) \(name)"
+            }
             return liveNotes.prefix(6).map { names[$0 % 12] }.joined(separator: " ")
         }
     }

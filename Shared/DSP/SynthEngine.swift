@@ -58,7 +58,12 @@ struct Voice {
 final class SynthEngine {
     static let maxVoices = 6
     private static let controlInterval = 16
-    private static let queueCapacity = 512
+    private static let queueCapacity = 2048
+    /// MIDI clock ticks are only queued while the queue is less than half
+    /// full: while the engine does not render (phone call, sleep, route
+    /// change) a running clock would otherwise fill it and later note-offs
+    /// would be dropped, leaving notes hanging. Stale ticks are useless anyway.
+    private static let clockQueueLimit = queueCapacity / 2
 
     let params: UnsafeMutablePointer<Float>
     private let voices: UnsafeMutablePointer<Voice>
@@ -470,6 +475,11 @@ final class SynthEngine {
         arp.reset()
         _ = seq.stop()
         heldKeyFlags.update(repeating: 0, count: 128)
+        // Key and HOLD state too, or a key that was down when the engine was
+        // reset (e.g. new sample rate after a call) would count as held.
+        keyDown.update(repeating: 0, count: 128)
+        latchedKeys.update(repeating: 0, count: 128)
+        swallowRelease.update(repeating: 0, count: 128)
         chorus.reset()
         delay.reset()
         reverb.reset()
@@ -521,7 +531,8 @@ final class SynthEngine {
     /// Thread-safe entry point for MIDI from non-audio threads.
     func enqueueMIDI(_ status: UInt8, _ data1: UInt8, _ data2: UInt8, flags: UInt32 = 0) {
         os_unfair_lock_lock(queueLock)
-        if queueCount < SynthEngine.queueCapacity {
+        let limit = status == 0xF8 ? SynthEngine.clockQueueLimit : SynthEngine.queueCapacity
+        if queueCount < limit {
             queue[queueCount] = flags | UInt32(status) << 16 | UInt32(data1) << 8 | UInt32(data2)
             queueCount += 1
         }
