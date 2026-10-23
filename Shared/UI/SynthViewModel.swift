@@ -49,6 +49,8 @@ final class SynthViewModel: ObservableObject {
     /// Note sent by the current touch (its release must match it).
     private var padTouchNote = -1
     private var lastPlayedStamp: UInt32 = 0
+    private var ignoredChannelStamp: UInt32 = 0
+    private var lastChannelHint = Date.distantPast
     /// Keys sounding right now (down or held by HOLD), for the note readout.
     @Published private(set) var liveNotes: [Int] = []
 
@@ -105,6 +107,18 @@ final class SynthViewModel: ObservableObject {
             if model.value != v { model.value = v }
         }
         if toneName != audioUnit.toneName { toneName = audioUnit.toneName }
+
+        // MIDI on another channel than the receive channel: say so (at most
+        // every 5 s), instead of a controller that seems to do nothing.
+        let ignored = audioUnit.engine.ignoredChannelStamp
+        if ignored != ignoredChannelStamp {
+            ignoredChannelStamp = ignored
+            let now = Date()
+            if now.timeIntervalSince(lastChannelHint) > 5 {
+                lastChannelHint = now
+                flash("MIDI on channel \(audioUnit.engine.ignoredChannel) ignored: receive channel is \(intValue(.midiChannel)) (Settings)")
+            }
+        }
 
         // Play button: follow the last note played from outside, show whether
         // its note sounds (held by a finger or by HOLD).

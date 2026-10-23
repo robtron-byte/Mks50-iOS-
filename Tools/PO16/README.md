@@ -16,7 +16,7 @@ Zwei Grid-Editor-Profile für das Intech Studio **Grid PO16** (16 Drehregler). D
 
 Die **Seitentaste** des PO16 schaltet weiter: 1 → 2 → 3 → 4 → 1. Seiten 1–2 steuern die JP6-App (Kanal 16), Seiten 3–4 die MKS-50-App (Kanal 15).
 
-**Pickup:** Nach einem Preset-Wechsel, einem Seitenwechsel oder einer Änderung am Bildschirm greift ein Regler erst, wenn du ihn bis zum aktuellen Wert drehst. So springt nichts.
+**Sanfte Übernahme:** Nach einem Preset-Wechsel, einem Seitenwechsel oder einer Änderung am Bildschirm springt nichts: Steht der Regler woanders als der Wert, bewegt sich der Wert trotzdem sofort mit, nur entsprechend langsamer oder schneller, sodass Regler und Wert am Ende des Drehwegs zusammenkommen. Ab dann folgt der Wert dem Regler direkt.
 
 ## Seite 3: Sound
 

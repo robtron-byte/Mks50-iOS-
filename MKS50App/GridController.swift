@@ -91,18 +91,30 @@ final class GridController {
         lastPosition[cc] = value
     }
 
-    /// Applies `value` once the pot has reached `current` (both 0...127):
-    /// within 3 steps of it, or crossing it since the last position.
-    private func pickUp(_ cc: Int, _ value: Int, current: Float, apply: () -> Float) {
+    /// Soft takeover (positions 0...127): once the pot has reached the
+    /// parameter (`current`) it sets it directly. Before that the parameter
+    /// follows the pot's movement right away, scaled so that both arrive
+    /// together at the end the pot is turning to ("value scaling"). Nothing
+    /// jumps, and a pot never seems dead (with plain pickup the cutoff at
+    /// 127 only moved once the pot was turned fully right).
+    /// `apply` sets a position and returns the parameter value it set.
+    private func pickUp(_ cc: Int, _ value: Int, current: Float, apply: (Float) -> Float) {
         if let set = pickedUp[cc], abs(set - currentParameterValue(cc)) > 0.01 {
             pickedUp[cc] = nil                      // changed elsewhere (screen, MIDI learn)
         }
-        if pickedUp[cc] == nil {
-            let v = Float(value)
-            let crossed = lastPosition[cc].map { (Float($0) - current) * (v - current) <= 0 } ?? false
-            guard abs(v - current) <= 3 || crossed else { return }
+        let v = Float(value)
+        let last = lastPosition[cc].map(Float.init)
+        let crossed = last.map { ($0 - current) * (v - current) <= 0 } ?? false
+        if pickedUp[cc] != nil || abs(v - current) <= 3 || crossed {
+            pickedUp[cc] = apply(v)
+            return
         }
-        pickedUp[cc] = apply()
+        // First message after a page / preset change: wait for movement.
+        guard let last, last != v else { return }
+        let end: Float = v > last ? 127 : 0
+        guard abs(end - last) >= 1 else { return }
+        let next = current + (end - current) * (v - last) / (end - last)
+        _ = apply(min(max(next, 0), 127))
     }
 
     /// The parameter value a picked-up pot last set, for change detection.
@@ -133,16 +145,16 @@ final class GridController {
     private func list(_ cc: Int, _ p: Param, _ value: Int) {
         let count = p.maxValue + 1
         let current = (Float(synth.intValue(p)) + 0.5) / Float(count) * 128
-        pickUp(cc, value, current: current) {
-            synth.set(p, Float(min(value * count / 128, p.maxValue)))
+        pickUp(cc, value, current: current) { position in
+            synth.set(p, Float(min(Int(position) * count / 128, p.maxValue)))
             return synth.value(p)
         }
     }
 
     /// 0...127 parameter.
     private func continuous(_ cc: Int, _ p: Param, _ value: Int) {
-        pickUp(cc, value, current: synth.value(p) / Float(p.maxValue) * 127) {
-            synth.set(p, Float(value) / 127 * Float(p.maxValue))
+        pickUp(cc, value, current: synth.value(p) / Float(p.maxValue) * 127) { position in
+            synth.set(p, position / 127 * Float(p.maxValue))
             return synth.value(p)
         }
     }
@@ -175,8 +187,8 @@ final class GridController {
             }
         case .tempo:
             // 60 ... 187 BPM (TEMPO stores BPM - 40).
-            pickUp(cc, value, current: synth.value(.tempo) + 40 - 60) {
-                synth.set(.tempo, Float(value + 60 - 40))
+            pickUp(cc, value, current: synth.value(.tempo) + 40 - 60) { position in
+                synth.set(.tempo, (position + 60 - 40).rounded())
                 return synth.value(.tempo)
             }
         case .hold: switched(.arpHold)

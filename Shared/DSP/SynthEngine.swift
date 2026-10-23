@@ -352,6 +352,10 @@ final class SynthEngine {
     /// apps), for the play button to follow; the stamp changes per note.
     private(set) var lastPlayedNote = -1
     private(set) var lastPlayedStamp: UInt32 = 0
+    /// Last channel (1...16) whose notes / CCs were ignored because of the
+    /// receive channel; the stamp changes per ignored message.
+    private(set) var ignoredChannel = 0
+    private(set) var ignoredChannelStamp: UInt32 = 0
 
     /// Flags for `enqueueMIDI`: the play button's own notes, and a release
     /// that bypasses the latch (the play button moving to a new note).
@@ -614,7 +618,18 @@ final class SynthEngine {
         guard status >= 0x80 else { return }
         let channel = Int(status & 0x0F)
         let wanted = pi(.midiChannel)
-        if wanted > 0 && channel != wanted - 1 { return }
+        if wanted > 0 && channel != wanted - 1 {
+            // Notes / CCs on another channel are ignored; tell the UI (a
+            // controller that blinks the MIDI LED but moves nothing). The
+            // Grid PO16 protocol on channels 15 / 16 belongs to the apps.
+            let kind = status & 0xF0
+            let po16 = channel >= 14 && kind == 0xB0 && ((32...63).contains(Int(data1 & 0x7F)) || data1 == 96)
+            if (kind == 0x90 || kind == 0xB0) && !po16 {
+                ignoredChannel = channel + 1
+                ignoredChannelStamp &+= 1
+            }
+            return
+        }
 
         let d1 = Int(data1 & 0x7F)
         let d2 = Int(data2 & 0x7F)
