@@ -483,6 +483,16 @@ enum FactoryPresets {
               0, 127, 60, 110, 60, 100, 20, 0,  60, 2],
              extra: [.arpOn: 1, .arpMode: 0, .arpOctaves: 3, .arpRate: 2, .arpGate: 60, .lfoWave: 2,
                      .lfoSync: 1, .lfoDivision: 13, .lfoKeySync: 1, .delayMix: 26, .delayDivision: 5]),
+        // Supersaw swell (the classic EDM riser): unison saws start an
+        // octave low (16') and climb 12 semitones over T1 while the filter
+        // opens from about 150 Hz; dotted-1/8 delay and a long reverb.
+        make(.riser, "SAW SWELL",
+             [0, 0, 0,  0, 1, 0,  2, 0, 0,  1, 1,
+              6, 90, 0, 0, 0,  30, 20, 0, 100, 40, 0,  120, 0,  80, 110,
+              110, 127, 60, 127, 60, 127, 20, 0,  60, 2],
+             keyMode: 3,
+             extra: [.unisonDetune: 70, .delayMix: 30, .delayDivision: 6, .delayFeedback: 45,
+                     .reverbMix: 50, .reverbSize: 110, .reverbDecay: 80]),
     ]
 
     private static func make(_ category: PresetCategory, _ name: String, _ tone: [Int],
