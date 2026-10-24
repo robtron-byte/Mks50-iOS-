@@ -9,7 +9,8 @@ import Foundation
 /// Topology-preserving-transform (zero-delay feedback) cascade of four
 /// one-pole sections with global feedback. The feedback loop is solved
 /// linearly and a soft saturator is applied at the input, which keeps the
-/// filter stable at any cutoff and lets it self-oscillate at high resonance.
+/// filter stable at any cutoff; the feedback stays below 4, so it rings
+/// strongly at full resonance but never self-oscillates.
 struct LadderFilter {
     private var s1: Float = 0, s2: Float = 0, s3: Float = 0, s4: Float = 0
     private var g: Float = 0.1

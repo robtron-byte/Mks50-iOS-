@@ -21,9 +21,12 @@ enum FactoryPresets {
               0, 0, 0, 0, 0,  127, 0, 0, 0, 0, 0,  110, 0,  64, 0,
               0, 127, 0, 127, 0, 127, 20, 0,  60, 2]),
 
+        // The hoover's signature is the PWM saw (Saw 3: ramp chopped by the
+        // PWM gate, Wikipedia / Alpha Juno-2 manual) with a fast LFO on the
+        // pulse width, plus sub, portamento, light vibrato and chorus.
         make(.lead, "HOOVER",
-             [1, 0, 0,  2, 5, 3,  1, 2, 0,  1, 1,
-              0, 38, 20, 88, 92,  112, 8, 0, 0, 40, 0,  118, 0,  70, 0,
+             [1, 0, 0,  2, 3, 3,  1, 2, 0,  1, 1,
+              6, 38, 20, 88, 92,  112, 8, 0, 0, 40, 0,  118, 0,  70, 0,
               0, 127, 34, 96, 60, 100, 46, 0,  98, 2],
              keyMode: 2, porta: 1, portaTime: 46),
 
