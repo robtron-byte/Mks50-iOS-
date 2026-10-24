@@ -38,6 +38,15 @@ struct Arpeggiator {
     private(set) var soundingKey = -1
     private var gateOffBeat: Double = 0
     private var lastStep: Int64 = .min
+    /// Beat at which a fresh pattern was asked for (-1: not yet seen).
+    private var startBeat: Double = -1
+    /// The keys of a chord never arrive at the same instant: a fresh
+    /// pattern waits this long (beats; 1/32 beat ≈ 16 ms at 120 BPM) so it
+    /// starts with the right note of the whole chord.
+    private static let gatherBeats = 1.0 / 32
+    /// A fresh pattern pressed later than this into a step starts on the
+    /// next step instead of with a cut-short first note.
+    private static let lateStart = 0.35
     private var position = 0
     private var random = XorShift32(seed: 0xA4B3_C2D1)
 
@@ -53,9 +62,10 @@ struct Arpeggiator {
             count -= 1
         }
         if count == 0 {
-            // A fresh chord starts the pattern from the top, right away.
+            // A fresh chord starts the pattern from the top (see `process`).
             position = 0
             lastStep = .min
+            startBeat = -1
         }
         keys[count] = key
         velocities[count] = velocity
@@ -81,6 +91,7 @@ struct Arpeggiator {
         count = 0
         soundingKey = -1
         lastStep = .min
+        startBeat = -1
     }
 
     /// Voices were released elsewhere (key mode switch): forget the sounding
@@ -88,6 +99,7 @@ struct Arpeggiator {
     mutating func silence() {
         soundingKey = -1
         lastStep = .min
+        startBeat = -1
     }
 
     /// Advances to `beat` and returns the note events due (off before on).
@@ -104,12 +116,25 @@ struct Arpeggiator {
         }
         guard count > 0 else {
             lastStep = .min
+            startBeat = -1
             return events
         }
 
-        let step = Int64((beat / quarters).rounded(.down))
+        let stepPosition = beat / quarters
+        let step = Int64(stepPosition.rounded(.down))
+        if lastStep == .min {
+            // Fresh pattern: gather the chord, then start right away if the
+            // keys came early in the step, else on the next step. Starting
+            // late in a step would cut the first note short (a "bleep").
+            if startBeat < 0 { startBeat = beat }
+            guard beat >= startBeat + Arpeggiator.gatherBeats else { return events }
+            startBeat = -1
+            if stepPosition - Double(step) > Arpeggiator.lateStart {
+                lastStep = step
+                return events
+            }
+        }
         guard step != lastStep else { return events }
-        // The first note plays immediately; later notes on the grid.
         lastStep = step
 
         if soundingKey >= 0 {
@@ -134,6 +159,7 @@ struct Arpeggiator {
         let key = soundingKey
         soundingKey = -1
         lastStep = .min
+        startBeat = -1
         return key
     }
 

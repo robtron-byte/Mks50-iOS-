@@ -86,7 +86,14 @@ struct StepSequencer {
             return events
         }
 
-        let step = Int64((beat / quarters).rounded(.down))
+        let stepPosition = beat / quarters
+        let step = Int64(stepPosition.rounded(.down))
+        if lastStep == .min && stepPosition - Double(step) > 0.35 {
+            // Started late in a step: begin with the next step instead of
+            // a step cut short by it (a "bleep").
+            lastStep = step
+            return events
+        }
         guard step != lastStep else { return events }
         lastStep = step
 
