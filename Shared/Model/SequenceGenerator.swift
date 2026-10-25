@@ -5,7 +5,7 @@ import Foundation
 /// response), which is what makes Kraftwerk / Anthony Rother style lines
 /// sound "right" instead of random.
 enum SequenceGenerator {
-    static let styleNames = ["KRAFT", "ROTHER", "ROBOT", "ACID"]
+    static let styleNames = ["KRAFT", "ROTHER", "ROBOT", "ACID", "MIAMI"]
 
     /// Returns 16 raw step values (see `SeqStep`).
     static func generate(style: Int) -> [Int] {
@@ -15,6 +15,7 @@ enum SequenceGenerator {
         case 1: steps = rother(&rng)
         case 2: steps = robot(&rng)
         case 3: steps = acid(&rng)
+        case 4: steps = miami(&rng)
         default: steps = kraft(&rng)
         }
         return steps.map { $0?.raw ?? 0 }
@@ -44,6 +45,7 @@ enum SequenceGenerator {
         case 1: return [0, 0, 0, 12, 12, 1, -2, 7, 3, -12, 10]      // phrygian minor, root heavy
         case 2: return [0, 7, 12, 15, 3, 10, 17, 5]                  // wide pentatonic bleeps
         case 3: return [0, 0, 12, 3, 7, 10, 5, -2, 8]                // minor
+        case 4: return [0, 0, 0, 0, 5, 7, -5, 3, -2, 12]             // 808 bass: root, 4th, 5th, octave
         default: return [0, 0, 12, 7, 3, 10, 5, -5]                  // minor pentatonic
         }
     }
@@ -81,28 +83,62 @@ enum SequenceGenerator {
         return steps
     }
 
-    /// Anthony Rother: dark, syncopated 16th basslines (Euclidean rhythm),
-    /// root and octave heavy, flat-2 and flat-7 tension, accents on
-    /// off-beats, the odd tie.
+    /// Anthony Rother, measured on the bass stems of DEKATRON (2026): 3–11
+    /// notes a bar (most 4–8), single 16ths with the odd slide, mostly off
+    /// the kick (the line interlocks with the electro kick x..x..x...x..x..),
+    /// moving by steps in phrygian minor: repeats, a semitone or tone,
+    /// fourths and fifths, thirds.
     private static func rother(_ rng: inout SystemRandomNumberGenerator) -> [SeqStep?] {
-        let scale = Self.scale(for: 1)
-        let hits = euclid(pick([7, 9, 10, 11], &rng), 16, rotate: Int.random(in: 0...2, using: &rng))
-        var steps: [SeqStep?] = []
-        for i in 0..<16 {
-            guard hits[i] || i == 0 else {
-                steps.append(nil)
-                continue
-            }
-            let note = i == 0 ? 0 : pick(scale, &rng)
+        let count = pick([3, 4, 4, 5, 5, 6, 7], &rng)
+        let moves = [0, 0, -1, -1, -1, -1, 1, 5, -5, 7, -7, 3, -3, 2, -2, 4, -4, 12]
+        let kick: Set<Int> = [3, 6, 10, 13]                          // the kick figure it dodges
+        let hits = euclid(count, 16, rotate: Int.random(in: 0..<16, using: &rng))
+        var on = Set<Int>([0])
+        for i in 0..<16 where hits[i] {
+            var k = i
+            if kick.contains(k) && Double.random(in: 0..<1, using: &rng) >= 0.25 { k = (k + 1) % 16 }
+            on.insert(k)
+        }
+        var steps: [SeqStep?] = Array(repeating: nil, count: 16)
+        var note = 0
+        for i in 0..<16 where on.contains(i) {
+            if i > 0 { note = phrygian(min(max(note + pick(moves, &rng), -5), 13)) }
             let offbeat = i % 4 == 2 || i % 4 == 3
             let accent = i == 0 || (offbeat && Double.random(in: 0..<1, using: &rng) < 0.45)
-            let tie = i < 15 && hits[(i + 1) % 16] && Double.random(in: 0..<1, using: &rng) < 0.12
-            steps.append(SeqStep(note: note, accent: accent, tie: tie))
+            let tie = i < 15 && on.contains(i + 1) && Double.random(in: 0..<1, using: &rng) < 0.12
+            steps[i] = SeqStep(note: note, accent: accent, tie: tie)
         }
         // Call and response: repeat the first half, vary its end.
         if Double.random(in: 0..<1, using: &rng) < 0.6 {
             for i in 0..<8 { steps[i + 8] = steps[i] }
             if let s = steps[14] { steps[14] = SeqStep(note: pick([12, -2, 1, 7], &rng), accent: s.accent) }
+        }
+        return steps
+    }
+
+    /// Miami / Egyptian Lover 808 bass, measured on the bass stems of The
+    /// Egyptian Lover's 1986: 2–6 notes a bar on the kick figure, held for
+    /// 2–5 steps, the root most of the time, with fourths, fifths, the minor
+    /// third, the seventh below and the octave.
+    private static func miami(_ rng: inout SystemRandomNumberGenerator) -> [SeqStep?] {
+        let figures: [[Int]] = [[0, 6, 10], [0, 4, 6, 10], [0, 6, 8, 11], [0, 4, 6, 8, 12], [0, 6, 10, 13]]
+        let on = pick(figures, &rng)
+        var steps: [SeqStep?] = Array(repeating: nil, count: 16)
+        for (n, i) in on.enumerated() {
+            let note = i == 0 || Double.random(in: 0..<1, using: &rng) < 0.75 ? 0 : pick([5, 7, -5, 3, -2, 12, 12], &rng)
+            let next = n + 1 < on.count ? on[n + 1] : 16
+            let accent = i == 0 || Double.random(in: 0..<1, using: &rng) < 0.3
+            steps[i] = SeqStep(note: note, accent: accent)
+            // Long 808 notes: held into the next steps.
+            if Double.random(in: 0..<1, using: &rng) < 0.65 {
+                let length = Int.random(in: 2...5, using: &rng)
+                var k = 1
+                while k < length && i + k < next {
+                    steps[i + k - 1]!.tie = true
+                    steps[i + k] = SeqStep(note: note)
+                    k += 1
+                }
+            }
         }
         return steps
     }
@@ -143,7 +179,14 @@ enum SequenceGenerator {
 
     // MARK: Helpers
 
-    private static func pick(_ values: [Int], _ rng: inout SystemRandomNumberGenerator) -> Int {
+    /// Nearest degree of phrygian minor (0 1 3 5 7 8 10).
+    private static func phrygian(_ n: Int) -> Int {
+        let degree = [0, 1, 1, 3, 3, 5, 5, 7, 8, 8, 10, 10]
+        let octave = Int((Double(n) / 12).rounded(.down))
+        return 12 * octave + degree[n - 12 * octave]
+    }
+
+    private static func pick<T>(_ values: [T], _ rng: inout SystemRandomNumberGenerator) -> T {
         values[Int.random(in: 0..<values.count, using: &rng)]
     }
 
