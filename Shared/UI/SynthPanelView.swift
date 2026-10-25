@@ -143,7 +143,7 @@ struct LiveEnvelopeGraph: View {
     }
 }
 
-/// Chord memory as 4 × 4 buttons. A tap selects the chord (and switches
+/// Chord memory as 2 × 4 buttons. A tap selects the chord (and switches
 /// to CHORD mode), the held chord follows at once. Below: the notes of the
 /// selected chord and LEARN; holding a button resets it to its default.
 struct ChordPad: View {
@@ -159,7 +159,7 @@ struct ChordPad: View {
             Text("CHORD")
                 .font(Theme.pixel(9, .bold))
                 .foregroundColor(Theme.dimLabel)
-            ForEach(0..<ChordMemory.slots / 4, id: \.self) { row in
+            ForEach(0..<2, id: \.self) { row in
                 HStack(spacing: 4) {
                     ForEach(0..<4, id: \.self) { col in
                         button(row * 4 + col)
@@ -188,7 +188,7 @@ struct ChordPad: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .foregroundColor(lit ? Theme.ink : (selected == i ? Theme.readout : Theme.label))
-                .frame(width: 58, height: 32)
+                .frame(width: 58, height: 36)
                 .background(RoundedRectangle(cornerRadius: Theme.corner)
                     .fill(lit ? Theme.blue : Theme.cell))
                 .overlay(RoundedRectangle(cornerRadius: Theme.corner)

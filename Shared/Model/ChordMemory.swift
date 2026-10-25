@@ -1,35 +1,25 @@
 import Foundation
 
-/// Chord memory: 16 chords of up to 6 notes, stored as semitone offsets
-/// relative to the played key (as many as the MKS-50 has). The defaults are
-/// typical electro / Detroit voicings.
+/// Chord memory: 8 chords of up to 6 notes, stored as semitone offsets
+/// relative to the played key (the MKS-50 has 16; 8 keep the buttons
+/// manageable live). The defaults are the chord types measured in Rother's and
+/// Egyptian Lover's pads (the same as the FM1 firmware's).
 enum ChordMemory {
-    static let slots = 16
+    static let slots = 8
     static let maxNotes = 6
 
     static let defaultChords: [[Int]] = [
         [0, 3, 7, 10],          // m7: the Detroit / electro stab
-        [0, 3, 7, 10, 14],      // m9: deep, dubby pads
-        [0, 3, 7],              // minor triad
-        [0, 7, 12],             // 5th + octave: Kraftwerk-style power stab
-        [0, 5, 10, 15],         // stacked 4ths: open, futuristic
-        [0, 5, 7, 10],          // 7sus4: dub techno chord
-        [0, 4, 7, 11],          // maj7: the bright answer
-        [0, 3, 6, 10],          // m7b5: dark, tense
-        // Slots 9-16: the types measured in Rother's and Egyptian Lover's
-        // pads (major, dominant, sus, power) and those of the FM1 firmware.
-        [0, 4, 7],              // major triad
-        [0, 4, 7, 10],          // dominant 7th: Egyptian Lover's stabs
-        [0, 2, 7],              // sus2
+        [0, 2, 7],              // sus2: Rother's open pads
+        [0, 3, 7],              // minor triad: Rother's main pad chord
+        [0, 7, 12],             // 5th + octave: power stab (Kraftwerk, Egyptian Lover)
         [0, 5, 7],              // sus4
-        [0, 4, 7, 14],          // add9
-        [0, 4, 7, 11, 14],      // maj9
-        [0, 3, 7, 14],          // minor add9
-        [0, 7],                 // bare 5th: power chord
+        [0, 4, 7, 10],          // dominant 7th: Egyptian Lover's stabs
+        [0, 4, 7],              // major triad
+        [0, 3, 6, 10],          // m7b5: dark, tense
     ]
 
-    static let defaultNames: [String] = ["m7", "m9", "MIN", "5+8", "4THS", "7SUS4", "MAJ7", "m7b5",
-                                          "MAJ", "7TH", "SUS2", "SUS4", "ADD9", "MAJ9", "m ADD9", "5TH"]
+    static let defaultNames: [String] = ["m7", "SUS2", "MIN", "5+8", "SUS4", "7TH", "MAJ", "m7b5"]
 
     /// Short name of a chord (for the buttons): known shapes by name, a
     /// learned one as its intervals.
@@ -43,7 +33,7 @@ enum ChordMemory {
     static func knownName(_ chord: [Int]) -> String? {
         if let i = defaultChords.firstIndex(of: chord) { return defaultNames[i] }
         let known: [[Int]: String] = [
-            [0, 4, 7]: "MAJ", [0, 4, 7, 10]: "7TH", [0, 5, 7]: "SUS4", [0, 2, 7]: "SUS2",
+            [0, 3, 7, 10, 14]: "m9", [0, 5, 10, 15]: "4THS", [0, 5, 7, 10]: "7SUS4", [0, 4, 7, 11]: "MAJ7",
             [0, 7]: "5TH", [0, 12]: "OCT", [0, 4, 7, 11, 14]: "MAJ9", [0, 4, 7, 14]: "ADD9",
             [0, 3, 7, 14]: "m ADD9", [0, 3, 6]: "DIM", [0, 4, 8]: "AUG", [0, 4, 7, 9]: "6TH",
             [0, 3, 7, 10, 14, 17]: "m11", [0, 3, 7, 10, 17]: "m11",

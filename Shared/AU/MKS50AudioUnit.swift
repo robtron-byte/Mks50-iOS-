@@ -382,8 +382,6 @@ final class MKS50AudioUnit: AUAudioUnit {
         }
         if let chords = tone.chords {
             for (i, chord) in chords.enumerated() { engine.setChord(i, chord) }
-            // Sounds saved with fewer slots: the rest back to the defaults.
-            for i in min(chords.count, ChordMemory.slots)..<ChordMemory.slots { engine.setChord(i, ChordMemory.defaultChords[i]) }
         } else if includePatch {
             // Factory sounds carry no chords: back to the default set, so
             // chords learned in a user sound do not leak into them.
